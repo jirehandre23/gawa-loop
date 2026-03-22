@@ -1,61 +1,111 @@
-'use client'
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { supabase } from "../../../lib/supabase";
+"use client";
 
-type Listing = {
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
+
+type Business = {
   id: string;
-  business_name?: string | null;
-  food_name?: string | null;
-  category?: string | null;
-  quantity?: string | null;
-  allergy_note?: string | null;
-  address?: string | null;
-  maps_url?: string | null;
-  note?: string | null;
-  status?: string | null;
-  estimated_value?: number | null;
-  listing_expires_at?: string | null;
-  claim_hold_minutes?: number | null;
-  claim_code?: string | null;
-  reserved_until?: string | null;
-  created_at?: string | null;
+  name: string;
+  email: string | null;
+  address: string | null;
+  phone: string | null;
 };
 
 type Claim = {
-  id?: string;
-  listing_id?: string | null;
-  first_name?: string | null;
-  phone?: string | null;
-  email?: string | null;
-  eta_minutes?: number | null;
-  confirmation_code?: string | null;
+  id: string;
+  listing_id: string;
+  first_name: string | null;
+  email: string | null;
+  phone: string | null;
+  eta_minutes: number | null;
+  confirmation_code: string | null;
   created_at?: string | null;
 };
 
+type Listing = {
+  id: string;
+  business_id?: string | null;
+  business_name: string | null;
+  food_name: string | null;
+  address: string | null;
+  category: string | null;
+  quantity: string | null;
+  allergy_note: string | null;
+  estimated_value: number | null;
+  note: string | null;
+  status: string | null;
+  expires_at: string | null;
+  reserved_until: string | null;
+  claim_hold_minutes: number | null;
+  claim_code: string | null;
+  created_at: string | null;
+  claim?: Claim | null;
+};
+
+type FormState = {
+  food_name: string;
+  address: string;
+  category: string;
+  quantity: string;
+  allergy_note: string;
+  estimated_value: string;
+  note: string;
+  active_days: string;
+  claim_hold_minutes: string;
+};
+
+const EMPTY_FORM: FormState = {
+  food_name: "",
+  address: "",
+  category: "Food",
+  quantity: "",
+  allergy_note: "",
+  estimated_value: "",
+  note: "",
+  active_days: "1",
+  claim_hold_minutes: "10",
+};
+
+const ACTIVE_OPTIONS = [
+  { label: "1 day", value: "1" },
+  { label: "2 days", value: "2" },
+  { label: "3 days", value: "3" },
+  { label: "1 week", value: "7" },
+];
+
+const HOLD_OPTIONS = [
+  { label: "10 minutes", value: "10" },
+  { label: "15 minutes", value: "15" },
+  { label: "20 minutes", value: "20" },
+  { label: "30 minutes", value: "30" },
+  { label: "45 minutes", value: "45" },
+  { label: "60 minutes", value: "60" },
+];
+
+function formatDateTime(value?: string | null) {
+  if (!value) return "N/A";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleString();
+}
+
 export default function BusinessDashboardPage() {
-  const [businessName, setBusinessName] = useState("");
-  const [businessAddress, setBusinessAddress] = useState("");
-  const [businessPhone, setBusinessPhone] = useState("");
-  const [businessEmail, setBusinessEmail] = useState("");
+  const router = useRouter();
 
-  const [foodName, setFoodName] = useState("");
-  const [category, setCategory] = useState("Food");
-  const [quantity, setQuantity] = useState("");
-  const [allergyNote, setAllergyNote] = useState("");
-  const [estimatedValue, setEstimatedValue] = useState("");
-  const [note, setNote] = useState("");
-  const [listingHours, setListingHours] = useState("24");
-  const [claimHoldMinutes, setClaimHoldMinutes] = useState("30");
-
-  const [listings, setListings] = useState<Listing[]>([]);
-  const [claims, setClaims] = useState<Claim[]>([]);
   const [loading, setLoading] = useState(true);
-  const [posting, setPosting] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
-  const router = useRouter();
+  const [business, setBusiness] = useState<Business | null>(null);
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   useEffect(() => {
     loadDashboard();
@@ -63,113 +113,304 @@ export default function BusinessDashboardPage() {
 
   async function loadDashboard() {
     setLoading(true);
+    setError("");
 
-    const { data: authData, error: userError } = await supabase.auth.getUser();
-    const email = authData?.user?.email;
+    try {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
 
-    if (userError || !email) {
-      router.push("/business/login");
-      return;
-    }
-
-    const { data: business, error: businessError } = await supabase
-      .from("businesses")
-      .select("*")
-      .eq("email", email)
-      .single();
-
-    if (businessError || !business) {
-      alert("Business account not found.");
-      router.push("/business/login");
-      return;
-    }
-
-    setBusinessName(business.name || "");
-    setBusinessAddress(business.address || "");
-    setBusinessPhone(business.phone || "");
-    setBusinessEmail(business.email || "");
-
-    const { data: businessListings } = await supabase
-      .from("listings")
-      .select("*")
-      .eq("business_name", business.name)
-      .order("created_at", { ascending: false });
-
-    const loadedListings = businessListings || [];
-    setListings(loadedListings);
-
-    const listingIds = loadedListings.map((item) => item.id).filter(Boolean);
-
-    if (listingIds.length > 0) {
-      const { data: claimRows } = await supabase
-        .from("claims")
-        .select("*")
-        .in("listing_id", listingIds);
-
-      setClaims(claimRows || []);
-    } else {
-      setClaims([]);
-    }
-
-    setLoading(false);
-  }
-
-  const claimsByListingId = useMemo(() => {
-    const map = new Map<string, Claim>();
-    for (const claim of claims) {
-      if (claim.listing_id && !map.has(claim.listing_id)) {
-        map.set(claim.listing_id, claim);
+      if (authError || !user?.email) {
+        router.push("/business/login");
+        return;
       }
-    }
-    return map;
-  }, [claims]);
 
-  function buildMapsUrl(address: string) {
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+      const { data: businessRow, error: businessError } = await supabase
+        .from("businesses")
+        .select("*")
+        .eq("email", user.email)
+        .single();
+
+      if (businessError || !businessRow) {
+        setError("Could not find your business account.");
+        setLoading(false);
+        return;
+      }
+
+      setBusiness(businessRow);
+
+      const { data: listingRows, error: listingsError } = await supabase
+        .from("listings")
+        .select("*")
+        .or(
+          businessRow.id
+            ? `business_id.eq.${businessRow.id},business_name.eq.${businessRow.name}`
+            : `business_name.eq.${businessRow.name}`
+        )
+        .order("created_at", { ascending: false });
+
+      if (listingsError) {
+        throw listingsError;
+      }
+
+      const safeListings: Listing[] = listingRows || [];
+      const listingIds = safeListings.map((item) => item.id);
+
+      let claimsMap = new Map<string, Claim>();
+
+      if (listingIds.length > 0) {
+        const { data: claimRows, error: claimsError } = await supabase
+          .from("claims")
+          .select("*")
+          .in("listing_id", listingIds)
+          .order("created_at", { ascending: false });
+
+        if (claimsError) {
+          throw claimsError;
+        }
+
+        claimsMap = new Map<string, Claim>();
+        (claimRows || []).forEach((claim) => {
+          if (!claimsMap.has(claim.listing_id)) {
+            claimsMap.set(claim.listing_id, claim);
+          }
+        });
+      }
+
+      const merged = safeListings.map((listing) => ({
+        ...listing,
+        claim: claimsMap.get(listing.id) || null,
+      }));
+
+      setListings(merged);
+    } catch (err: any) {
+      setError(err?.message || "Something went wrong loading the dashboard.");
+    } finally {
+      setLoading(false);
+    }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setPosting(true);
+  function updateForm<K extends keyof FormState>(key: K, value: FormState[K]) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
 
-    const expiresAt = new Date(
-      Date.now() + Number(listingHours) * 60 * 60 * 1000
-    ).toISOString();
+  function resetForm() {
+    setForm(EMPTY_FORM);
+    setEditingId(null);
+  }
 
-    const mapsUrl = businessAddress ? buildMapsUrl(businessAddress) : null;
+  function startEdit(listing: Listing) {
+    setEditingId(listing.id);
+    setSuccess("");
+    setError("");
 
-    const { error } = await supabase.from("listings").insert({
-      business_name: businessName,
-      food_name: foodName || null,
-      category,
-      quantity,
-      allergy_note: allergyNote || null,
-      address: businessAddress || null,
-      maps_url: mapsUrl,
-      estimated_value: estimatedValue ? Number(estimatedValue) : null,
-      note: note || null,
-      status: "AVAILABLE",
-      listing_expires_at: expiresAt,
-      claim_hold_minutes: Number(claimHoldMinutes),
+    setForm({
+      food_name: listing.food_name || "",
+      address: listing.address || business?.address || "",
+      category: listing.category || "Food",
+      quantity: listing.quantity || "",
+      allergy_note: listing.allergy_note || "",
+      estimated_value:
+        listing.estimated_value !== null && listing.estimated_value !== undefined
+          ? String(listing.estimated_value)
+          : "",
+      note: listing.note || "",
+      active_days: deriveActiveDays(listing.expires_at, listing.created_at),
+      claim_hold_minutes: listing.claim_hold_minutes
+        ? String(listing.claim_hold_minutes)
+        : "10",
     });
 
-    if (error) {
-      alert("Could not post food.");
-      setPosting(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function deriveActiveDays(expiresAt?: string | null, createdAt?: string | null) {
+    if (!expiresAt || !createdAt) return "1";
+
+    const start = new Date(createdAt).getTime();
+    const end = new Date(expiresAt).getTime();
+
+    if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return "1";
+
+    const diffDays = Math.round((end - start) / (1000 * 60 * 60 * 24));
+    if ([1, 2, 3, 7].includes(diffDays)) return String(diffDays);
+    return "1";
+  }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+
+    if (!business) {
+      setError("Business account not loaded.");
       return;
     }
 
-    alert("Food posted successfully.");
-    setFoodName("");
-    setCategory("Food");
-    setQuantity("");
-    setAllergyNote("");
-    setEstimatedValue("");
-    setNote("");
-    setListingHours("24");
-    setClaimHoldMinutes("30");
-    setPosting(false);
-    loadDashboard();
+    setSaving(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const activeDays = Number(form.active_days);
+      const claimHoldMinutes = Number(form.claim_hold_minutes);
+
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + activeDays);
+
+      const payload = {
+        business_id: business.id,
+        business_name: business.name,
+        address: form.address.trim() || business.address || "",
+        food_name: form.food_name.trim(),
+        category: form.category.trim(),
+        quantity: form.quantity.trim(),
+        allergy_note: form.allergy_note.trim() || null,
+        estimated_value: form.estimated_value
+          ? Number(form.estimated_value)
+          : null,
+        note: form.note.trim() || null,
+        claim_hold_minutes: claimHoldMinutes,
+        expires_at: expiresAt.toISOString(),
+        status: "AVAILABLE",
+        reserved_until: null,
+        claim_code: null,
+      };
+
+      if (editingId) {
+        const { error: updateError } = await supabase
+          .from("listings")
+          .update(payload)
+          .eq("id", editingId);
+
+        if (updateError) throw updateError;
+
+        setSuccess("Listing updated successfully.");
+      } else {
+        const { error: insertError } = await supabase
+          .from("listings")
+          .insert(payload);
+
+        if (insertError) throw insertError;
+
+        setSuccess("Listing posted successfully.");
+      }
+
+      resetForm();
+      await loadDashboard();
+    } catch (err: any) {
+      setError(err?.message || "Could not save listing.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function cancelReservation(listingId: string) {
+    setActionLoadingId(listingId);
+    setError("");
+    setSuccess("");
+
+    try {
+      const { error: updateError } = await supabase
+        .from("listings")
+        .update({
+          status: "AVAILABLE",
+          reserved_until: null,
+          claim_code: null,
+        })
+        .eq("id", listingId);
+
+      if (updateError) throw updateError;
+
+      setSuccess("Reservation cancelled. Listing is available again.");
+      await loadDashboard();
+    } catch (err: any) {
+      setError(err?.message || "Could not cancel reservation.");
+    } finally {
+      setActionLoadingId(null);
+    }
+  }
+
+  async function cancelListing(listingId: string) {
+    setActionLoadingId(listingId);
+    setError("");
+    setSuccess("");
+
+    try {
+      const { error: updateError } = await supabase
+        .from("listings")
+        .update({ status: "CANCELLED" })
+        .eq("id", listingId);
+
+      if (updateError) throw updateError;
+
+      setSuccess("Listing cancelled.");
+      await loadDashboard();
+    } catch (err: any) {
+      setError(err?.message || "Could not cancel listing.");
+    } finally {
+      setActionLoadingId(null);
+    }
+  }
+
+  async function markPickedUp(listingId: string) {
+    setActionLoadingId(listingId);
+    setError("");
+    setSuccess("");
+
+    try {
+      const { error: updateError } = await supabase
+        .from("listings")
+        .update({ status: "PICKED_UP" })
+        .eq("id", listingId);
+
+      if (updateError) throw updateError;
+
+      setSuccess("Listing marked as picked up.");
+      await loadDashboard();
+    } catch (err: any) {
+      setError(err?.message || "Could not mark as picked up.");
+    } finally {
+      setActionLoadingId(null);
+    }
+  }
+
+  async function resubmitListing(listing: Listing) {
+    if (!business) return;
+
+    setActionLoadingId(listing.id);
+    setError("");
+    setSuccess("");
+
+    try {
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 1);
+
+      const { error: insertError } = await supabase.from("listings").insert({
+        business_id: business.id,
+        business_name: business.name,
+        address: listing.address || business.address || "",
+        food_name: listing.food_name,
+        category: listing.category,
+        quantity: listing.quantity,
+        allergy_note: listing.allergy_note,
+        estimated_value: listing.estimated_value,
+        note: listing.note,
+        claim_hold_minutes: listing.claim_hold_minutes || 10,
+        expires_at: expiresAt.toISOString(),
+        status: "AVAILABLE",
+        reserved_until: null,
+        claim_code: null,
+      });
+
+      if (insertError) throw insertError;
+
+      setSuccess("Listing reposted as a fresh available listing.");
+      await loadDashboard();
+    } catch (err: any) {
+      setError(err?.message || "Could not repost listing.");
+    } finally {
+      setActionLoadingId(null);
+    }
   }
 
   async function handleLogout() {
@@ -177,453 +418,508 @@ export default function BusinessDashboardPage() {
     router.push("/business/login");
   }
 
-  async function handleMarkPickedUp(listingId: string) {
-    setActionLoadingId(listingId);
-
-    const { error } = await supabase
-      .from("listings")
-      .update({
-        status: "PICKED_UP",
-      })
-      .eq("id", listingId);
-
-    if (error) {
-      alert("Could not mark as picked up.");
-      setActionLoadingId(null);
-      return;
-    }
-
-    setActionLoadingId(null);
-    loadDashboard();
-  }
-
-  async function handleCancelReservation(listingId: string) {
-    setActionLoadingId(listingId);
-
-    const { error } = await supabase
-      .from("listings")
-      .update({
-        status: "AVAILABLE",
-        reserved_until: null,
-        claim_code: null,
-      })
-      .eq("id", listingId);
-
-    if (error) {
-      alert("Could not cancel reservation.");
-      setActionLoadingId(null);
-      return;
-    }
-
-    setActionLoadingId(null);
-    loadDashboard();
-  }
-
-  async function handleCancelListing(listingId: string) {
-    setActionLoadingId(listingId);
-
-    const { error } = await supabase
-      .from("listings")
-      .update({
-        status: "CANCELLED",
-      })
-      .eq("id", listingId);
-
-    if (error) {
-      alert("Could not cancel listing.");
-      setActionLoadingId(null);
-      return;
-    }
-
-    setActionLoadingId(null);
-    loadDashboard();
-  }
-
-  async function handleResubmitListing(item: Listing) {
-    setActionLoadingId(item.id);
-
-    const expiresAt = new Date(
-      Date.now() + 24 * 60 * 60 * 1000
-    ).toISOString();
-
-    const { error } = await supabase.from("listings").insert({
-      business_name: item.business_name || businessName,
-      food_name: item.food_name || null,
-      category: item.category || "Food",
-      quantity: item.quantity || "",
-      allergy_note: item.allergy_note || null,
-      address: item.address || businessAddress || null,
-      maps_url: item.maps_url || null,
-      estimated_value: item.estimated_value || null,
-      note: item.note || null,
-      status: "AVAILABLE",
-      listing_expires_at: expiresAt,
-      claim_hold_minutes: item.claim_hold_minutes || 30,
-    });
-
-    if (error) {
-      alert("Could not resubmit listing.");
-      setActionLoadingId(null);
-      return;
-    }
-
-    setActionLoadingId(null);
-    loadDashboard();
-  }
-
-  function getMonthlySummary() {
+  const monthlySummary = useMemo(() => {
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
     const thisMonthListings = listings.filter((item) => {
       if (!item.created_at) return false;
-      const date = new Date(item.created_at);
-      return (
-        date.getMonth() === currentMonth &&
-        date.getFullYear() === currentYear
-      );
+      const d = new Date(item.created_at);
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
     });
 
-    const totalItems = thisMonthListings.length;
     const totalValue = thisMonthListings.reduce(
-      (sum, item) => sum + (item.estimated_value || 0),
+      (sum, item) => sum + Number(item.estimated_value || 0),
       0
     );
 
-    const reservedCount = thisMonthListings.filter(
-      (item) => item.status === "RESERVED"
-    ).length;
-
-    const pickedUpCount = thisMonthListings.filter(
-      (item) => item.status === "PICKED_UP"
-    ).length;
-
-    return { totalItems, totalValue, reservedCount, pickedUpCount };
-  }
+    return {
+      count: thisMonthListings.length,
+      totalValue,
+    };
+  }, [listings]);
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-slate-100 p-6 text-slate-900">
-        <p className="text-lg font-medium">Loading dashboard...</p>
-      </main>
+      <div style={pageStyle}>
+        <div style={cardStyle}>Loading dashboard...</div>
+      </div>
     );
   }
 
-  const summary = getMonthlySummary();
-
   return (
-    <main className="min-h-screen bg-slate-100 text-slate-900">
-      <div className="max-w-6xl mx-auto px-6 py-10">
-        <div className="flex flex-col md:flex-row justify-between md:items-center mb-6 gap-4">
-          <div className="flex flex-wrap gap-3 items-center">
-            <h1 className="text-3xl font-bold text-slate-900">Business Dashboard</h1>
-            <Link
-              href="/business/summary"
-              className="rounded-xl bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-            >
-              Monthly Summary
-            </Link>
-          </div>
-
+    <div style={pageStyle}>
+      <div style={topBarStyle}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <h1 style={{ margin: 0, fontSize: 24, color: "#111827" }}>Business Dashboard</h1>
           <button
-            onClick={handleLogout}
-            className="rounded-xl bg-slate-700 px-4 py-2 text-white hover:bg-slate-800"
+            type="button"
+            onClick={() => router.push("/business/summary")}
+            style={secondaryButtonStyle}
           >
-            Log Out
+            Monthly Summary
           </button>
         </div>
 
-        <div className="bg-white rounded-2xl shadow p-6 mb-8 border border-slate-200">
-          <h2 className="text-2xl font-semibold mb-4 text-slate-900">Post Available Food</h2>
+        <button type="button" onClick={handleLogout} style={darkButtonStyle}>
+          Log Out
+        </button>
+      </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block font-medium mb-2 text-slate-800">Business name</label>
-              <input
-                value={businessName}
-                disabled
-                className="w-full rounded-xl border border-slate-300 px-4 py-3 bg-slate-100 text-slate-800"
-              />
-            </div>
+      {error ? <div style={errorStyle}>{error}</div> : null}
+      {success ? <div style={successStyle}>{success}</div> : null}
 
-            <div>
-              <label className="block font-medium mb-2 text-slate-800">Pickup address</label>
-              <input
-                value={businessAddress}
-                disabled
-                className="w-full rounded-xl border border-slate-300 px-4 py-3 bg-slate-100 text-slate-800"
-              />
-            </div>
+      <div style={cardStyle}>
+        <h2 style={sectionTitleStyle}>
+          {editingId ? "Edit Listing" : "Post Available Food"}
+        </h2>
 
-            <div>
-              <label className="block font-medium mb-2 text-slate-800">Business phone</label>
-              <input
-                value={businessPhone}
-                disabled
-                className="w-full rounded-xl border border-slate-300 px-4 py-3 bg-slate-100 text-slate-800"
-              />
-            </div>
+        <form onSubmit={handleSubmit}>
+          <Label>Business name</Label>
+          <Input value={business?.name || ""} disabled />
 
-            <div>
-              <label className="block font-medium mb-2 text-slate-800">Business email</label>
-              <input
-                value={businessEmail}
-                disabled
-                className="w-full rounded-xl border border-slate-300 px-4 py-3 bg-slate-100 text-slate-800"
-              />
-            </div>
+          <Label>Pickup address</Label>
+          <Input
+            value={form.address}
+            onChange={(e) => updateForm("address", e.target.value)}
+            placeholder="400 Empire Blvd"
+            required
+          />
 
-            <div>
-              <label className="block font-medium mb-2 text-slate-800">Exact food name</label>
-              <input
-                value={foodName}
-                onChange={(e) => setFoodName(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400"
-                placeholder="Example: Chicken sandwich, vegetarian pasta"
-              />
-            </div>
+          <Label>Food item name</Label>
+          <Input
+            value={form.food_name}
+            onChange={(e) => updateForm("food_name", e.target.value)}
+            placeholder="Example: Chicken sandwich, vegetarian pasta"
+            required
+          />
 
-            <div>
-              <label className="block font-medium mb-2 text-slate-800">Category *</label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900"
-              >
-                <option>Food</option>
-                <option>Prepared Meals</option>
-                <option>Baked Goods</option>
-                <option>Groceries</option>
-                <option>Other</option>
-              </select>
-            </div>
+          <Label>Category</Label>
+          <Select
+            value={form.category}
+            onChange={(e) => updateForm("category", e.target.value)}
+          >
+            <option value="Food">Food</option>
+            <option value="Produce">Produce</option>
+            <option value="Bakery">Bakery</option>
+            <option value="Prepared Meals">Prepared Meals</option>
+            <option value="Drinks">Drinks</option>
+            <option value="Other">Other</option>
+          </Select>
 
-            <div>
-              <label className="block font-medium mb-2 text-slate-800">Quantity *</label>
-              <input
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400"
-                placeholder="Example: 10 meals"
-                required
-              />
-            </div>
+          <Label>Quantity</Label>
+          <Input
+            value={form.quantity}
+            onChange={(e) => updateForm("quantity", e.target.value)}
+            placeholder="Example: 10 meals"
+            required
+          />
 
-            <div>
-              <label className="block font-medium mb-2 text-slate-800">Allergy / dietary note</label>
-              <input
-                value={allergyNote}
-                onChange={(e) => setAllergyNote(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400"
-                placeholder="Example: contains dairy, nuts, halal, vegetarian"
-              />
-            </div>
+          <Label>Allergy / dietary note</Label>
+          <Input
+            value={form.allergy_note}
+            onChange={(e) => updateForm("allergy_note", e.target.value)}
+            placeholder="Example: contains dairy, nuts, halal, vegetarian"
+          />
 
-            <div>
-              <label className="block font-medium mb-2 text-slate-800">Estimated value</label>
-              <input
-                value={estimatedValue}
-                onChange={(e) => setEstimatedValue(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400"
-                placeholder="Example: 50"
-              />
-              <p className="text-sm text-slate-700 mt-1">
-                Visible only to your business and admin.
-              </p>
-            </div>
+          <Label>Estimated value</Label>
+          <Input
+            value={form.estimated_value}
+            onChange={(e) => updateForm("estimated_value", e.target.value)}
+            placeholder="Example: 50"
+            type="number"
+            min="0"
+            step="0.01"
+          />
 
-            <div>
-              <label className="block font-medium mb-2 text-slate-800">Short note</label>
-              <textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400"
-                rows={3}
-                placeholder="Example: Pickup before closing"
-              />
-            </div>
+          <div style={helperTextStyle}>Visible only to your business and admin.</div>
 
-            <div>
-              <label className="block font-medium mb-2 text-slate-800">Keep listing active for</label>
-              <select
-                value={listingHours}
-                onChange={(e) => setListingHours(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900"
-              >
-                <option value="24">1 day</option>
-                <option value="48">2 days</option>
-                <option value="72">3 days</option>
-                <option value="168">1 week</option>
-              </select>
-            </div>
+          <Label>Short note</Label>
+          <TextArea
+            value={form.note}
+            onChange={(e) => updateForm("note", e.target.value)}
+            placeholder="Example: Pickup before closing"
+          />
 
-            <div>
-              <label className="block font-medium mb-2 text-slate-800">Hold item after claim for</label>
-              <select
-                value={claimHoldMinutes}
-                onChange={(e) => setClaimHoldMinutes(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900"
-              >
-                <option value="10">10 minutes</option>
-                <option value="15">15 minutes</option>
-                <option value="20">20 minutes</option>
-                <option value="30">30 minutes</option>
-                <option value="45">45 minutes</option>
-                <option value="60">60 minutes</option>
-              </select>
-            </div>
+          <Label>Keep listing active for</Label>
+          <Select
+            value={form.active_days}
+            onChange={(e) => updateForm("active_days", e.target.value)}
+          >
+            {ACTIVE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
 
-            <button
-              type="submit"
-              disabled={posting}
-              className="rounded-xl bg-green-600 px-5 py-3 text-white font-medium hover:bg-green-700 disabled:bg-slate-400"
-            >
-              {posting ? "Posting..." : "Post Food"}
+          <Label>Hold reservation / claim for</Label>
+          <Select
+            value={form.claim_hold_minutes}
+            onChange={(e) => updateForm("claim_hold_minutes", e.target.value)}
+          >
+            {HOLD_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 16 }}>
+            <button type="submit" disabled={saving} style={primaryButtonStyle}>
+              {saving ? "Saving..." : editingId ? "Update Listing" : "Post Food"}
             </button>
-          </form>
-        </div>
 
-        <div className="bg-white rounded-2xl shadow p-6 mb-8 border border-slate-200">
-          <h2 className="text-2xl font-semibold mb-4 text-slate-900">Monthly Snapshot</h2>
-          <div className="grid gap-4 md:grid-cols-4">
-            <div className="rounded-xl bg-slate-50 border border-slate-200 p-4">
-              <p className="text-sm text-slate-700">Posted this month</p>
-              <p className="text-2xl font-bold text-slate-900">{summary.totalItems}</p>
-            </div>
-            <div className="rounded-xl bg-slate-50 border border-slate-200 p-4">
-              <p className="text-sm text-slate-700">Estimated value</p>
-              <p className="text-2xl font-bold text-slate-900">${summary.totalValue}</p>
-            </div>
-            <div className="rounded-xl bg-slate-50 border border-slate-200 p-4">
-              <p className="text-sm text-slate-700">Currently reserved</p>
-              <p className="text-2xl font-bold text-slate-900">{summary.reservedCount}</p>
-            </div>
-            <div className="rounded-xl bg-slate-50 border border-slate-200 p-4">
-              <p className="text-sm text-slate-700">Picked up</p>
-              <p className="text-2xl font-bold text-slate-900">{summary.pickedUpCount}</p>
-            </div>
+            {editingId ? (
+              <button
+                type="button"
+                onClick={resetForm}
+                style={secondaryButtonStyle}
+              >
+                Cancel Edit
+              </button>
+            ) : null}
           </div>
-        </div>
+        </form>
+      </div>
 
-        <div className="bg-white rounded-2xl shadow p-6 border border-slate-200">
-          <h2 className="text-2xl font-semibold mb-4 text-slate-900">Your Listings and Claims</h2>
+      <div style={cardStyle}>
+        <h2 style={sectionTitleStyle}>Monthly Summary</h2>
+        <p style={summaryLineStyle}>Donations posted this month: {monthlySummary.count}</p>
+        <p style={summaryLineStyle}>
+          Estimated value this month: ${monthlySummary.totalValue.toFixed(2)}
+        </p>
+        <p style={smallMutedStyle}>
+          This summary is for recordkeeping and operational reporting.
+        </p>
+      </div>
 
-          <div className="space-y-4">
-            {listings.length === 0 && (
-              <p className="text-slate-700">No listings yet.</p>
-            )}
+      <div style={cardStyle}>
+        <h2 style={sectionTitleStyle}>Your Listings</h2>
 
-            {listings.map((item) => {
-              const claim = claimsByListingId.get(item.id);
+        {listings.length === 0 ? (
+          <p style={{ color: "#374151" }}>No listings yet.</p>
+        ) : (
+          <div style={{ display: "grid", gap: 12 }}>
+            {listings.map((listing) => {
+              const isReserved = listing.status === "RESERVED";
+              const canEdit =
+                listing.status === "AVAILABLE" || listing.status === "CANCELLED";
+              const canResubmit =
+                listing.status === "CANCELLED" || listing.status === "PICKED_UP";
+              const busy = actionLoadingId === listing.id;
 
               return (
-                <div
-                  key={item.id}
-                  className="border border-slate-200 rounded-xl p-4 bg-slate-50"
-                >
-                  <p className="font-semibold text-slate-900">{item.food_name || item.category}</p>
-                  <p className="text-slate-800">{item.quantity}</p>
-                  <p className="text-slate-800"><strong>Status:</strong> {item.status || "UNKNOWN"}</p>
+                <div key={listing.id} style={listingCardStyle}>
+                  <h3 style={{ margin: "0 0 8px 0", color: "#111827" }}>
+                    {listing.food_name || "Untitled listing"}
+                  </h3>
 
-                  {item.allergy_note && (
-                    <p className="text-sm text-slate-700 mt-1">
-                      <strong>Note:</strong> {item.allergy_note}
-                    </p>
-                  )}
+                  <p style={listingTextStyle}>
+                    <strong>Status:</strong> {listing.status || "UNKNOWN"}
+                  </p>
+                  <p style={listingTextStyle}>
+                    <strong>Category:</strong> {listing.category || "N/A"}
+                  </p>
+                  <p style={listingTextStyle}>
+                    <strong>Quantity:</strong> {listing.quantity || "N/A"}
+                  </p>
+                  <p style={listingTextStyle}>
+                    <strong>Address:</strong> {listing.address || "N/A"}
+                  </p>
+                  <p style={listingTextStyle}>
+                    <strong>Allergy note:</strong> {listing.allergy_note || "None"}
+                  </p>
+                  <p style={listingTextStyle}>
+                    <strong>Estimated value:</strong> $
+                    {Number(listing.estimated_value || 0).toFixed(2)}
+                  </p>
+                  <p style={listingTextStyle}>
+                    <strong>Note:</strong> {listing.note || "None"}
+                  </p>
+                  <p style={listingTextStyle}>
+                    <strong>Expires:</strong> {formatDateTime(listing.expires_at)}
+                  </p>
+                  <p style={listingTextStyle}>
+                    <strong>Posted:</strong> {formatDateTime(listing.created_at)}
+                  </p>
 
-                  {item.note && (
-                    <p className="text-sm text-slate-700 mt-1">
-                      <strong>Extra:</strong> {item.note}
-                    </p>
-                  )}
-
-                  {item.estimated_value !== null && item.estimated_value !== undefined && (
-                    <p className="text-sm text-slate-700 mt-1">
-                      <strong>Estimated value:</strong> ${item.estimated_value}
-                    </p>
-                  )}
-
-                  {item.claim_code && (
-                    <p className="text-sm text-slate-700 mt-1">
-                      <strong>Code:</strong> {item.claim_code}
-                    </p>
-                  )}
-
-                  {item.reserved_until && (
-                    <p className="text-sm text-slate-700 mt-1">
-                      <strong>Reserved until:</strong> {new Date(item.reserved_until).toLocaleString()}
-                    </p>
-                  )}
-
-                  {item.listing_expires_at && (
-                    <p className="text-sm text-slate-700 mt-1">
-                      <strong>Expires:</strong> {new Date(item.listing_expires_at).toLocaleString()}
-                    </p>
-                  )}
-
-                  {claim && (
-                    <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
-                      <p className="font-semibold text-slate-900">Client details</p>
-                      <p className="text-slate-800"><strong>Name:</strong> {claim.first_name || "Not provided"}</p>
-                      <p className="text-slate-800"><strong>Email:</strong> {claim.email || "Not provided"}</p>
-                      <p className="text-slate-800"><strong>Phone:</strong> {claim.phone || "Not provided"}</p>
-                      <p className="text-slate-800"><strong>ETA:</strong> {claim.eta_minutes || "Not provided"} minutes</p>
-                      <p className="text-slate-800"><strong>Confirmation code:</strong> {claim.confirmation_code || item.claim_code || "Not provided"}</p>
+                  {isReserved ? (
+                    <div style={claimBoxStyle}>
+                      <p style={claimTitleStyle}>Reserved Customer Details</p>
+                      <p style={listingTextStyle}>
+                        <strong>Name:</strong> {listing.claim?.first_name || "N/A"}
+                      </p>
+                      <p style={listingTextStyle}>
+                        <strong>Email:</strong> {listing.claim?.email || "N/A"}
+                      </p>
+                      <p style={listingTextStyle}>
+                        <strong>Phone:</strong>{" "}
+                        {listing.claim?.phone || "Not provided"}
+                      </p>
+                      <p style={listingTextStyle}>
+                        <strong>ETA:</strong>{" "}
+                        {listing.claim?.eta_minutes
+                          ? `${listing.claim.eta_minutes} minutes`
+                          : "N/A"}
+                      </p>
+                      <p style={listingTextStyle}>
+                        <strong>Client code:</strong>{" "}
+                        {listing.claim?.confirmation_code ||
+                          listing.claim_code ||
+                          "N/A"}
+                      </p>
+                      <p style={listingTextStyle}>
+                        <strong>Reserved until:</strong>{" "}
+                        {formatDateTime(listing.reserved_until)}
+                      </p>
                     </div>
-                  )}
+                  ) : null}
 
-                  <div className="flex flex-wrap gap-3 mt-4">
-                    {item.status === "RESERVED" && (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
+                    {canEdit ? (
+                      <button
+                        type="button"
+                        onClick={() => startEdit(listing)}
+                        style={secondaryButtonStyle}
+                        disabled={busy}
+                      >
+                        Edit
+                      </button>
+                    ) : null}
+
+                    {isReserved ? (
                       <>
                         <button
                           type="button"
-                          onClick={() => handleMarkPickedUp(item.id)}
-                          disabled={actionLoadingId === item.id}
-                          className="rounded-xl bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:bg-slate-400"
+                          onClick={() => markPickedUp(listing.id)}
+                          style={primaryButtonStyle}
+                          disabled={busy}
                         >
-                          Mark picked up
+                          {busy ? "Working..." : "Mark Picked Up"}
                         </button>
 
                         <button
                           type="button"
-                          onClick={() => handleCancelReservation(item.id)}
-                          disabled={actionLoadingId === item.id}
-                          className="rounded-xl bg-orange-600 px-4 py-2 text-white hover:bg-orange-700 disabled:bg-slate-400"
+                          onClick={() => cancelReservation(listing.id)}
+                          style={warningButtonStyle}
+                          disabled={busy}
                         >
-                          Cancel reservation
+                          {busy ? "Working..." : "Cancel Reservation"}
                         </button>
                       </>
-                    )}
+                    ) : null}
 
-                    {(item.status === "AVAILABLE" || item.status === "RESERVED") && (
+                    {listing.status !== "CANCELLED" ? (
                       <button
                         type="button"
-                        onClick={() => handleCancelListing(item.id)}
-                        disabled={actionLoadingId === item.id}
-                        className="rounded-xl bg-red-600 px-4 py-2 text-white hover:bg-red-700 disabled:bg-slate-400"
+                        onClick={() => cancelListing(listing.id)}
+                        style={dangerButtonStyle}
+                        disabled={busy}
                       >
-                        Cancel listing
+                        {busy ? "Working..." : "Cancel Listing"}
                       </button>
-                    )}
+                    ) : null}
 
-                    {(item.status === "PICKED_UP" || item.status === "CANCELLED") && (
+                    {canResubmit ? (
                       <button
                         type="button"
-                        onClick={() => handleResubmitListing(item)}
-                        disabled={actionLoadingId === item.id}
-                        className="rounded-xl bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:bg-slate-400"
+                        onClick={() => resubmitListing(listing)}
+                        style={primaryButtonStyle}
+                        disabled={busy}
                       >
-                        Resubmit listing
+                        {busy ? "Working..." : "Repost Listing"}
                       </button>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               );
             })}
           </div>
-        </div>
+        )}
       </div>
-    </main>
+    </div>
   );
 }
+
+function Label({ children }: { children: React.ReactNode }) {
+  return <label style={labelStyle}>{children}</label>;
+}
+
+function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  return <input {...props} style={inputStyle} />;
+}
+
+function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return <select {...props} style={inputStyle} />;
+}
+
+function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea {...props} style={{ ...inputStyle, minHeight: 90, resize: "vertical" }} />;
+}
+
+const pageStyle: React.CSSProperties = {
+  minHeight: "100vh",
+  background: "#e9edf3",
+  padding: "28px 16px 60px",
+};
+
+const topBarStyle: React.CSSProperties = {
+  maxWidth: 860,
+  margin: "0 auto 16px auto",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+  flexWrap: "wrap",
+};
+
+const cardStyle: React.CSSProperties = {
+  maxWidth: 860,
+  margin: "0 auto 12px auto",
+  background: "#ffffff",
+  border: "1px solid #d1d5db",
+  borderRadius: 8,
+  padding: 18,
+};
+
+const listingCardStyle: React.CSSProperties = {
+  border: "1px solid #cbd5e1",
+  borderRadius: 8,
+  padding: 14,
+  background: "#f8fafc",
+};
+
+const claimBoxStyle: React.CSSProperties = {
+  marginTop: 12,
+  background: "#eef6ff",
+  border: "1px solid #bfdbfe",
+  borderRadius: 8,
+  padding: 12,
+};
+
+const sectionTitleStyle: React.CSSProperties = {
+  margin: "0 0 12px 0",
+  color: "#111827",
+  fontSize: 20,
+};
+
+const claimTitleStyle: React.CSSProperties = {
+  margin: "0 0 8px 0",
+  color: "#1d4ed8",
+  fontWeight: 700,
+};
+
+const labelStyle: React.CSSProperties = {
+  display: "block",
+  color: "#111827",
+  fontSize: 13,
+  marginTop: 12,
+  marginBottom: 6,
+  fontWeight: 600,
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "10px 12px",
+  borderRadius: 6,
+  border: "1px solid #94a3b8",
+  color: "#111827",
+  background: "#ffffff",
+  fontSize: 14,
+  boxSizing: "border-box",
+};
+
+const primaryButtonStyle: React.CSSProperties = {
+  background: "#16a34a",
+  color: "#ffffff",
+  border: "none",
+  borderRadius: 6,
+  padding: "10px 14px",
+  cursor: "pointer",
+  fontWeight: 600,
+};
+
+const secondaryButtonStyle: React.CSSProperties = {
+  background: "#2563eb",
+  color: "#ffffff",
+  border: "none",
+  borderRadius: 6,
+  padding: "10px 14px",
+  cursor: "pointer",
+  fontWeight: 600,
+};
+
+const warningButtonStyle: React.CSSProperties = {
+  background: "#d97706",
+  color: "#ffffff",
+  border: "none",
+  borderRadius: 6,
+  padding: "10px 14px",
+  cursor: "pointer",
+  fontWeight: 600,
+};
+
+const dangerButtonStyle: React.CSSProperties = {
+  background: "#dc2626",
+  color: "#ffffff",
+  border: "none",
+  borderRadius: 6,
+  padding: "10px 14px",
+  cursor: "pointer",
+  fontWeight: 600,
+};
+
+const darkButtonStyle: React.CSSProperties = {
+  background: "#1f2937",
+  color: "#ffffff",
+  border: "none",
+  borderRadius: 6,
+  padding: "10px 14px",
+  cursor: "pointer",
+  fontWeight: 600,
+};
+
+const helperTextStyle: React.CSSProperties = {
+  marginTop: 6,
+  fontSize: 12,
+  color: "#6b7280",
+};
+
+const listingTextStyle: React.CSSProperties = {
+  margin: "4px 0",
+  color: "#111827",
+  fontSize: 14,
+};
+
+const summaryLineStyle: React.CSSProperties = {
+  margin: "4px 0",
+  color: "#111827",
+};
+
+const smallMutedStyle: React.CSSProperties = {
+  margin: "8px 0 0 0",
+  color: "#6b7280",
+  fontSize: 12,
+};
+
+const errorStyle: React.CSSProperties = {
+  maxWidth: 860,
+  margin: "0 auto 12px auto",
+  background: "#fee2e2",
+  color: "#991b1b",
+  border: "1px solid #fecaca",
+  borderRadius: 8,
+  padding: 12,
+};
+
+const successStyle: React.CSSProperties = {
+  maxWidth: 860,
+  margin: "0 auto 12px auto",
+  background: "#dcfce7",
+  color: "#166534",
+  border: "1px solid #bbf7d0",
+  borderRadius: 8,
+  padding: 12,
+};
