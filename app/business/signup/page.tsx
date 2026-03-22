@@ -37,8 +37,10 @@ export default function BusinessSignupPage() {
       address
     });
 
-    // Ignore duplicate email errors so repeat testing does not show a false failure
-    if (businessError && !businessError.message.toLowerCase().includes("duplicate")) {
+    if (
+      businessError &&
+      !businessError.message.toLowerCase().includes("duplicate")
+    ) {
       alert("Something went wrong saving your business profile.");
       console.error("Business insert error:", businessError);
       setLoading(false);
@@ -135,6 +137,16 @@ export default function BusinessSignupPage() {
             {loading ? "Creating..." : "Create Business Account"}
           </button>
         </form>
+
+        <p className="text-sm text-gray-600 mt-4 text-center">
+          Need help? Contact us at{" "}
+          <a
+            href="mailto:admin@gawaloop.com"
+            className="text-green-700 hover:underline"
+          >
+            admin@gawaloop.com
+          </a>
+        </p>
       </div>
     </main>
   );
