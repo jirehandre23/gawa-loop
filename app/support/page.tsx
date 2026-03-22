@@ -120,6 +120,7 @@ export default function SupportPage() {
               <option>Pickup problem</option>
               <option>Business unavailable</option>
               <option>Wrong item</option>
+              <option>Need help</option>
               <option>Other</option>
             </select>
           </div>
