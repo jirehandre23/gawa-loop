@@ -416,6 +416,8 @@ export default function BusinessDashboardPage() {
                 <option value="15">15 minutes</option>
                 <option value="20">20 minutes</option>
                 <option value="30">30 minutes</option>
+                <option value="45">45 minutes</option>
+                <option value="60">60 minutes</option>
               </select>
             </div>
 
