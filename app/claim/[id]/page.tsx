@@ -1,5 +1,4 @@
 'use client'
-
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../lib/supabase";
@@ -34,14 +33,19 @@ export default function ClaimPage() {
       return;
     }
 
-    if (listing.listing_expires_at && new Date(listing.listing_expires_at).getTime() <= Date.now()) {
+    if (
+      listing.listing_expires_at &&
+      new Date(listing.listing_expires_at).getTime() <= Date.now()
+    ) {
       alert("This listing has expired.");
       setSaving(false);
       return;
     }
 
     const holdMinutes = listing.claim_hold_minutes || 10;
-    const reservedUntil = new Date(Date.now() + holdMinutes * 60 * 1000).toISOString();
+    const reservedUntil = new Date(
+      Date.now() + holdMinutes * 60 * 1000
+    ).toISOString();
 
     const { error: claimError } = await supabase.from("claims").insert({
       listing_id: id,
@@ -49,7 +53,7 @@ export default function ClaimPage() {
       phone,
       email,
       eta_minutes: Number(etaMinutes),
-      confirmation_code: code
+      confirmation_code: code,
     });
 
     if (claimError) {
@@ -63,7 +67,7 @@ export default function ClaimPage() {
       .update({
         status: "RESERVED",
         reserved_until: reservedUntil,
-        claim_code: code
+        claim_code: code,
       })
       .eq("id", id)
       .eq("status", "AVAILABLE");
@@ -74,6 +78,27 @@ export default function ClaimPage() {
       return;
     }
 
+    try {
+      await fetch("/api/claim-notify", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          customerEmail: email,
+          customerName: firstName,
+          businessName: listing.business_name,
+          foodName: listing.food_name || listing.category,
+          address: listing.address || "",
+          confirmationCode: code,
+          etaMinutes: Number(etaMinutes),
+          adminEmail: "admin@gawaloop.com",
+        }),
+      });
+    } catch (err) {
+      console.error("Notification email failed:", err);
+    }
+
     setConfirmationCode(code);
     setDone(true);
     setSaving(false);
@@ -81,17 +106,17 @@ export default function ClaimPage() {
 
   if (done) {
     return (
-      <main className="min-h-screen bg-gray-50">
+      <main className="min-h-screen bg-slate-100 text-slate-900">
         <div className="max-w-xl mx-auto px-6 py-16">
-          <div className="bg-white rounded-2xl shadow p-8 text-center">
-            <h1 className="text-2xl font-bold mb-4">Reserved successfully</h1>
-            <p className="text-gray-600 mb-4">
+          <div className="bg-white rounded-2xl shadow p-8 text-center border border-slate-200">
+            <h1 className="text-2xl font-bold mb-4 text-slate-900">Reserved successfully</h1>
+            <p className="text-slate-700 mb-4">
               Show this confirmation code at pickup.
             </p>
-            <p className="text-4xl font-bold tracking-widest mb-4">
+            <p className="text-4xl font-bold tracking-widest mb-4 text-slate-900">
               {confirmationCode}
             </p>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-slate-500">
               Your reservation is held briefly based on the business setting.
             </p>
           </div>
@@ -101,45 +126,50 @@ export default function ClaimPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-50">
+    <main className="min-h-screen bg-slate-100 text-slate-900">
       <div className="max-w-xl mx-auto px-6 py-10">
-        <h1 className="text-3xl font-bold mb-6">Claim Food</h1>
+        <h1 className="text-3xl font-bold mb-6 text-slate-900">Claim Food</h1>
 
-        <form onSubmit={handleClaim} className="bg-white rounded-2xl shadow p-6 space-y-4">
+        <form
+          onSubmit={handleClaim}
+          className="bg-white rounded-2xl shadow p-6 space-y-4 border border-slate-200"
+        >
           <div>
-            <label className="block font-medium mb-2">First name</label>
+            <label className="block font-medium mb-2 text-slate-800">First name *</label>
             <input
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
-              className="w-full rounded-xl border px-4 py-3"
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 placeholder:text-slate-400"
               required
             />
           </div>
 
           <div>
-            <label className="block font-medium mb-2">Phone</label>
+            <label className="block font-medium mb-2 text-slate-800">Phone</label>
             <input
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              className="w-full rounded-xl border px-4 py-3"
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 placeholder:text-slate-400"
             />
           </div>
 
           <div>
-            <label className="block font-medium mb-2">Email</label>
+            <label className="block font-medium mb-2 text-slate-800">Email *</label>
             <input
+              type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-xl border px-4 py-3"
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 placeholder:text-slate-400"
+              required
             />
           </div>
 
           <div>
-            <label className="block font-medium mb-2">ETA</label>
+            <label className="block font-medium mb-2 text-slate-800">ETA *</label>
             <select
               value={etaMinutes}
               onChange={(e) => setEtaMinutes(Number(e.target.value))}
-              className="w-full rounded-xl border px-4 py-3"
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
             >
               <option value={5}>5 minutes</option>
               <option value={10}>10 minutes</option>
@@ -152,7 +182,7 @@ export default function ClaimPage() {
           <button
             type="submit"
             disabled={saving}
-            className="rounded-xl bg-blue-600 px-5 py-3 text-white font-medium hover:bg-blue-700 disabled:bg-gray-400"
+            className="rounded-xl bg-blue-600 px-5 py-3 text-white font-medium hover:bg-blue-700 disabled:bg-slate-400"
           >
             {saving ? "Reserving..." : "Reserve Now"}
           </button>
