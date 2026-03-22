@@ -131,6 +131,7 @@ function getExpiresAtFromDuration(duration: string) {
       break;
     default:
       now.setMinutes(now.getMinutes() + 30);
+      break;
   }
 
   return now.toISOString();
@@ -206,6 +207,10 @@ export default function BusinessDashboardPage() {
       }
 
       setBusiness(businessRow);
+      setForm((prev) => ({
+        ...prev,
+        address: businessRow.address || "",
+      }));
 
       const { data: listingRows, error: listingsError } = await supabase
         .from("listings")
@@ -254,7 +259,10 @@ export default function BusinessDashboardPage() {
   }
 
   function resetForm() {
-    setForm(EMPTY_FORM);
+    setForm({
+      ...EMPTY_FORM,
+      address: business?.address || "",
+    });
     setEditingId(null);
   }
 
@@ -619,8 +627,14 @@ export default function BusinessDashboardPage() {
                     <strong>Address:</strong> {listing.address || "N/A"}
                   </p>
                   <p style={listingTextStyle}>
+                    <strong>Allergy note:</strong> {listing.allergy_note || "None"}
+                  </p>
+                  <p style={listingTextStyle}>
                     <strong>Estimated value:</strong> $
                     {Number(listing.estimated_value || 0).toFixed(2)}
+                  </p>
+                  <p style={listingTextStyle}>
+                    <strong>Note:</strong> {listing.note || "None"}
                   </p>
                   <p style={listingTextStyle}>
                     <strong>Expires:</strong> {formatDateTime(listing.expires_at)}
@@ -650,6 +664,9 @@ export default function BusinessDashboardPage() {
                       <p style={listingTextStyle}>
                         <strong>Client code:</strong>{" "}
                         {listing.claim?.confirmation_code || listing.claim_code || "N/A"}
+                      </p>
+                      <p style={listingTextStyle}>
+                        <strong>Reserved until:</strong> {formatDateTime(listing.reserved_until)}
                       </p>
                     </div>
                   ) : null}
