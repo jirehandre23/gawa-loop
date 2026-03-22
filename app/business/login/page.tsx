@@ -1,5 +1,4 @@
 'use client'
-
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabase";
@@ -30,29 +29,29 @@ export default function BusinessLoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-50">
+    <main className="min-h-screen bg-gray-50 text-gray-900">
       <div className="max-w-xl mx-auto px-6 py-10">
-        <h1 className="text-3xl font-bold mb-6">Business Login</h1>
+        <h1 className="text-3xl font-bold mb-6 text-gray-900">Business Login</h1>
 
-        <form onSubmit={handleLogin} className="bg-white rounded-2xl shadow p-6 space-y-4">
+        <form onSubmit={handleLogin} className="bg-white rounded-2xl shadow p-6 space-y-4 text-gray-900">
           <div>
-            <label className="block font-medium mb-2">Email</label>
+            <label className="block font-medium mb-2 text-gray-700">Email</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-xl border px-4 py-3"
+              className="w-full rounded-xl border border-gray-300 px-4 py-3 text-gray-900 placeholder:text-gray-400"
               required
             />
           </div>
 
           <div>
-            <label className="block font-medium mb-2">Password</label>
+            <label className="block font-medium mb-2 text-gray-700">Password</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-xl border px-4 py-3"
+              className="w-full rounded-xl border border-gray-300 px-4 py-3 text-gray-900 placeholder:text-gray-400"
               required
             />
           </div>
