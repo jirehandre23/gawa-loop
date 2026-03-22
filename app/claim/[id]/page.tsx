@@ -10,7 +10,7 @@ export default function ClaimPage() {
   const [firstName, setFirstName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [etaMinutes, setEtaMinutes] = useState(10);
+  const [etaMinutes, setEtaMinutes] = useState(15);
   const [confirmationCode, setConfirmationCode] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [businessAddress, setBusinessAddress] = useState("");
@@ -63,7 +63,7 @@ export default function ClaimPage() {
           <div className="bg-white rounded-2xl shadow p-8 border border-slate-200">
             <h1 className="text-2xl font-bold mb-4 text-slate-900">Reservation confirmed</h1>
             <p className="text-slate-700 mb-4">
-              A no-reply email has been sent to you if email delivery is configured.
+              A no-reply email should be sent if email delivery is configured correctly.
             </p>
 
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 mb-4">
@@ -144,7 +144,12 @@ export default function ClaimPage() {
               <option value={15}>15 minutes</option>
               <option value={20}>20 minutes</option>
               <option value={30}>30 minutes</option>
+              <option value={45}>45 minutes</option>
+              <option value={60}>60 minutes</option>
             </select>
+            <p className="text-sm text-slate-600 mt-1">
+              ETA is the customer's estimated arrival time. It is not automatically tied to closing time.
+            </p>
           </div>
 
           <button
