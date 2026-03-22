@@ -46,8 +46,8 @@ export default function BusinessDashboardPage() {
   const [allergyNote, setAllergyNote] = useState("");
   const [estimatedValue, setEstimatedValue] = useState("");
   const [note, setNote] = useState("");
-  const [listingHours, setListingHours] = useState("1");
-  const [claimHoldMinutes, setClaimHoldMinutes] = useState("10");
+  const [listingHours, setListingHours] = useState("24");
+  const [claimHoldMinutes, setClaimHoldMinutes] = useState("30");
 
   const [listings, setListings] = useState<Listing[]>([]);
   const [claims, setClaims] = useState<Claim[]>([]);
@@ -166,8 +166,8 @@ export default function BusinessDashboardPage() {
     setAllergyNote("");
     setEstimatedValue("");
     setNote("");
-    setListingHours("1");
-    setClaimHoldMinutes("10");
+    setListingHours("24");
+    setClaimHoldMinutes("30");
     setPosting(false);
     loadDashboard();
   }
@@ -211,6 +211,58 @@ export default function BusinessDashboardPage() {
 
     if (error) {
       alert("Could not cancel reservation.");
+      setActionLoadingId(null);
+      return;
+    }
+
+    setActionLoadingId(null);
+    loadDashboard();
+  }
+
+  async function handleCancelListing(listingId: string) {
+    setActionLoadingId(listingId);
+
+    const { error } = await supabase
+      .from("listings")
+      .update({
+        status: "CANCELLED",
+      })
+      .eq("id", listingId);
+
+    if (error) {
+      alert("Could not cancel listing.");
+      setActionLoadingId(null);
+      return;
+    }
+
+    setActionLoadingId(null);
+    loadDashboard();
+  }
+
+  async function handleResubmitListing(item: Listing) {
+    setActionLoadingId(item.id);
+
+    const expiresAt = new Date(
+      Date.now() + 24 * 60 * 60 * 1000
+    ).toISOString();
+
+    const { error } = await supabase.from("listings").insert({
+      business_name: item.business_name || businessName,
+      food_name: item.food_name || null,
+      category: item.category || "Food",
+      quantity: item.quantity || "",
+      allergy_note: item.allergy_note || null,
+      address: item.address || businessAddress || null,
+      maps_url: item.maps_url || null,
+      estimated_value: item.estimated_value || null,
+      note: item.note || null,
+      status: "AVAILABLE",
+      listing_expires_at: expiresAt,
+      claim_hold_minutes: item.claim_hold_minutes || 30,
+    });
+
+    if (error) {
+      alert("Could not resubmit listing.");
       setActionLoadingId(null);
       return;
     }
@@ -399,9 +451,10 @@ export default function BusinessDashboardPage() {
                 onChange={(e) => setListingHours(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900"
               >
-                <option value="1">1 hour</option>
-                <option value="2">2 hours</option>
-                <option value="3">3 hours</option>
+                <option value="24">1 day</option>
+                <option value="48">2 days</option>
+                <option value="72">3 days</option>
+                <option value="168">1 week</option>
               </select>
             </div>
 
@@ -536,11 +589,33 @@ export default function BusinessDashboardPage() {
                           type="button"
                           onClick={() => handleCancelReservation(item.id)}
                           disabled={actionLoadingId === item.id}
-                          className="rounded-xl bg-red-600 px-4 py-2 text-white hover:bg-red-700 disabled:bg-slate-400"
+                          className="rounded-xl bg-orange-600 px-4 py-2 text-white hover:bg-orange-700 disabled:bg-slate-400"
                         >
                           Cancel reservation
                         </button>
                       </>
+                    )}
+
+                    {(item.status === "AVAILABLE" || item.status === "RESERVED") && (
+                      <button
+                        type="button"
+                        onClick={() => handleCancelListing(item.id)}
+                        disabled={actionLoadingId === item.id}
+                        className="rounded-xl bg-red-600 px-4 py-2 text-white hover:bg-red-700 disabled:bg-slate-400"
+                      >
+                        Cancel listing
+                      </button>
+                    )}
+
+                    {(item.status === "PICKED_UP" || item.status === "CANCELLED") && (
+                      <button
+                        type="button"
+                        onClick={() => handleResubmitListing(item)}
+                        disabled={actionLoadingId === item.id}
+                        className="rounded-xl bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:bg-slate-400"
+                      >
+                        Resubmit listing
+                      </button>
                     )}
                   </div>
                 </div>
