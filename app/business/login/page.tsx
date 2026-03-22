@@ -64,6 +64,16 @@ export default function BusinessLoginPage() {
             {loading ? "Logging in..." : "Log In"}
           </button>
         </form>
+
+        <p className="text-sm text-gray-600 mt-4 text-center">
+          Need help? Contact us at{" "}
+          <a
+            href="mailto:admin@gawaloop.com"
+            className="text-blue-600 hover:underline"
+          >
+            admin@gawaloop.com
+          </a>
+        </p>
       </div>
     </main>
   );
