@@ -13,6 +13,7 @@ type Listing = {
   status?: string | null;
   estimated_value?: number | null;
   created_at?: string | null;
+  claim_code?: string | null;
 };
 
 type Claim = {
@@ -22,6 +23,7 @@ type Claim = {
   email?: string | null;
   phone?: string | null;
   confirmation_code?: string | null;
+  created_at?: string | null;
 };
 
 export default function BusinessSummaryPage() {
@@ -101,6 +103,7 @@ export default function BusinessSummaryPage() {
       totalReserved: thisMonth.filter((item) => item.status === "RESERVED").length,
       totalPickedUp: thisMonth.filter((item) => item.status === "PICKED_UP").length,
       totalAvailable: thisMonth.filter((item) => item.status === "AVAILABLE").length,
+      totalCancelled: thisMonth.filter((item) => item.status === "CANCELLED").length,
     };
   }, [listings]);
 
@@ -117,7 +120,7 @@ export default function BusinessSummaryPage() {
       <div className="max-w-6xl mx-auto px-6 py-10">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">Monthly Summary</h1>
+            <h1 className="text-3xl font-bold text-slate-900">Business Summary</h1>
             <p className="text-slate-700 mt-1">{businessName}</p>
           </div>
 
@@ -129,7 +132,7 @@ export default function BusinessSummaryPage() {
           </Link>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-5 mb-8">
+        <div className="grid gap-4 md:grid-cols-6 mb-8">
           <div className="rounded-2xl bg-white border border-slate-200 shadow p-5">
             <p className="text-sm text-slate-700">Posted this month</p>
             <p className="text-3xl font-bold text-slate-900">{metrics.totalPosted}</p>
@@ -150,6 +153,10 @@ export default function BusinessSummaryPage() {
             <p className="text-sm text-slate-700">Picked up</p>
             <p className="text-3xl font-bold text-slate-900">{metrics.totalPickedUp}</p>
           </div>
+          <div className="rounded-2xl bg-white border border-slate-200 shadow p-5">
+            <p className="text-sm text-slate-700">Cancelled</p>
+            <p className="text-3xl font-bold text-slate-900">{metrics.totalCancelled}</p>
+          </div>
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
@@ -162,6 +169,9 @@ export default function BusinessSummaryPage() {
                   <p className="font-semibold text-slate-900">{item.food_name || item.category}</p>
                   <p className="text-slate-800">{item.quantity}</p>
                   <p className="text-slate-700">Status: {item.status}</p>
+                  {item.claim_code && (
+                    <p className="text-slate-700">Code: {item.claim_code}</p>
+                  )}
                   {item.created_at && (
                     <p className="text-sm text-slate-600">
                       Posted: {new Date(item.created_at).toLocaleString()}
