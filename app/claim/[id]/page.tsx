@@ -46,7 +46,7 @@ export default function ClaimPage() {
       return;
     }
 
-    setConfirmationCode(data.code);
+    setConfirmationCode(data.code || "");
     setBusinessName(data.businessName || "");
     setBusinessAddress(data.businessAddress || "");
     setBusinessPhone(data.businessPhone || "");
@@ -148,7 +148,7 @@ export default function ClaimPage() {
               <option value={60}>60 minutes</option>
             </select>
             <p className="text-sm text-slate-600 mt-1">
-              ETA is the customer's estimated arrival time. It is not automatically tied to closing time.
+              ETA is the customer&apos;s estimated arrival time. It is not automatically tied to closing time.
             </p>
           </div>
 
