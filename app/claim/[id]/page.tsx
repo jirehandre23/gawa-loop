@@ -1,7 +1,7 @@
 'use client'
+import Link from "next/link";
 import { useState } from "react";
 import { useParams } from "next/navigation";
-import { supabase } from "../../../lib/supabase";
 
 export default function ClaimPage() {
   const params = useParams();
@@ -12,6 +12,11 @@ export default function ClaimPage() {
   const [email, setEmail] = useState("");
   const [etaMinutes, setEtaMinutes] = useState(10);
   const [confirmationCode, setConfirmationCode] = useState("");
+  const [businessName, setBusinessName] = useState("");
+  const [businessAddress, setBusinessAddress] = useState("");
+  const [businessPhone, setBusinessPhone] = useState("");
+  const [businessEmail, setBusinessEmail] = useState("");
+  const [foodName, setFoodName] = useState("");
   const [done, setDone] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -19,87 +24,34 @@ export default function ClaimPage() {
     e.preventDefault();
     setSaving(true);
 
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-
-    const { data: listing } = await supabase
-      .from("listings")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (!listing || listing.status !== "AVAILABLE") {
-      alert("This food is no longer available.");
-      setSaving(false);
-      return;
-    }
-
-    if (
-      listing.listing_expires_at &&
-      new Date(listing.listing_expires_at).getTime() <= Date.now()
-    ) {
-      alert("This listing has expired.");
-      setSaving(false);
-      return;
-    }
-
-    const holdMinutes = listing.claim_hold_minutes || 10;
-    const reservedUntil = new Date(
-      Date.now() + holdMinutes * 60 * 1000
-    ).toISOString();
-
-    const { error: claimError } = await supabase.from("claims").insert({
-      listing_id: id,
-      first_name: firstName,
-      phone,
-      email,
-      eta_minutes: Number(etaMinutes),
-      confirmation_code: code,
+    const res = await fetch("/api/claim-submit", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        listingId: id,
+        firstName,
+        phone,
+        email,
+        etaMinutes,
+      }),
     });
 
-    if (claimError) {
-      alert("Could not create claim.");
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data?.error || "Could not complete reservation.");
       setSaving(false);
       return;
     }
 
-    const { error: listingError } = await supabase
-      .from("listings")
-      .update({
-        status: "RESERVED",
-        reserved_until: reservedUntil,
-        claim_code: code,
-      })
-      .eq("id", id)
-      .eq("status", "AVAILABLE");
-
-    if (listingError) {
-      alert("Could not reserve this item.");
-      setSaving(false);
-      return;
-    }
-
-    try {
-      await fetch("/api/claim-notify", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          customerEmail: email,
-          customerName: firstName,
-          businessName: listing.business_name,
-          foodName: listing.food_name || listing.category,
-          address: listing.address || "",
-          confirmationCode: code,
-          etaMinutes: Number(etaMinutes),
-          adminEmail: "admin@gawaloop.com",
-        }),
-      });
-    } catch (err) {
-      console.error("Notification email failed:", err);
-    }
-
-    setConfirmationCode(code);
+    setConfirmationCode(data.code);
+    setBusinessName(data.businessName || "");
+    setBusinessAddress(data.businessAddress || "");
+    setBusinessPhone(data.businessPhone || "");
+    setBusinessEmail(data.businessEmail || "");
+    setFoodName(data.foodName || "");
     setDone(true);
     setSaving(false);
   }
@@ -107,18 +59,34 @@ export default function ClaimPage() {
   if (done) {
     return (
       <main className="min-h-screen bg-slate-100 text-slate-900">
-        <div className="max-w-xl mx-auto px-6 py-16">
-          <div className="bg-white rounded-2xl shadow p-8 text-center border border-slate-200">
-            <h1 className="text-2xl font-bold mb-4 text-slate-900">Reserved successfully</h1>
+        <div className="max-w-2xl mx-auto px-6 py-16">
+          <div className="bg-white rounded-2xl shadow p-8 border border-slate-200">
+            <h1 className="text-2xl font-bold mb-4 text-slate-900">Reservation confirmed</h1>
             <p className="text-slate-700 mb-4">
-              Show this confirmation code at pickup.
+              A no-reply email has been sent to you if email delivery is configured.
             </p>
-            <p className="text-4xl font-bold tracking-widest mb-4 text-slate-900">
-              {confirmationCode}
-            </p>
-            <p className="text-sm text-slate-500">
-              Your reservation is held briefly based on the business setting.
-            </p>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 mb-4">
+              <p className="text-sm text-slate-600">Confirmation code</p>
+              <p className="text-4xl font-bold tracking-widest text-slate-900">{confirmationCode}</p>
+            </div>
+
+            <div className="space-y-2 text-slate-800">
+              <p><strong>Food:</strong> {foodName || "Food listing"}</p>
+              <p><strong>Business:</strong> {businessName || "Not available"}</p>
+              <p><strong>Address:</strong> {businessAddress || "Not available"}</p>
+              <p><strong>Phone:</strong> {businessPhone || "Not available"}</p>
+              <p><strong>Email:</strong> {businessEmail || "Not available"}</p>
+            </div>
+
+            <div className="mt-6">
+              <Link
+                href={`/support?code=${encodeURIComponent(confirmationCode)}`}
+                className="inline-block rounded-xl bg-red-600 px-4 py-2 text-white hover:bg-red-700"
+              >
+                Report an issue
+              </Link>
+            </div>
           </div>
         </div>
       </main>
@@ -139,7 +107,7 @@ export default function ClaimPage() {
             <input
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 placeholder:text-slate-400"
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
               required
             />
           </div>
@@ -149,7 +117,7 @@ export default function ClaimPage() {
             <input
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 placeholder:text-slate-400"
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
             />
           </div>
 
@@ -159,7 +127,7 @@ export default function ClaimPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 placeholder:text-slate-400"
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
               required
             />
           </div>
