@@ -1,6 +1,5 @@
 'use client'
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabase";
 
@@ -8,7 +7,6 @@ export default function BusinessLoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [resetting, setResetting] = useState(false);
   const router = useRouter();
 
   async function handleLogin(e: React.FormEvent) {
@@ -32,24 +30,19 @@ export default function BusinessLoginPage() {
 
   async function handleForgotPassword() {
     if (!email) {
-      alert("Please enter your email address first.");
+      alert("Enter your email first.");
       return;
     }
 
-    setResetting(true);
-
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: "https://gawaloop.com/business/reset-password",
+      redirectTo: "https://gawaloop.com/business/login",
     });
 
     if (error) {
       alert(error.message);
-      setResetting(false);
-      return;
+    } else {
+      alert("Password reset email sent!");
     }
-
-    alert("Password reset email sent. Please check your inbox.");
-    setResetting(false);
   }
 
   return (
@@ -80,21 +73,22 @@ export default function BusinessLoginPage() {
             />
           </div>
 
+          <p className="text-sm text-center mt-2">
+            <button
+              type="button"
+              className="text-blue-600 hover:underline"
+              onClick={handleForgotPassword}
+            >
+              Forgot your password?
+            </button>
+          </p>
+
           <button
             type="submit"
             disabled={loading}
             className="rounded-xl bg-blue-600 px-5 py-3 text-white font-medium hover:bg-blue-700 disabled:bg-gray-400"
           >
             {loading ? "Logging in..." : "Log In"}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleForgotPassword}
-            disabled={resetting}
-            className="block text-sm text-blue-600 hover:underline"
-          >
-            {resetting ? "Sending reset email..." : "Forgot password?"}
           </button>
         </form>
 
