@@ -5,41 +5,40 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 type Business = {
-  id: string;
+  id?: string;
   name: string;
-  email: string | null;
-  address: string | null;
-  phone: string | null;
+  email?: string | null;
+  address?: string | null;
+  phone?: string | null;
 };
 
 type Claim = {
   id: string;
   listing_id: string;
-  first_name: string | null;
-  email: string | null;
-  phone: string | null;
-  eta_minutes: number | null;
-  confirmation_code: string | null;
+  first_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  eta_minutes?: number | null;
+  confirmation_code?: string | null;
   created_at?: string | null;
 };
 
 type Listing = {
   id: string;
-  business_id?: string | null;
-  business_name: string | null;
-  food_name: string | null;
-  address: string | null;
-  category: string | null;
-  quantity: string | null;
-  allergy_note: string | null;
-  estimated_value: number | null;
-  note: string | null;
-  status: string | null;
-  expires_at: string | null;
-  reserved_until: string | null;
-  claim_hold_minutes: number | null;
-  claim_code: string | null;
-  created_at: string | null;
+  business_name?: string | null;
+  food_name?: string | null;
+  address?: string | null;
+  category?: string | null;
+  quantity?: string | null;
+  allergy_note?: string | null;
+  estimated_value?: number | null;
+  note?: string | null;
+  status?: string | null;
+  expires_at?: string | null;
+  reserved_until?: string | null;
+  claim_hold_minutes?: number | null;
+  claim_code?: string | null;
+  created_at?: string | null;
   claim?: Claim | null;
 };
 
@@ -51,7 +50,7 @@ type FormState = {
   allergy_note: string;
   estimated_value: string;
   note: string;
-  active_days: string;
+  active_duration: string;
   claim_hold_minutes: string;
 };
 
@@ -63,15 +62,21 @@ const EMPTY_FORM: FormState = {
   allergy_note: "",
   estimated_value: "",
   note: "",
-  active_days: "1",
+  active_duration: "30m",
   claim_hold_minutes: "10",
 };
 
 const ACTIVE_OPTIONS = [
-  { label: "1 day", value: "1" },
-  { label: "2 days", value: "2" },
-  { label: "3 days", value: "3" },
-  { label: "1 week", value: "7" },
+  { label: "30 minutes", value: "30m" },
+  { label: "1 hour", value: "1h" },
+  { label: "2 hours", value: "2h" },
+  { label: "4 hours", value: "4h" },
+  { label: "8 hours", value: "8h" },
+  { label: "12 hours", value: "12h" },
+  { label: "1 day", value: "1d" },
+  { label: "2 days", value: "2d" },
+  { label: "3 days", value: "3d" },
+  { label: "1 week", value: "7d" },
 ];
 
 const HOLD_OPTIONS = [
@@ -85,11 +90,74 @@ const HOLD_OPTIONS = [
 
 function formatDateTime(value?: string | null) {
   if (!value) return "N/A";
-
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-
   return date.toLocaleString();
+}
+
+function getExpiresAtFromDuration(duration: string) {
+  const now = new Date();
+
+  switch (duration) {
+    case "30m":
+      now.setMinutes(now.getMinutes() + 30);
+      break;
+    case "1h":
+      now.setHours(now.getHours() + 1);
+      break;
+    case "2h":
+      now.setHours(now.getHours() + 2);
+      break;
+    case "4h":
+      now.setHours(now.getHours() + 4);
+      break;
+    case "8h":
+      now.setHours(now.getHours() + 8);
+      break;
+    case "12h":
+      now.setHours(now.getHours() + 12);
+      break;
+    case "1d":
+      now.setDate(now.getDate() + 1);
+      break;
+    case "2d":
+      now.setDate(now.getDate() + 2);
+      break;
+    case "3d":
+      now.setDate(now.getDate() + 3);
+      break;
+    case "7d":
+      now.setDate(now.getDate() + 7);
+      break;
+    default:
+      now.setMinutes(now.getMinutes() + 30);
+  }
+
+  return now.toISOString();
+}
+
+function deriveDuration(expiresAt?: string | null, createdAt?: string | null) {
+  if (!expiresAt || !createdAt) return "30m";
+
+  const start = new Date(createdAt).getTime();
+  const end = new Date(expiresAt).getTime();
+
+  if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return "30m";
+
+  const diffMinutes = Math.round((end - start) / (1000 * 60));
+
+  if (diffMinutes === 30) return "30m";
+  if (diffMinutes === 60) return "1h";
+  if (diffMinutes === 120) return "2h";
+  if (diffMinutes === 240) return "4h";
+  if (diffMinutes === 480) return "8h";
+  if (diffMinutes === 720) return "12h";
+  if (diffMinutes === 1440) return "1d";
+  if (diffMinutes === 2880) return "2d";
+  if (diffMinutes === 4320) return "3d";
+  if (diffMinutes === 10080) return "7d";
+
+  return "30m";
 }
 
 export default function BusinessDashboardPage() {
@@ -118,10 +186,9 @@ export default function BusinessDashboardPage() {
     try {
       const {
         data: { user },
-        error: authError,
       } = await supabase.auth.getUser();
 
-      if (authError || !user?.email) {
+      if (!user?.email) {
         router.push("/business/login");
         return;
       }
@@ -143,16 +210,10 @@ export default function BusinessDashboardPage() {
       const { data: listingRows, error: listingsError } = await supabase
         .from("listings")
         .select("*")
-        .or(
-          businessRow.id
-            ? `business_id.eq.${businessRow.id},business_name.eq.${businessRow.name}`
-            : `business_name.eq.${businessRow.name}`
-        )
+        .eq("business_name", businessRow.name)
         .order("created_at", { ascending: false });
 
-      if (listingsError) {
-        throw listingsError;
-      }
+      if (listingsError) throw listingsError;
 
       const safeListings: Listing[] = listingRows || [];
       const listingIds = safeListings.map((item) => item.id);
@@ -166,16 +227,13 @@ export default function BusinessDashboardPage() {
           .in("listing_id", listingIds)
           .order("created_at", { ascending: false });
 
-        if (claimsError) {
-          throw claimsError;
+        if (!claimsError && claimRows) {
+          claimRows.forEach((claim: Claim) => {
+            if (!claimsMap.has(claim.listing_id)) {
+              claimsMap.set(claim.listing_id, claim);
+            }
+          });
         }
-
-        claimsMap = new Map<string, Claim>();
-        (claimRows || []).forEach((claim) => {
-          if (!claimsMap.has(claim.listing_id)) {
-            claimsMap.set(claim.listing_id, claim);
-          }
-        });
       }
 
       const merged = safeListings.map((listing) => ({
@@ -202,8 +260,8 @@ export default function BusinessDashboardPage() {
 
   function startEdit(listing: Listing) {
     setEditingId(listing.id);
-    setSuccess("");
     setError("");
+    setSuccess("");
 
     setForm({
       food_name: listing.food_name || "",
@@ -216,26 +274,13 @@ export default function BusinessDashboardPage() {
           ? String(listing.estimated_value)
           : "",
       note: listing.note || "",
-      active_days: deriveActiveDays(listing.expires_at, listing.created_at),
+      active_duration: deriveDuration(listing.expires_at, listing.created_at),
       claim_hold_minutes: listing.claim_hold_minutes
         ? String(listing.claim_hold_minutes)
         : "10",
     });
 
     window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  function deriveActiveDays(expiresAt?: string | null, createdAt?: string | null) {
-    if (!expiresAt || !createdAt) return "1";
-
-    const start = new Date(createdAt).getTime();
-    const end = new Date(expiresAt).getTime();
-
-    if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return "1";
-
-    const diffDays = Math.round((end - start) / (1000 * 60 * 60 * 24));
-    if ([1, 2, 3, 7].includes(diffDays)) return String(diffDays);
-    return "1";
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -251,26 +296,17 @@ export default function BusinessDashboardPage() {
     setSuccess("");
 
     try {
-      const activeDays = Number(form.active_days);
-      const claimHoldMinutes = Number(form.claim_hold_minutes);
-
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + activeDays);
-
       const payload = {
-        business_id: business.id,
         business_name: business.name,
         address: form.address.trim() || business.address || "",
         food_name: form.food_name.trim(),
         category: form.category.trim(),
         quantity: form.quantity.trim(),
         allergy_note: form.allergy_note.trim() || null,
-        estimated_value: form.estimated_value
-          ? Number(form.estimated_value)
-          : null,
+        estimated_value: form.estimated_value ? Number(form.estimated_value) : null,
         note: form.note.trim() || null,
-        claim_hold_minutes: claimHoldMinutes,
-        expires_at: expiresAt.toISOString(),
+        claim_hold_minutes: Number(form.claim_hold_minutes),
+        expires_at: getExpiresAtFromDuration(form.active_duration),
         status: "AVAILABLE",
         reserved_until: null,
         claim_code: null,
@@ -310,7 +346,7 @@ export default function BusinessDashboardPage() {
     setSuccess("");
 
     try {
-      const { error: updateError } = await supabase
+      const { error } = await supabase
         .from("listings")
         .update({
           status: "AVAILABLE",
@@ -319,7 +355,7 @@ export default function BusinessDashboardPage() {
         })
         .eq("id", listingId);
 
-      if (updateError) throw updateError;
+      if (error) throw error;
 
       setSuccess("Reservation cancelled. Listing is available again.");
       await loadDashboard();
@@ -336,12 +372,12 @@ export default function BusinessDashboardPage() {
     setSuccess("");
 
     try {
-      const { error: updateError } = await supabase
+      const { error } = await supabase
         .from("listings")
         .update({ status: "CANCELLED" })
         .eq("id", listingId);
 
-      if (updateError) throw updateError;
+      if (error) throw error;
 
       setSuccess("Listing cancelled.");
       await loadDashboard();
@@ -358,12 +394,12 @@ export default function BusinessDashboardPage() {
     setSuccess("");
 
     try {
-      const { error: updateError } = await supabase
+      const { error } = await supabase
         .from("listings")
         .update({ status: "PICKED_UP" })
         .eq("id", listingId);
 
-      if (updateError) throw updateError;
+      if (error) throw error;
 
       setSuccess("Listing marked as picked up.");
       await loadDashboard();
@@ -372,50 +408,6 @@ export default function BusinessDashboardPage() {
     } finally {
       setActionLoadingId(null);
     }
-  }
-
-  async function resubmitListing(listing: Listing) {
-    if (!business) return;
-
-    setActionLoadingId(listing.id);
-    setError("");
-    setSuccess("");
-
-    try {
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 1);
-
-      const { error: insertError } = await supabase.from("listings").insert({
-        business_id: business.id,
-        business_name: business.name,
-        address: listing.address || business.address || "",
-        food_name: listing.food_name,
-        category: listing.category,
-        quantity: listing.quantity,
-        allergy_note: listing.allergy_note,
-        estimated_value: listing.estimated_value,
-        note: listing.note,
-        claim_hold_minutes: listing.claim_hold_minutes || 10,
-        expires_at: expiresAt.toISOString(),
-        status: "AVAILABLE",
-        reserved_until: null,
-        claim_code: null,
-      });
-
-      if (insertError) throw insertError;
-
-      setSuccess("Listing reposted as a fresh available listing.");
-      await loadDashboard();
-    } catch (err: any) {
-      setError(err?.message || "Could not repost listing.");
-    } finally {
-      setActionLoadingId(null);
-    }
-  }
-
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    router.push("/business/login");
   }
 
   const monthlySummary = useMemo(() => {
@@ -439,6 +431,11 @@ export default function BusinessDashboardPage() {
       totalValue,
     };
   }, [listings]);
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.push("/business/login");
+  }
 
   if (loading) {
     return (
@@ -544,8 +541,8 @@ export default function BusinessDashboardPage() {
 
           <Label>Keep listing active for</Label>
           <Select
-            value={form.active_days}
-            onChange={(e) => updateForm("active_days", e.target.value)}
+            value={form.active_duration}
+            onChange={(e) => updateForm("active_duration", e.target.value)}
           >
             {ACTIVE_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -572,11 +569,7 @@ export default function BusinessDashboardPage() {
             </button>
 
             {editingId ? (
-              <button
-                type="button"
-                onClick={resetForm}
-                style={secondaryButtonStyle}
-              >
+              <button type="button" onClick={resetForm} style={secondaryButtonStyle}>
                 Cancel Edit
               </button>
             ) : null}
@@ -604,11 +597,8 @@ export default function BusinessDashboardPage() {
           <div style={{ display: "grid", gap: 12 }}>
             {listings.map((listing) => {
               const isReserved = listing.status === "RESERVED";
-              const canEdit =
-                listing.status === "AVAILABLE" || listing.status === "CANCELLED";
-              const canResubmit =
-                listing.status === "CANCELLED" || listing.status === "PICKED_UP";
               const busy = actionLoadingId === listing.id;
+              const canEdit = listing.status === "AVAILABLE" || listing.status === "CANCELLED";
 
               return (
                 <div key={listing.id} style={listingCardStyle}>
@@ -629,14 +619,8 @@ export default function BusinessDashboardPage() {
                     <strong>Address:</strong> {listing.address || "N/A"}
                   </p>
                   <p style={listingTextStyle}>
-                    <strong>Allergy note:</strong> {listing.allergy_note || "None"}
-                  </p>
-                  <p style={listingTextStyle}>
                     <strong>Estimated value:</strong> $
                     {Number(listing.estimated_value || 0).toFixed(2)}
-                  </p>
-                  <p style={listingTextStyle}>
-                    <strong>Note:</strong> {listing.note || "None"}
                   </p>
                   <p style={listingTextStyle}>
                     <strong>Expires:</strong> {formatDateTime(listing.expires_at)}
@@ -655,8 +639,7 @@ export default function BusinessDashboardPage() {
                         <strong>Email:</strong> {listing.claim?.email || "N/A"}
                       </p>
                       <p style={listingTextStyle}>
-                        <strong>Phone:</strong>{" "}
-                        {listing.claim?.phone || "Not provided"}
+                        <strong>Phone:</strong> {listing.claim?.phone || "Not provided"}
                       </p>
                       <p style={listingTextStyle}>
                         <strong>ETA:</strong>{" "}
@@ -666,13 +649,7 @@ export default function BusinessDashboardPage() {
                       </p>
                       <p style={listingTextStyle}>
                         <strong>Client code:</strong>{" "}
-                        {listing.claim?.confirmation_code ||
-                          listing.claim_code ||
-                          "N/A"}
-                      </p>
-                      <p style={listingTextStyle}>
-                        <strong>Reserved until:</strong>{" "}
-                        {formatDateTime(listing.reserved_until)}
+                        {listing.claim?.confirmation_code || listing.claim_code || "N/A"}
                       </p>
                     </div>
                   ) : null}
@@ -719,17 +696,6 @@ export default function BusinessDashboardPage() {
                         disabled={busy}
                       >
                         {busy ? "Working..." : "Cancel Listing"}
-                      </button>
-                    ) : null}
-
-                    {canResubmit ? (
-                      <button
-                        type="button"
-                        onClick={() => resubmitListing(listing)}
-                        style={primaryButtonStyle}
-                        disabled={busy}
-                      >
-                        {busy ? "Working..." : "Repost Listing"}
                       </button>
                     ) : null}
                   </div>
