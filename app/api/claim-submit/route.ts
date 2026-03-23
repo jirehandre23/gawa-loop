@@ -19,9 +19,7 @@ async function sendEmailSafe(params: {
 }) {
   const apiKey = process.env.RESEND_API_KEY;
 
-  if (!apiKey || !params.to) {
-    return;
-  }
+  if (!apiKey || !params.to) return;
 
   try {
     const response = await fetch("https://api.resend.com/emails", {
@@ -96,7 +94,8 @@ export async function POST(req: Request) {
       Date.now() + holdMinutes * 60 * 1000
     ).toISOString();
 
-    const { error: updateError } = await admin
+    // SAFER: reserve first, and only continue if exactly one row was updated
+    const { data: reservedRows, error: reserveError } = await admin
       .from("listings")
       .update({
         status: "RESERVED",
@@ -104,12 +103,20 @@ export async function POST(req: Request) {
         claim_code: code,
       })
       .eq("id", listingId)
-      .eq("status", "AVAILABLE");
+      .eq("status", "AVAILABLE")
+      .select("id");
 
-    if (updateError) {
+    if (reserveError) {
       return NextResponse.json(
         { error: "Could not reserve listing." },
         { status: 500 }
+      );
+    }
+
+    if (!reservedRows || reservedRows.length !== 1) {
+      return NextResponse.json(
+        { error: "This listing was just claimed by someone else." },
+        { status: 409 }
       );
     }
 
@@ -154,8 +161,8 @@ export async function POST(req: Request) {
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
         <h2>Your GAWA Loop reservation is confirmed</h2>
         <p>Hi ${firstName},</p>
-        <p>Your order claim was successfully reserved.</p>
-        <div style="padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; margin: 16px 0;">
+        <p>Your claim was successfully reserved.</p>
+        <div style="padding:12px;border:1px solid #d1d5db;border-radius:8px;margin:16px 0;">
           <p><strong>Confirmation code:</strong> ${code}</p>
           <p><strong>Food:</strong> ${foodName}</p>
           <p><strong>Business:</strong> ${businessName}</p>
