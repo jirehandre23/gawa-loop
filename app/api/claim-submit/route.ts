@@ -94,7 +94,6 @@ export async function POST(req: Request) {
       Date.now() + holdMinutes * 60 * 1000
     ).toISOString();
 
-    // SAFER: reserve first, and only continue if exactly one row was updated
     const { data: reservedRows, error: reserveError } = await admin
       .from("listings")
       .update({
