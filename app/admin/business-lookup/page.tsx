@@ -1,3 +1,4 @@
+// app/admin/business-lookup/page.tsx
 "use client";
 
 import { useState } from "react";
@@ -18,75 +19,57 @@ export default function AdminBusinessLookupPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [tempPasswords, setTempPasswords] = useState<Record<string, string>>({});
 
+  // Handle search
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setMessage("");
     setErrorMessage("");
 
-    try {
-      const res = await fetch("/api/admin/business-lookup", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action: "search",
-          query,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setErrorMessage(data?.error || "Could not search businesses.");
-        setBusinesses([]);
-        setLoading(false);
-        return;
-      }
-
-      setBusinesses(data.businesses || []);
-      if ((data.businesses || []).length === 0) {
-        setMessage("No matching businesses found.");
-      }
-    } catch {
-      setErrorMessage("Could not search businesses.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function sendReset(email: string) {
-    setMessage("");
-    setErrorMessage("");
-
     const res = await fetch("/api/admin/business-lookup", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        action: "send_reset",
-        email,
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "search", query }),
     });
 
     const data = await res.json();
+    if (!res.ok) {
+      setErrorMessage(data?.error || "Could not search businesses.");
+      setBusinesses([]);
+      setLoading(false);
+      return;
+    }
 
+    setBusinesses(data.businesses || []);
+    if ((data.businesses || []).length === 0) {
+      setMessage("No matching businesses found.");
+    }
+    setLoading(false);
+  }
+
+  // Send reset email
+  async function sendReset(email: string) {
+    setMessage("");
+    setErrorMessage("");
+    const res = await fetch("/api/admin/business-lookup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "send_reset", email }),
+    });
+    const data = await res.json();
     if (!res.ok) {
       setErrorMessage(data?.error || "Could not send reset email.");
       return;
     }
-
     setMessage(`Password reset email sent to ${email}.`);
   }
 
+  // Set temporary password
   async function setTemporaryPassword(email: string) {
     setMessage("");
     setErrorMessage("");
 
     const temporaryPassword = tempPasswords[email] || "";
-
     if (!temporaryPassword) {
       setErrorMessage("Please enter a temporary password first.");
       return;
@@ -94,9 +77,7 @@ export default function AdminBusinessLookupPage() {
 
     const res = await fetch("/api/admin/business-lookup", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "set_temp_password",
         email,
@@ -105,13 +86,13 @@ export default function AdminBusinessLookupPage() {
     });
 
     const data = await res.json();
-
     if (!res.ok) {
       setErrorMessage(data?.error || "Could not set temporary password.");
       return;
     }
 
     setMessage(`Temporary password updated for ${email}.`);
+    setTempPasswords((prev) => ({ ...prev, [email]: "" }));
   }
 
   return (
@@ -123,23 +104,25 @@ export default function AdminBusinessLookupPage() {
           send a reset email, or set a temporary password.
         </p>
 
-        {errorMessage ? (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+        {errorMessage && (
+          <div className="mb-4 rounded-xl border border-red-400 bg-red-100 px-4 py-3 text-red-800">
             {errorMessage}
           </div>
-        ) : null}
-
-        {message ? (
-          <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-green-700">
+        )}
+        {message && (
+          <div className="mb-4 rounded-xl border border-green-400 bg-green-100 px-4 py-3 text-green-800">
             {message}
           </div>
-        ) : null}
+        )}
 
+        {/* Search form */}
         <form
           onSubmit={handleSearch}
           className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow"
         >
-          <label className="mb-2 block font-medium">Search by name or email</label>
+          <label className="mb-2 block font-medium">
+            Search by name or email
+          </label>
           <div className="flex flex-col gap-3 md:flex-row">
             <input
               value={query}
@@ -158,6 +141,7 @@ export default function AdminBusinessLookupPage() {
           </div>
         </form>
 
+        {/* Results */}
         <div className="grid gap-4">
           {businesses.map((business) => {
             const email = business.email || "";
@@ -176,7 +160,8 @@ export default function AdminBusinessLookupPage() {
                   <p><strong>Address:</strong> {business.address || "Not provided"}</p>
                 </div>
 
-                {email ? (
+                {/* Password tools */}
+                {email && (
                   <div className="mt-5 grid gap-3 md:grid-cols-[1fr_auto_auto]">
                     <input
                       type="text"
@@ -207,7 +192,7 @@ export default function AdminBusinessLookupPage() {
                       Send Reset Email
                     </button>
                   </div>
-                ) : null}
+                )}
               </div>
             );
           })}
