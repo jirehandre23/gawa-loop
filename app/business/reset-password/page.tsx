@@ -1,87 +1,105 @@
+// app/business/reset-password/page.tsx
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
-export default function ResetPasswordPage() {
+function ResetForm() {
   const router = useRouter();
+  const params = useSearchParams();
 
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [confirm, setConfirm] = useState("");
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState("");
 
-  async function handleReset(e: React.FormEvent) {
+  // Set the Supabase session from the URL tokens on page load
+  useEffect(() => {
+    async function init() {
+      const code = params.get("code");
+      const access = params.get("access_token");
+      const refresh = params.get("refresh_token");
+
+      try {
+        if (code) {
+          await supabase.auth.exchangeCodeForSession(code);
+        } else if (access && refresh) {
+          await supabase.auth.setSession({
+            access_token: access,
+            refresh_token: refresh,
+          });
+        }
+        setReady(true);
+      } catch {
+        setError(
+          "This reset link is invalid or expired. Please request a new reset email."
+        );
+      }
+    }
+    init();
+  }, [params]);
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-
-    if (password.length < 6) {
-      alert("Password must be at least 6 characters.");
+    if (password !== confirm) {
+      setError("Passwords do not match");
       return;
     }
-
-    if (password !== confirmPassword) {
-      alert("Passwords do not match.");
-      return;
-    }
-
-    setSaving(true);
-
-    const { error } = await supabase.auth.updateUser({
+    const { error: updateError } = await supabase.auth.updateUser({
       password,
     });
-
-    setSaving(false);
-
-    if (error) {
-      alert(error.message);
+    if (updateError) {
+      setError(updateError.message);
       return;
     }
-
     alert("Password updated successfully.");
     router.push("/business/login");
   }
 
+  if (!ready) return <p>Loading…</p>;
+  if (error) return <p className="text-red-500">{error}</p>;
+
   return (
-    <main className="min-h-screen bg-slate-100 text-slate-900">
-      <div className="mx-auto max-w-xl px-6 py-16">
-        <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow">
-          <h1 className="mb-2 text-3xl font-bold">Reset Password</h1>
-          <p className="mb-6 text-slate-600">
-            Enter your new password below.
-          </p>
+    <form onSubmit={handleSubmit}>
+      <label>
+        New password
+        <input
+          type="password"
+          className="w-full border rounded p-2 mt-1"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
+      </label>
+      <label className="block mt-4">
+        Confirm new password
+        <input
+          type="password"
+          className="w-full border rounded p-2 mt-1"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          required
+        />
+      </label>
+      <button
+        type="submit"
+        className="mt-4 px-4 py-2 bg-blue-600 text-white rounded"
+      >
+        Reset Password
+      </button>
+    </form>
+  );
+}
 
-          <form onSubmit={handleReset}>
-            <div className="mb-5">
-              <label className="mb-2 block font-medium">New password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 px-4 py-3"
-                required
-              />
-            </div>
-
-            <div className="mb-6">
-              <label className="mb-2 block font-medium">Confirm new password</label>
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 px-4 py-3"
-                required
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-xl bg-blue-600 px-6 py-3 font-medium text-white hover:bg-blue-700 disabled:bg-slate-400"
-            >
-              {saving ? "Updating..." : "Update Password"}
-            </button>
-          </form>
-        </div>
+export default function ResetPasswordPage() {
+  return (
+    <main className="min-h-screen flex items-center justify-center bg-slate-100 p-6">
+      <div className="max-w-md w-full bg-white p-6 rounded shadow">
+        <h1 className="text-xl font-bold mb-4">Reset Password</h1>
+        <Suspense fallback={<p>Loading…</p>}>
+          <ResetForm />
+        </Suspense>
       </div>
     </main>
   );
