@@ -18,11 +18,21 @@ export default function AdminBusinessLookupPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [tempPasswords, setTempPasswords] = useState<Record<string, string>>({});
 
+  async function readJsonOrText(res: Response) {
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { error: text || "Unknown server response" };
+    }
+  }
+
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setMessage("");
     setErrorMessage("");
+    setBusinesses([]);
 
     try {
       const res = await fetch("/api/admin/business-lookup", {
@@ -36,12 +46,10 @@ export default function AdminBusinessLookupPage() {
         }),
       });
 
-      const data = await res.json();
+      const data = await readJsonOrText(res);
 
       if (!res.ok) {
         setErrorMessage(data?.error || "Could not search businesses.");
-        setBusinesses([]);
-        setLoading(false);
         return;
       }
 
@@ -50,7 +58,7 @@ export default function AdminBusinessLookupPage() {
         setMessage("No matching businesses found.");
       }
     } catch (error: any) {
-      setErrorMessage(error?.message || "Could not search businesses.");
+      setErrorMessage(error?.message || "Fetch failed");
     } finally {
       setLoading(false);
     }
@@ -72,14 +80,19 @@ export default function AdminBusinessLookupPage() {
         }),
       });
 
-      const data = await res.json();
+      const data = await readJsonOrText(res);
 
       if (!res.ok) {
         setErrorMessage(data?.error || "Could not send reset email.");
         return;
       }
 
-      setMessage(`Password reset email sent to ${email}.`);
+      // For now we show the generated link too, so you can test immediately
+      if (data?.actionLink) {
+        setMessage(`Reset link generated for ${email}: ${data.actionLink}`);
+      } else {
+        setMessage(`Password reset email flow completed for ${email}.`);
+      }
     } catch (error: any) {
       setErrorMessage(error?.message || "Could not send reset email.");
     }
@@ -109,7 +122,7 @@ export default function AdminBusinessLookupPage() {
         }),
       });
 
-      const data = await res.json();
+      const data = await readJsonOrText(res);
 
       if (!res.ok) {
         setErrorMessage(data?.error || "Could not set temporary password.");
@@ -135,13 +148,13 @@ export default function AdminBusinessLookupPage() {
         </p>
 
         {errorMessage ? (
-          <div className="mb-4 rounded-xl border border-red-400 bg-red-100 px-4 py-3 text-red-800">
+          <div className="mb-4 rounded-xl border border-red-400 bg-red-100 px-4 py-3 text-red-800 break-words">
             {errorMessage}
           </div>
         ) : null}
 
         {message ? (
-          <div className="mb-4 rounded-xl border border-green-400 bg-green-100 px-4 py-3 text-green-800">
+          <div className="mb-4 rounded-xl border border-green-400 bg-green-100 px-4 py-3 text-green-800 break-words">
             {message}
           </div>
         ) : null}
