@@ -18,7 +18,6 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const action = body?.action;
-
     const admin = getAdminClient();
 
     if (action === "search") {
@@ -38,10 +37,7 @@ export async function POST(req: Request) {
         .limit(20);
 
       if (error) {
-        return NextResponse.json(
-          { error: error.message },
-          { status: 500 }
-        );
+        return NextResponse.json({ error: error.message }, { status: 500 });
       }
 
       return NextResponse.json({ businesses: businesses || [] });
@@ -62,10 +58,7 @@ export async function POST(req: Request) {
       });
 
       if (error) {
-        return NextResponse.json(
-          { error: error.message },
-          { status: 500 }
-        );
+        return NextResponse.json({ error: error.message }, { status: 500 });
       }
 
       return NextResponse.json({ ok: true });
@@ -125,10 +118,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
-    return NextResponse.json(
-      { error: "Invalid action." },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Invalid action." }, { status: 400 });
   } catch (error: any) {
     return NextResponse.json(
       { error: error?.message || "Something went wrong." },
