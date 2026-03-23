@@ -253,7 +253,7 @@ export default function BusinessSummaryPage() {
               ) : (
                 claims.slice(0, 10).map((claim) => (
                   <div
-                    key={`${claim.listing_id || "listing"}-${claim.confirmation_code || claim.id || Math.random()}`}
+                    key={`${claim.listing_id || "listing"}-${claim.confirmation_code || claim.id || "claim"}`}
                     className="rounded-xl border border-slate-200 bg-slate-50 p-4"
                   >
                     <p className="text-slate-800">
@@ -270,8 +270,7 @@ export default function BusinessSummaryPage() {
                       {claim.eta_minutes ? `${claim.eta_minutes} minutes` : "Not provided"}
                     </p>
                     <p className="text-slate-800">
-                      <strong>Code:</strong>{" "}
-                      {claim.confirmation_code || "Not provided"}
+                      <strong>Code:</strong> {claim.confirmation_code || "Not provided"}
                     </p>
                     {claim.created_at ? (
                       <p className="text-sm text-slate-600">
