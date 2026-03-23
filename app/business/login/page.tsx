@@ -1,132 +1,109 @@
-'use client'
-import { useEffect, useState } from "react";
+"use client";
+
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "../../../lib/supabase";
-import LanguageSwitcher from "../../components/LanguageSwitcher";
-import {
-  Language,
-  getStoredLanguage,
-  isRtl,
-  setStoredLanguage,
-  translations,
-} from "../../lib/i18n";
+import { supabase } from "@/lib/supabase";
 
 export default function BusinessLoginPage() {
-  const [language, setLanguage] = useState<Language>("en");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  useEffect(() => {
-    setLanguage(getStoredLanguage());
-  }, []);
-
-  const t = translations[language];
-  const rtl = isRtl(language);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [saving, setSaving] = useState(false);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
+    setSaving(true);
 
     const { error } = await supabase.auth.signInWithPassword({
       email,
-      password
+      password,
     });
+
+    setSaving(false);
 
     if (error) {
       alert(error.message);
-      setLoading(false);
       return;
     }
 
     router.push("/business/dashboard");
-    setLoading(false);
   }
 
   async function handleForgotPassword() {
-    if (!email) {
-      alert(t.enterEmailFirst);
+    if (!email.trim()) {
+      alert("Please enter your business email first.");
       return;
     }
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: "https://gawaloop.com/business/login",
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: "https://gawaloop.com/business/reset-password",
     });
 
     if (error) {
       alert(error.message);
-    } else {
-      alert(t.resetEmailSent);
+      return;
     }
-  }
 
-  function handleLanguageChange(newLanguage: Language) {
-    setLanguage(newLanguage);
-    setStoredLanguage(newLanguage);
+    alert("Password reset email sent. Check your inbox.");
   }
 
   return (
-    <main
-      className="min-h-screen bg-slate-100 text-slate-900"
-      dir={rtl ? "rtl" : "ltr"}
-    >
-      <div className="max-w-xl mx-auto px-6 py-10">
-        <div className="flex justify-end mb-4">
-          <LanguageSwitcher language={language} onChange={handleLanguageChange} />
-        </div>
+    <main className="min-h-screen bg-slate-100 text-slate-900">
+      <div className="mx-auto max-w-xl px-6 py-16">
+        <h1 className="mb-2 text-4xl font-bold">Business Login</h1>
+        <p className="mb-8 text-slate-600">
+          Log in to manage your food listings and dashboard.
+        </p>
 
-        <h1 className="text-3xl font-bold mb-2 text-slate-900">{t.businessLogin}</h1>
-        <p className="text-slate-600 mb-6">{t.loginSubtitle}</p>
-
-        <form onSubmit={handleLogin} className="bg-white rounded-2xl shadow p-6 space-y-4 text-slate-900 border border-slate-200">
-          <div>
-            <label className="block font-medium mb-2 text-slate-800">{t.businessEmail}</label>
+        <form
+          onSubmit={handleLogin}
+          className="rounded-2xl border border-slate-200 bg-white p-6 shadow"
+        >
+          <div className="mb-5">
+            <label className="mb-2 block font-medium">Business email</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 placeholder:text-slate-400"
+              className="w-full rounded-xl border border-slate-300 px-4 py-3"
               required
             />
           </div>
 
-          <div>
-            <label className="block font-medium mb-2 text-slate-800">{t.password}</label>
+          <div className="mb-5">
+            <label className="mb-2 block font-medium">Password</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 placeholder:text-slate-400"
+              className="w-full rounded-xl border border-slate-300 px-4 py-3"
               required
             />
           </div>
 
-          <p className="text-sm text-center mt-2">
+          <div className="mb-6 text-right">
             <button
               type="button"
-              className="text-blue-600 hover:underline"
               onClick={handleForgotPassword}
+              className="text-blue-700 hover:underline"
             >
-              {t.forgotPassword}
+              Forgot your password?
             </button>
-          </p>
+          </div>
 
           <button
             type="submit"
-            disabled={loading}
-            className="rounded-xl bg-blue-600 px-5 py-3 text-white font-medium hover:bg-blue-700 disabled:bg-gray-400"
+            disabled={saving}
+            className="rounded-xl bg-blue-600 px-6 py-3 font-medium text-white hover:bg-blue-700 disabled:bg-slate-400"
           >
-            {loading ? t.loggingIn : t.logIn}
+            {saving ? "Logging in..." : "Log In"}
           </button>
         </form>
 
-        <p className="text-sm text-gray-600 mt-4 text-center">
-          {t.needHelp}{" "}
-          <a
-            href="mailto:admin@gawaloop.com"
-            className="text-blue-600 hover:underline"
-          >
+        <p className="mt-6 text-center text-slate-600">
+          Need help? Contact us at{" "}
+          <a href="mailto:admin@gawaloop.com" className="text-blue-700 underline">
             admin@gawaloop.com
           </a>
         </p>
