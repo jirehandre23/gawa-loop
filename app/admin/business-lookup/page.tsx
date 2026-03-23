@@ -87,7 +87,6 @@ export default function AdminBusinessLookupPage() {
         return;
       }
 
-      // For now we show the generated link too, so you can test immediately
       if (data?.actionLink) {
         setMessage(`Reset link generated for ${email}: ${data.actionLink}`);
       } else {
