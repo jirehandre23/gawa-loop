@@ -14,21 +14,38 @@ function ResetForm() {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
 
-  // Set the Supabase session from the URL tokens on page load
+  // Reads session tokens from the URL and sets the Supabase session.
   useEffect(() => {
     async function init() {
       const code = params.get("code");
       const access = params.get("access_token");
       const refresh = params.get("refresh_token");
+      const type = params.get("type");
 
       try {
         if (code) {
+          // If there's an OAuth code (magic link), exchange it for a session
           await supabase.auth.exchangeCodeForSession(code);
-        } else if (access && refresh) {
-          await supabase.auth.setSession({
-            access_token: access,
-            refresh_token: refresh,
-          });
+        } else if (access) {
+          // Recovery links include an access_token (and sometimes a refresh_token)
+          const session: any = { access_token: access };
+          if (refresh) {
+            session.refresh_token = refresh;
+          }
+          await supabase.auth.setSession(session);
+        } else if (type === "recovery") {
+          // Handle older recovery links with fragments (#access_token=...)
+          const fragment = window.location.hash.substring(1);
+          const fragParams = new URLSearchParams(fragment);
+          const fragAccess = fragParams.get("access_token");
+          const fragRefresh = fragParams.get("refresh_token");
+          if (fragAccess) {
+            const session: any = { access_token: fragAccess };
+            if (fragRefresh) {
+              session.refresh_token = fragRefresh;
+            }
+            await supabase.auth.setSession(session);
+          }
         }
         setReady(true);
       } catch {
@@ -46,6 +63,7 @@ function ResetForm() {
       setError("Passwords do not match");
       return;
     }
+    setError("");
     const { error: updateError } = await supabase.auth.updateUser({
       password,
     });
@@ -57,12 +75,17 @@ function ResetForm() {
     router.push("/business/login");
   }
 
-  if (!ready) return <p>Loading…</p>;
-  if (error) return <p className="text-red-500">{error}</p>;
+  if (!ready) {
+    return <p>Loading…</p>;
+  }
+
+  if (error) {
+    return <p className="text-red-600">{error}</p>;
+  }
 
   return (
     <form onSubmit={handleSubmit}>
-      <label>
+      <label className="block">
         New password
         <input
           type="password"
