@@ -43,13 +43,16 @@ function MapPickerModal({
         <p className="text-sm text-slate-500 mb-5 break-words">{address}</p>
 
         <div className="flex flex-col gap-3">
+
           
             href={googleUrl}
             target="_blank"
             rel="noreferrer"
             className="flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-3 hover:bg-slate-50 transition"
           >
-            <span className="text-2xl">🗺️</span>
+            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+              <span className="text-blue-600 font-bold text-sm">G</span>
+            </div>
             <div>
               <p className="font-semibold text-slate-900">Google Maps</p>
               <p className="text-xs text-slate-500">maps.google.com</p>
@@ -62,7 +65,9 @@ function MapPickerModal({
             rel="noreferrer"
             className="flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-3 hover:bg-slate-50 transition"
           >
-            <span className="text-2xl">🍎</span>
+            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+              <span className="text-slate-700 font-bold text-sm">A</span>
+            </div>
             <div>
               <p className="font-semibold text-slate-900">Apple Maps</p>
               <p className="text-xs text-slate-500">maps.apple.com</p>
@@ -75,12 +80,15 @@ function MapPickerModal({
             rel="noreferrer"
             className="flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-3 hover:bg-slate-50 transition"
           >
-            <span className="text-2xl">🚗</span>
+            <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center shrink-0">
+              <span className="text-sky-600 font-bold text-sm">W</span>
+            </div>
             <div>
               <p className="font-semibold text-slate-900">Waze</p>
               <p className="text-xs text-slate-500">waze.com</p>
             </div>
           </a>
+
         </div>
 
         <button
@@ -102,13 +110,11 @@ export default function Browse() {
 
   useEffect(() => {
     fetchItems();
-
     const interval = setInterval(async () => {
       await releaseExpiredItems();
       await expireOldListings();
       await fetchItems();
     }, 10000);
-
     return () => clearInterval(interval);
   }, []);
 
@@ -118,7 +124,6 @@ export default function Browse() {
       .select("*")
       .eq("status", "AVAILABLE")
       .order("created_at", { ascending: false });
-
     setItems(data || []);
     setLoading(false);
   }
@@ -130,14 +135,11 @@ export default function Browse() {
       .select("*")
       .lt("reserved_until", now)
       .eq("status", "RESERVED");
-
     if (!expiredReserved) return;
-
     for (const item of expiredReserved) {
       const listingStillValid =
         item.listing_expires_at &&
         new Date(item.listing_expires_at).getTime() > Date.now();
-
       if (listingStillValid) {
         await supabase
           .from("listings")
@@ -176,7 +178,7 @@ export default function Browse() {
 
   return (
     <main className="min-h-screen bg-slate-50">
-      {/* Map picker modal */}
+
       {selectedAddress && (
         <MapPickerModal
           address={selectedAddress}
@@ -199,7 +201,6 @@ export default function Browse() {
                 other businesses. Claim items before they expire.
               </p>
             </div>
-
             <div className="w-full md:max-w-md">
               <input
                 type="text"
@@ -254,16 +255,14 @@ export default function Browse() {
 
                 {item.address && (
                   <button
+                    type="button"
                     onClick={() => setSelectedAddress(item.address!)}
-                    className="flex items-start gap-1 text-left group w-full"
+                    className="flex items-start gap-1 text-left w-full group"
                   >
-                    <span className="font-semibold text-slate-700 shrink-0">
-                      Pickup:
-                    </span>
+                    <span className="font-semibold text-slate-700 shrink-0">Pickup:</span>
                     <span className="text-blue-600 underline underline-offset-2 group-hover:text-blue-800 transition break-words">
                       {item.address}
                     </span>
-                    <span className="text-slate-400 shrink-0 mt-0.5">📍</span>
                   </button>
                 )}
 
