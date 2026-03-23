@@ -1,4 +1,3 @@
-// app/admin/business-lookup/page.tsx
 "use client";
 
 import { useState } from "react";
@@ -19,80 +18,112 @@ export default function AdminBusinessLookupPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [tempPasswords, setTempPasswords] = useState<Record<string, string>>({});
 
-  // Handle search
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setMessage("");
     setErrorMessage("");
 
-    const res = await fetch("/api/admin/business-lookup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "search", query }),
-    });
+    try {
+      const res = await fetch("/api/admin/business-lookup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "search",
+          query,
+        }),
+      });
 
-    const data = await res.json();
-    if (!res.ok) {
-      setErrorMessage(data?.error || "Could not search businesses.");
-      setBusinesses([]);
+      const data = await res.json();
+
+      if (!res.ok) {
+        setErrorMessage(data?.error || "Could not search businesses.");
+        setBusinesses([]);
+        setLoading(false);
+        return;
+      }
+
+      setBusinesses(data.businesses || []);
+      if ((data.businesses || []).length === 0) {
+        setMessage("No matching businesses found.");
+      }
+    } catch (error: any) {
+      setErrorMessage(error?.message || "Could not search businesses.");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    setBusinesses(data.businesses || []);
-    if ((data.businesses || []).length === 0) {
-      setMessage("No matching businesses found.");
-    }
-    setLoading(false);
   }
 
-  // Send reset email
   async function sendReset(email: string) {
     setMessage("");
     setErrorMessage("");
-    const res = await fetch("/api/admin/business-lookup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "send_reset", email }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setErrorMessage(data?.error || "Could not send reset email.");
-      return;
+
+    try {
+      const res = await fetch("/api/admin/business-lookup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "send_reset",
+          email,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setErrorMessage(data?.error || "Could not send reset email.");
+        return;
+      }
+
+      setMessage(`Password reset email sent to ${email}.`);
+    } catch (error: any) {
+      setErrorMessage(error?.message || "Could not send reset email.");
     }
-    setMessage(`Password reset email sent to ${email}.`);
   }
 
-  // Set temporary password
   async function setTemporaryPassword(email: string) {
     setMessage("");
     setErrorMessage("");
 
     const temporaryPassword = tempPasswords[email] || "";
+
     if (!temporaryPassword) {
       setErrorMessage("Please enter a temporary password first.");
       return;
     }
 
-    const res = await fetch("/api/admin/business-lookup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "set_temp_password",
-        email,
-        temporaryPassword,
-      }),
-    });
+    try {
+      const res = await fetch("/api/admin/business-lookup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "set_temp_password",
+          email,
+          temporaryPassword,
+        }),
+      });
 
-    const data = await res.json();
-    if (!res.ok) {
-      setErrorMessage(data?.error || "Could not set temporary password.");
-      return;
+      const data = await res.json();
+
+      if (!res.ok) {
+        setErrorMessage(data?.error || "Could not set temporary password.");
+        return;
+      }
+
+      setMessage(`Temporary password updated for ${email}.`);
+      setTempPasswords((prev) => ({
+        ...prev,
+        [email]: "",
+      }));
+    } catch (error: any) {
+      setErrorMessage(error?.message || "Could not set temporary password.");
     }
-
-    setMessage(`Temporary password updated for ${email}.`);
-    setTempPasswords((prev) => ({ ...prev, [email]: "" }));
   }
 
   return (
@@ -100,34 +131,31 @@ export default function AdminBusinessLookupPage() {
       <div className="mx-auto max-w-6xl px-6 py-10">
         <h1 className="mb-2 text-3xl font-bold">Admin Business Lookup</h1>
         <p className="mb-6 text-slate-700">
-          Search businesses by name or email, view address/contact details,
-          send a reset email, or set a temporary password.
+          Search businesses by name or email, view address/contact details, send a reset email, or set a temporary password.
         </p>
 
-        {errorMessage && (
+        {errorMessage ? (
           <div className="mb-4 rounded-xl border border-red-400 bg-red-100 px-4 py-3 text-red-800">
             {errorMessage}
           </div>
-        )}
-        {message && (
+        ) : null}
+
+        {message ? (
           <div className="mb-4 rounded-xl border border-green-400 bg-green-100 px-4 py-3 text-green-800">
             {message}
           </div>
-        )}
+        ) : null}
 
-        {/* Search form */}
         <form
           onSubmit={handleSearch}
           className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow"
         >
-          <label className="mb-2 block font-medium">
-            Search by name or email
-          </label>
+          <label className="mb-2 block font-medium">Search by name or email</label>
           <div className="flex flex-col gap-3 md:flex-row">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-4 py-3"
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
               placeholder="Example: january or january@email.com"
               required
             />
@@ -141,10 +169,10 @@ export default function AdminBusinessLookupPage() {
           </div>
         </form>
 
-        {/* Results */}
         <div className="grid gap-4">
           {businesses.map((business) => {
             const email = business.email || "";
+
             return (
               <div
                 key={`${business.id || business.email || business.name}`}
@@ -160,8 +188,7 @@ export default function AdminBusinessLookupPage() {
                   <p><strong>Address:</strong> {business.address || "Not provided"}</p>
                 </div>
 
-                {/* Password tools */}
-                {email && (
+                {email ? (
                   <div className="mt-5 grid gap-3 md:grid-cols-[1fr_auto_auto]">
                     <input
                       type="text"
@@ -172,7 +199,7 @@ export default function AdminBusinessLookupPage() {
                           [email]: e.target.value,
                         }))
                       }
-                      className="rounded-xl border border-slate-300 px-4 py-3"
+                      className="rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
                       placeholder="Temporary password"
                     />
 
@@ -192,7 +219,7 @@ export default function AdminBusinessLookupPage() {
                       Send Reset Email
                     </button>
                   </div>
-                )}
+                ) : null}
               </div>
             );
           })}
