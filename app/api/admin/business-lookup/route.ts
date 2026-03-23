@@ -1,27 +1,62 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-function getAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+function getEnv() {
+  return {
+    supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  };
+}
 
-  if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error("Missing Supabase server configuration.");
+function getAdminClient() {
+  const { supabaseUrl, serviceRoleKey } = getEnv();
+
+  if (!supabaseUrl) {
+    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL");
+  }
+
+  if (!serviceRoleKey) {
+    throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
   }
 
   return createClient(supabaseUrl, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
   });
+}
+
+// Easy browser test: open /api/admin/business-lookup
+export async function GET() {
+  try {
+    const { supabaseUrl, serviceRoleKey } = getEnv();
+
+    return NextResponse.json({
+      ok: true,
+      hasSupabaseUrl: Boolean(supabaseUrl),
+      hasServiceRoleKey: Boolean(serviceRoleKey),
+      supabaseUrlPreview: supabaseUrl
+        ? `${supabaseUrl.slice(0, 30)}...`
+        : null,
+    });
+  } catch (error: any) {
+    return NextResponse.json(
+      { ok: false, error: error?.message || "GET failed" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const action = body?.action;
+
     const admin = getAdminClient();
 
     if (action === "search") {
-      const query = (body?.query || "").trim().toLowerCase();
+      const query = (body?.query || "").trim();
 
       if (!query) {
         return NextResponse.json(
@@ -37,7 +72,10 @@ export async function POST(req: Request) {
         .limit(20);
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json(
+          { error: `Supabase search error: ${error.message}` },
+          { status: 500 }
+        );
       }
 
       return NextResponse.json({ businesses: businesses || [] });
@@ -53,15 +91,28 @@ export async function POST(req: Request) {
         );
       }
 
-      const { error } = await admin.auth.resetPasswordForEmail(email, {
-        redirectTo: "https://gawaloop.com/business/reset-password",
+      // Use admin generateLink instead of resetPasswordForEmail on service client
+      const { data, error } = await admin.auth.admin.generateLink({
+        type: "recovery",
+        email,
+        options: {
+          redirectTo: "https://gawaloop.com/business/reset-password",
+        },
       });
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json(
+          { error: `Reset link error: ${error.message}` },
+          { status: 500 }
+        );
       }
 
-      return NextResponse.json({ ok: true });
+      return NextResponse.json({
+        ok: true,
+        note: "Recovery link generated.",
+        hasActionLink: Boolean(data?.properties?.action_link),
+        actionLink: data?.properties?.action_link || null,
+      });
     }
 
     if (action === "set_temp_password") {
@@ -87,7 +138,7 @@ export async function POST(req: Request) {
 
       if (listError) {
         return NextResponse.json(
-          { error: listError.message },
+          { error: `List users error: ${listError.message}` },
           { status: 500 }
         );
       }
@@ -110,7 +161,7 @@ export async function POST(req: Request) {
 
       if (updateError) {
         return NextResponse.json(
-          { error: updateError.message },
+          { error: `Update password error: ${updateError.message}` },
           { status: 500 }
         );
       }
@@ -118,7 +169,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
-    return NextResponse.json({ error: "Invalid action." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid action." },
+      { status: 400 }
+    );
   } catch (error: any) {
     return NextResponse.json(
       { error: error?.message || "Something went wrong." },
