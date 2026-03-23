@@ -1,29 +1,63 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 export default function BusinessLoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+
+  useEffect(() => {
+    const error = searchParams.get("error");
+    const errorCode = searchParams.get("error_code");
+    const errorDescription = searchParams.get("error_description");
+
+    if (!error && !errorCode && !errorDescription) return;
+
+    if (errorCode === "otp_expired") {
+      setErrorMessage(
+        "This password reset link has expired. Please wait a few minutes, request a new one once, and use only the newest email."
+      );
+      return;
+    }
+
+    if (
+      errorDescription &&
+      decodeURIComponent(errorDescription).toLowerCase().includes("rate limit")
+    ) {
+      setErrorMessage(
+        "Too many reset requests were made. Please wait 10 to 15 minutes, then request a new password reset email once."
+      );
+      return;
+    }
+
+    setErrorMessage(
+      decodeURIComponent(errorDescription || "Could not complete sign-in.")
+    );
+  }, [searchParams]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
+    setMessage("");
+    setErrorMessage("");
 
     const { error } = await supabase.auth.signInWithPassword({
-      email,
+      email: email.trim(),
       password,
     });
 
     setSaving(false);
 
     if (error) {
-      alert(error.message);
+      setErrorMessage(error.message);
       return;
     }
 
@@ -31,8 +65,11 @@ export default function BusinessLoginPage() {
   }
 
   async function handleForgotPassword() {
+    setMessage("");
+    setErrorMessage("");
+
     if (!email.trim()) {
-      alert("Please enter your business email first.");
+      setErrorMessage("Please enter your business email first.");
       return;
     }
 
@@ -41,11 +78,21 @@ export default function BusinessLoginPage() {
     });
 
     if (error) {
-      alert(error.message);
+      const lower = error.message.toLowerCase();
+
+      if (lower.includes("rate limit")) {
+        setErrorMessage(
+          "Too many reset requests were made. Please wait 10 to 15 minutes, then request a new password reset email once."
+        );
+      } else {
+        setErrorMessage(error.message);
+      }
       return;
     }
 
-    alert("Password reset email sent. Check your inbox.");
+    setMessage(
+      "Password reset email sent. Check your inbox and use only the newest email."
+    );
   }
 
   return (
@@ -55,6 +102,18 @@ export default function BusinessLoginPage() {
         <p className="mb-8 text-slate-600">
           Log in to manage your food listings and dashboard.
         </p>
+
+        {errorMessage ? (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+            {errorMessage}
+          </div>
+        ) : null}
+
+        {message ? (
+          <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-green-700">
+            {message}
+          </div>
+        ) : null}
 
         <form
           onSubmit={handleLogin}
