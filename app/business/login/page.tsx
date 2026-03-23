@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
-export default function BusinessLoginPage() {
+function BusinessLoginPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -21,26 +21,32 @@ export default function BusinessLoginPage() {
 
     if (!error && !errorCode && !errorDescription) return;
 
+    const decodedDescription = errorDescription
+      ? decodeURIComponent(errorDescription.replace(/\+/g, " "))
+      : "";
+
     if (errorCode === "otp_expired") {
       setErrorMessage(
-        "This password reset link has expired. Please wait a few minutes, request a new one once, and use only the newest email."
+        "This password reset link has expired. Please request a new one and use only the newest email."
       );
       return;
     }
 
-    if (
-      errorDescription &&
-      decodeURIComponent(errorDescription).toLowerCase().includes("rate limit")
-    ) {
+    if (decodedDescription.toLowerCase().includes("rate limit")) {
       setErrorMessage(
         "Too many reset requests were made. Please wait 10 to 15 minutes, then request a new password reset email once."
       );
       return;
     }
 
-    setErrorMessage(
-      decodeURIComponent(errorDescription || "Could not complete sign-in.")
-    );
+    if (decodedDescription) {
+      setErrorMessage(decodedDescription);
+      return;
+    }
+
+    if (error) {
+      setErrorMessage("Could not complete sign-in.");
+    }
   }, [searchParams]);
 
   async function handleLogin(e: React.FormEvent) {
@@ -120,23 +126,27 @@ export default function BusinessLoginPage() {
           className="rounded-2xl border border-slate-200 bg-white p-6 shadow"
         >
           <div className="mb-5">
-            <label className="mb-2 block font-medium">Business email</label>
+            <label className="mb-2 block font-medium text-slate-900">
+              Business email
+            </label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-4 py-3"
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
               required
             />
           </div>
 
           <div className="mb-5">
-            <label className="mb-2 block font-medium">Password</label>
+            <label className="mb-2 block font-medium text-slate-900">
+              Password
+            </label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-4 py-3"
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
               required
             />
           </div>
@@ -162,11 +172,32 @@ export default function BusinessLoginPage() {
 
         <p className="mt-6 text-center text-slate-600">
           Need help? Contact us at{" "}
-          <a href="mailto:admin@gawaloop.com" className="text-blue-700 underline">
+          <a
+            href="mailto:admin@gawaloop.com"
+            className="text-blue-700 underline"
+          >
             admin@gawaloop.com
           </a>
         </p>
       </div>
     </main>
+  );
+}
+
+export default function BusinessLoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-slate-100 text-slate-900">
+          <div className="mx-auto max-w-xl px-6 py-16">
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow">
+              Loading login page...
+            </div>
+          </div>
+        </main>
+      }
+    >
+      <BusinessLoginPageInner />
+    </Suspense>
   );
 }
