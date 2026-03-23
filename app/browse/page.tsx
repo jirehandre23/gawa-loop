@@ -18,18 +18,87 @@ type Listing = {
   listing_expires_at?: string | null;
 };
 
-function buildGoogleMapsUrl(address: string) {
-  return `https://maps.google.com/?q=${encodeURIComponent(address)}`;
-}
+function MapPickerModal({
+  address,
+  onClose,
+}: {
+  address: string;
+  onClose: () => void;
+}) {
+  const encoded = encodeURIComponent(address);
+  const googleUrl = `https://maps.google.com/?q=${encoded}`;
+  const appleMapsUrl = `https://maps.apple.com/?q=${encoded}`;
+  const wazeUrl = `https://waze.com/ul?q=${encoded}`;
 
-function buildAppleMapsUrl(address: string) {
-  return `https://maps.apple.com/?q=${encodeURIComponent(address)}`;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-bold text-slate-900 mb-1">Open in Maps</h2>
+        <p className="text-sm text-slate-500 mb-5 break-words">{address}</p>
+
+        <div className="flex flex-col gap-3">
+          
+            href={googleUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-3 hover:bg-slate-50 transition"
+          >
+            <span className="text-2xl">🗺️</span>
+            <div>
+              <p className="font-semibold text-slate-900">Google Maps</p>
+              <p className="text-xs text-slate-500">maps.google.com</p>
+            </div>
+          </a>
+
+          
+            href={appleMapsUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-3 hover:bg-slate-50 transition"
+          >
+            <span className="text-2xl">🍎</span>
+            <div>
+              <p className="font-semibold text-slate-900">Apple Maps</p>
+              <p className="text-xs text-slate-500">maps.apple.com</p>
+            </div>
+          </a>
+
+          
+            href={wazeUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-3 hover:bg-slate-50 transition"
+          >
+            <span className="text-2xl">🚗</span>
+            <div>
+              <p className="font-semibold text-slate-900">Waze</p>
+              <p className="text-xs text-slate-500">waze.com</p>
+            </div>
+          </a>
+        </div>
+
+        <button
+          onClick={onClose}
+          className="mt-5 w-full rounded-xl border border-slate-200 py-2 text-sm text-slate-600 hover:bg-slate-50 transition"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export default function Browse() {
   const [items, setItems] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
 
   useEffect(() => {
     fetchItems();
@@ -56,7 +125,6 @@ export default function Browse() {
 
   async function releaseExpiredItems() {
     const now = new Date().toISOString();
-
     const { data: expiredReserved } = await supabase
       .from("listings")
       .select("*")
@@ -96,17 +164,26 @@ export default function Browse() {
   const filteredItems = useMemo(() => {
     const q = search.toLowerCase().trim();
     if (!q) return items;
-    return items.filter((item) =>
-      item.business_name?.toLowerCase().includes(q) ||
-      item.food_name?.toLowerCase().includes(q) ||
-      item.category?.toLowerCase().includes(q) ||
-      item.address?.toLowerCase().includes(q) ||
-      item.allergy_note?.toLowerCase().includes(q)
+    return items.filter(
+      (item) =>
+        item.business_name?.toLowerCase().includes(q) ||
+        item.food_name?.toLowerCase().includes(q) ||
+        item.category?.toLowerCase().includes(q) ||
+        item.address?.toLowerCase().includes(q) ||
+        item.allergy_note?.toLowerCase().includes(q)
     );
   }, [items, search]);
 
   return (
     <main className="min-h-screen bg-slate-50">
+      {/* Map picker modal */}
+      {selectedAddress && (
+        <MapPickerModal
+          address={selectedAddress}
+          onClose={() => setSelectedAddress(null)}
+        />
+      )}
+
       <section className="border-b bg-white">
         <div className="mx-auto max-w-6xl px-6 py-10">
           <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
@@ -151,102 +228,63 @@ export default function Browse() {
         )}
 
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {filteredItems.map((item) => {
-            const address = item.address || "";
-            const googleUrl = address ? buildGoogleMapsUrl(address) : null;
-            const appleUrl = address ? buildAppleMapsUrl(address) : null;
-
-            return (
-              <div
-                key={item.id}
-                className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:shadow-md flex flex-col"
-              >
-                <div className="mb-4 flex items-start justify-between gap-4">
-                  <div>
-                    <div className="mb-2 inline-flex rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
-                      Available
-                    </div>
-                    <h2 className="text-2xl font-bold text-slate-900">
-                      {item.food_name || item.category}
-                    </h2>
+          {filteredItems.map((item) => (
+            <div
+              key={item.id}
+              className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:shadow-md"
+            >
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div>
+                  <div className="mb-2 inline-flex rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
+                    Available
                   </div>
-                </div>
-
-                <div className="space-y-2 text-slate-700 flex-1">
-                  <p>
-                    <span className="font-semibold">Quantity:</span> {item.quantity}
-                  </p>
-                  <p>
-                    <span className="font-semibold">From:</span> {item.business_name}
-                  </p>
-
-                  {address && (
-                    <p>
-                      <span className="font-semibold">Pickup:</span> {address}
-                    </p>
-                  )}
-
-                  {item.allergy_note && (
-                    <p className="rounded-xl bg-amber-50 px-3 py-2 text-amber-800">
-                      <span className="font-semibold">Food note:</span>{" "}
-                      {item.allergy_note}
-                    </p>
-                  )}
-                </div>
-
-                {/* Map buttons */}
-                {address && (
-                  <div className="mt-4 pt-4 border-t border-slate-100">
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-                      📍 Get directions
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {googleUrl && (
-                        
-                          href={googleUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition"
-                        >
-                          Google Maps
-                        </a>
-                      )}
-                      {appleUrl && (
-                        
-                          href={appleUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-900 transition"
-                        >
-                          Apple Maps
-                        </a>
-                      )}
-                      {item.maps_url && (
-                        
-                          href={item.maps_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
-                        >
-                          Custom Map
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Action buttons */}
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <Link
-                    href={`/claim/${item.id}`}
-                    className="rounded-xl bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700"
-                  >
-                    Claim Food
-                  </Link>
+                  <h2 className="text-2xl font-bold text-slate-900">
+                    {item.food_name || item.category}
+                  </h2>
                 </div>
               </div>
-            );
-          })}
+
+              <div className="space-y-2 text-slate-700">
+                <p>
+                  <span className="font-semibold">Quantity:</span> {item.quantity}
+                </p>
+                <p>
+                  <span className="font-semibold">From:</span> {item.business_name}
+                </p>
+
+                {item.address && (
+                  <button
+                    onClick={() => setSelectedAddress(item.address!)}
+                    className="flex items-start gap-1 text-left group w-full"
+                  >
+                    <span className="font-semibold text-slate-700 shrink-0">
+                      Pickup:
+                    </span>
+                    <span className="text-blue-600 underline underline-offset-2 group-hover:text-blue-800 transition break-words">
+                      {item.address}
+                    </span>
+                    <span className="text-slate-400 shrink-0 mt-0.5">📍</span>
+                  </button>
+                )}
+
+                {item.allergy_note && (
+                  <p className="rounded-xl bg-amber-50 px-3 py-2 text-amber-800">
+                    <span className="font-semibold">Food note:</span>{" "}
+                    {item.allergy_note}
+                  </p>
+                )}
+              </div>
+
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Link
+                  href={`/claim/${item.id}`}
+                  className="rounded-xl bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700"
+                >
+                  Claim Food
+                </Link>
+              </div>
+            </div>
+          ))}
         </div>
       </section>
     </main>
