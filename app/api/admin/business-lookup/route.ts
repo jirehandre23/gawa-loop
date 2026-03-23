@@ -2,9 +2,12 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 function getEnv() {
+  const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim();
+  const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+
   return {
-    supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
-    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    supabaseUrl,
+    serviceRoleKey,
   };
 }
 
@@ -19,6 +22,14 @@ function getAdminClient() {
     throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
   }
 
+  if (!supabaseUrl.startsWith("https://")) {
+    throw new Error("NEXT_PUBLIC_SUPABASE_URL must start with https://");
+  }
+
+  if (!supabaseUrl.includes(".supabase.co")) {
+    throw new Error("NEXT_PUBLIC_SUPABASE_URL must be a real Supabase URL");
+  }
+
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: {
       autoRefreshToken: false,
@@ -27,22 +38,31 @@ function getAdminClient() {
   });
 }
 
-// Easy browser test: open /api/admin/business-lookup
 export async function GET() {
   try {
     const { supabaseUrl, serviceRoleKey } = getEnv();
+    const admin = getAdminClient();
+
+    const { data, error } = await admin
+      .from("businesses")
+      .select("id,name,email,address,phone")
+      .limit(1);
 
     return NextResponse.json({
       ok: true,
       hasSupabaseUrl: Boolean(supabaseUrl),
       hasServiceRoleKey: Boolean(serviceRoleKey),
-      supabaseUrlPreview: supabaseUrl
-        ? `${supabaseUrl.slice(0, 30)}...`
-        : null,
+      supabaseUrl,
+      serviceRoleKeyLength: serviceRoleKey.length,
+      businessesSampleCount: data?.length || 0,
+      queryError: error?.message || null,
     });
   } catch (error: any) {
     return NextResponse.json(
-      { ok: false, error: error?.message || "GET failed" },
+      {
+        ok: false,
+        error: error?.message || "GET failed",
+      },
       { status: 500 }
     );
   }
@@ -52,7 +72,6 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const action = body?.action;
-
     const admin = getAdminClient();
 
     if (action === "search") {
@@ -67,7 +86,7 @@ export async function POST(req: Request) {
 
       const { data: businesses, error } = await admin
         .from("businesses")
-        .select("*")
+        .select("id,name,email,address,phone")
         .or(`name.ilike.%${query}%,email.ilike.%${query}%`)
         .limit(20);
 
@@ -91,7 +110,6 @@ export async function POST(req: Request) {
         );
       }
 
-      // Use admin generateLink instead of resetPasswordForEmail on service client
       const { data, error } = await admin.auth.admin.generateLink({
         type: "recovery",
         email,
@@ -109,8 +127,6 @@ export async function POST(req: Request) {
 
       return NextResponse.json({
         ok: true,
-        note: "Recovery link generated.",
-        hasActionLink: Boolean(data?.properties?.action_link),
         actionLink: data?.properties?.action_link || null,
       });
     }
