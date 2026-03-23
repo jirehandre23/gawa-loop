@@ -1,38 +1,62 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-type SupportBody = {
-  name: string;
-  email: string;
-  phone?: string;
-  confirmationCode?: string;
-  issueType: string;
-  message: string;
-};
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-async function sendEmail(to: string, subject: string, html: string) {
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error("Missing Supabase server configuration.");
+  }
+
+  return createClient(supabaseUrl, serviceRoleKey);
+}
+
+async function sendEmailSafe(params: {
+  to: string;
+  subject: string;
+  html: string;
+}) {
   const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey || !to) return;
 
-  await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: "GAWA Loop <no-reply@gawaloop.com>",
-      to: [to],
-      subject,
-      html,
-    }),
-  });
+  if (!apiKey || !params.to) {
+    return;
+  }
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: "GAWA Loop <no-reply@gawaloop.com>",
+        to: [params.to],
+        subject: params.subject,
+        html: params.html,
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("Resend send failed:", text);
+    }
+  } catch (error) {
+    console.error("Support email send failed:", error);
+  }
 }
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as SupportBody;
-    const { name, email, phone, confirmationCode, issueType, message } = body;
+    const body = await req.json();
+
+    const name = (body?.name || "").trim();
+    const email = (body?.email || "").trim();
+    const phone = (body?.phone || "").trim() || null;
+    const confirmationCode = (body?.confirmationCode || "").trim() || null;
+    const issueType = (body?.issueType || "").trim();
+    const message = (body?.message || "").trim();
 
     if (!name || !email || !issueType || !message) {
       return NextResponse.json(
@@ -41,61 +65,65 @@ export async function POST(req: Request) {
       );
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const admin = getAdminClient();
 
-    if (!supabaseUrl || !serviceRoleKey) {
-      return NextResponse.json(
-        { error: "Missing Supabase server configuration." },
-        { status: 500 }
-      );
-    }
-
-    const admin = createClient(supabaseUrl, serviceRoleKey);
-
-    await admin.from("support_issues").insert({
+    const { error: insertError } = await admin.from("support_issues").insert({
       name,
       email,
-      phone: phone || null,
-      confirmation_code: confirmationCode || null,
+      phone,
+      confirmation_code: confirmationCode,
       issue_type: issueType,
       message,
     });
 
+    if (insertError) {
+      return NextResponse.json(
+        { error: "Could not submit issue." },
+        { status: 500 }
+      );
+    }
+
     const adminHtml = `
-      <h2>New customer support issue</h2>
-      <p><strong>Name:</strong> ${name}</p>
-      <p><strong>Email:</strong> ${email}</p>
-      <p><strong>Phone:</strong> ${phone || "Not provided"}</p>
-      <p><strong>Confirmation code:</strong> ${confirmationCode || "Not provided"}</p>
-      <p><strong>Issue type:</strong> ${issueType}</p>
-      <p><strong>Message:</strong></p>
-      <p>${message}</p>
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
+        <h2>New GAWA Loop support issue</h2>
+        <p><strong>Name:</strong> ${name}</p>
+        <p><strong>Email:</strong> ${email}</p>
+        <p><strong>Phone:</strong> ${phone || "Not provided"}</p>
+        <p><strong>Confirmation code:</strong> ${confirmationCode || "Not provided"}</p>
+        <p><strong>Issue type:</strong> ${issueType}</p>
+        <p><strong>Message:</strong><br/>${message}</p>
+      </div>
     `;
 
     const customerHtml = `
-      <h2>We received your issue report</h2>
-      <p>Hello ${name},</p>
-      <p>We received your message and will review it.</p>
-      <p><strong>Issue type:</strong> ${issueType}</p>
-      <p><strong>Confirmation code:</strong> ${confirmationCode || "Not provided"}</p>
-      <p>You can expect a follow-up from admin@gawaloop.com.</p>
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
+        <h2>We received your support request</h2>
+        <p>Hi ${name},</p>
+        <p>Your GAWA Loop support request has been received.</p>
+        <p><strong>Issue type:</strong> ${issueType}</p>
+        <p><strong>Confirmation code:</strong> ${confirmationCode || "Not provided"}</p>
+        <p>We will review it as soon as possible.</p>
+      </div>
     `;
 
-    try {
-      await Promise.all([
-        sendEmail("admin@gawaloop.com", "New support issue", adminHtml),
-        sendEmail(email, "We received your GAWA Loop issue report", customerHtml),
-      ]);
-    } catch (emailError) {
-      console.error("Support email failed", emailError);
-    }
+    await Promise.all([
+      sendEmailSafe({
+        to: "admin@gawaloop.com",
+        subject: "New GAWA Loop support issue",
+        html: adminHtml,
+      }),
+      sendEmailSafe({
+        to: email,
+        subject: "We received your GAWA Loop support request",
+        html: customerHtml,
+      }),
+    ]);
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    console.error("support-issue error", error);
+    console.error("support-issue error:", error);
     return NextResponse.json(
-      { error: "Could not submit support issue." },
+      { error: "Could not submit issue." },
       { status: 500 }
     );
   }
