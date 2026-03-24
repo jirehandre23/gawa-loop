@@ -7,8 +7,9 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+const ADMIN_EMAIL = "admin@gawaloop.com";
+
 type BizResult = {
-  id?: string;
   name: string;
   email: string;
   phone?: string;
@@ -16,59 +17,61 @@ type BizResult = {
 };
 
 export default function AdminBusinessLookup() {
-  const [query, setQuery]       = useState("");
-  const [results, setResults]   = useState<BizResult[]>([]);
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState("");
-  const [tempPasswords, setTempPasswords] = useState<Record<string, string>>({});
-  const [messages, setMessages] = useState<Record<string, string>>({});
-  const [working, setWorking]   = useState<Record<string, boolean>>({});
+  const [ready, setReady]           = useState(false);  // wait for auth check
+  const [authed, setAuthed]         = useState(false);
+  const [query, setQuery]           = useState("");
+  const [results, setResults]       = useState<BizResult[]>([]);
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState("");
+  const [tempPwds, setTempPwds]     = useState<Record<string, string>>({});
+  const [messages, setMessages]     = useState<Record<string, string>>({});
+  const [working, setWorking]       = useState<Record<string, boolean>>({});
 
+  // Wait for Supabase to restore session before checking
   useEffect(() => {
-    async function checkAdmin() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || user.email !== "admin@gawaloop.com") {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session || session.user.email !== ADMIN_EMAIL) {
         window.location.href = "/business/login";
+      } else {
+        setAuthed(true);
+        setReady(true);
       }
-    }
-    checkAdmin();
+    });
   }, []);
 
-  async function handleSearch() {
+  async function handleSearch(searchQuery?: string) {
     setLoading(true);
     setError("");
     setResults([]);
+    const q = (searchQuery ?? query).trim();
 
-    const q = query.trim().toLowerCase();
-    let queryBuilder = supabase
+    let builder = supabase
       .from("businesses")
-      .select("id, name, email, phone, address")
+      .select("name, email, phone, address")
       .order("name");
 
     if (q) {
-      queryBuilder = queryBuilder.or(`name.ilike.%${q}%,email.ilike.%${q}%`);
+      builder = builder.or(`name.ilike.%${q}%,email.ilike.%${q}%`);
     }
 
-    const { data, error: err } = await queryBuilder.limit(20);
-
+    const { data, error: err } = await builder.limit(30);
     if (err) {
       setError("Search error: " + err.message);
     } else {
-      setResults(data || []);
-      if ((data || []).length === 0) setError("No businesses found.");
+      const filtered = (data || []).filter(b => b.email !== ADMIN_EMAIL);
+      setResults(filtered);
+      if (filtered.length === 0) setError("No businesses found.");
     }
     setLoading(false);
   }
 
   async function handleSetPassword(email: string) {
-    const pwd = tempPasswords[email];
+    const pwd = tempPwds[email];
     if (!pwd || pwd.length < 6) {
       setMessages(m => ({ ...m, [email]: "❌ Password must be at least 6 characters." }));
       return;
     }
     setWorking(w => ({ ...w, [email]: true }));
-    setMessages(m => ({ ...m, [email]: "" }));
-
     const res = await fetch("/api/admin/set-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -83,9 +86,8 @@ export default function AdminBusinessLookup() {
   }
 
   async function handleResetEmail(email: string) {
-    setWorking(w => ({ ...w, [email + "_reset"]: true }));
-    setMessages(m => ({ ...m, [email + "_reset"]: "" }));
-
+    const key = email + "_reset";
+    setWorking(w => ({ ...w, [key]: true }));
     const res = await fetch("/api/admin/reset-email", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -94,11 +96,15 @@ export default function AdminBusinessLookup() {
     const data = await res.json();
     setMessages(m => ({
       ...m,
-      [email + "_reset"]: data.success
-        ? `✅ Reset email sent to ${email}`
-        : `❌ ${data.error}`,
+      [key]: data.success ? `✅ Reset email sent to ${email}` : `❌ ${data.error}`,
     }));
-    setWorking(w => ({ ...w, [email + "_reset"]: false }));
+    setWorking(w => ({ ...w, [key]: false }));
+  }
+
+  async function viewDashboard(businessName: string) {
+    // Store the business to view in sessionStorage, then go to dashboard
+    sessionStorage.setItem("adminViewBusiness", businessName);
+    window.location.href = "/business/dashboard";
   }
 
   const inp: React.CSSProperties = {
@@ -107,28 +113,37 @@ export default function AdminBusinessLookup() {
     color: "#111827", background: "#fff", outline: "none",
   };
 
+  // Show nothing until auth check completes
+  if (!ready) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "sans-serif", color: "#6b7280" }}>
+        Verifying admin access...
+      </div>
+    );
+  }
+
   return (
     <div style={{ minHeight: "100vh", background: "#f3f4f6", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", padding: "32px 16px" }}>
       <div style={{ maxWidth: "720px", margin: "0 auto" }}>
 
         {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "8px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "6px" }}>
           <img src="/gawa-logo-green.png" alt="GAWA" style={{ width: "40px", height: "40px", objectFit: "contain" }} />
           <div>
-            <h1 style={{ margin: 0, fontSize: "24px", fontWeight: 800, color: "#0a2e1a" }}>Admin Business Lookup</h1>
-            <p style={{ margin: 0, fontSize: "13px", color: "#4b5563" }}>
-              Search businesses · view details · set passwords · send reset emails
-            </p>
+            <h1 style={{ margin: 0, fontSize: "22px", fontWeight: 800, color: "#0a2e1a" }}>Admin Business Lookup</h1>
+            <p style={{ margin: 0, fontSize: "13px", color: "#4b5563" }}>Search · view details · set passwords · send reset emails</p>
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
-          <span style={{ background: "#0a2e1a", color: "#4ade80", fontSize: "11px", fontWeight: 700, padding: "3px 10px", borderRadius: "6px" }}>
-            🔑 ADMIN ACCESS
-          </span>
-          <a href="/business/dashboard" style={{ fontSize: "13px", color: "#2563eb", textDecoration: "none" }}>
-            ← Back to dashboard
-          </a>
+        <div style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "20px" }}>
+          <span style={{ background: "#0a2e1a", color: "#4ade80", fontSize: "11px", fontWeight: 700, padding: "3px 10px", borderRadius: "6px" }}>🔑 ADMIN</span>
+          <a href="/business/dashboard" style={{ fontSize: "13px", color: "#2563eb", textDecoration: "none", fontWeight: 500 }}>← Back to dashboard</a>
+          <button
+            onClick={async () => { await supabase.auth.signOut(); window.location.href = "/business/login"; }}
+            style={{ marginLeft: "auto", background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "6px 14px", borderRadius: "6px", cursor: "pointer", fontSize: "13px" }}
+          >
+            Sign Out
+          </button>
         </div>
 
         {error && (
@@ -145,20 +160,20 @@ export default function AdminBusinessLookup() {
           <div style={{ display: "flex", gap: "10px" }}>
             <input
               style={{ ...inp, flex: 1 }}
-              placeholder="e.g. january or jirehandre121@gmail.com"
+              placeholder="e.g. Meee or jirehandre@yahoo.fr"
               value={query}
               onChange={e => setQuery(e.target.value)}
               onKeyDown={e => e.key === "Enter" && handleSearch()}
             />
             <button
-              onClick={handleSearch}
+              onClick={() => handleSearch()}
               disabled={loading}
               style={{ background: "#2563eb", color: "#fff", border: "none", padding: "10px 22px", borderRadius: "8px", cursor: loading ? "not-allowed" : "pointer", fontSize: "14px", fontWeight: 700 }}
             >
-              {loading ? "Searching..." : "Search"}
+              {loading ? "..." : "Search"}
             </button>
             <button
-              onClick={() => { setQuery(""); handleSearch(); }}
+              onClick={() => { setQuery(""); handleSearch(""); }}
               style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "10px 16px", borderRadius: "8px", cursor: "pointer", fontSize: "14px" }}
             >
               All
@@ -169,38 +184,44 @@ export default function AdminBusinessLookup() {
         {/* Results */}
         {results.map(biz => (
           <div key={biz.email} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "14px", padding: "22px 24px", marginBottom: "14px" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "12px", flexWrap: "wrap", gap: "10px" }}>
+              <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>{biz.name}</h2>
+              <button
+                onClick={() => viewDashboard(biz.name)}
+                style={{ background: "#16a34a", color: "#fff", border: "none", padding: "8px 16px", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: 700 }}
+              >
+                👁 View Dashboard
+              </button>
+            </div>
 
-            {/* Business info */}
-            <h2 style={{ margin: "0 0 12px", fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>{biz.name}</h2>
             <div style={{ fontSize: "14px", color: "#1f2937", lineHeight: "1.9", marginBottom: "18px" }}>
               <p style={{ margin: "2px 0" }}><b>Email:</b> {biz.email}</p>
               <p style={{ margin: "2px 0" }}><b>Phone:</b> {biz.phone || "Not provided"}</p>
               <p style={{ margin: "2px 0" }}><b>Address:</b> {biz.address || "Not provided"}</p>
             </div>
 
-            {/* Divider */}
             <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: "16px" }}>
-              <p style={{ margin: "0 0 12px", fontSize: "13px", fontWeight: 700, color: "#374151", textTransform: "uppercase", letterSpacing: "0.6px" }}>
+              <p style={{ margin: "0 0 12px", fontSize: "12px", fontWeight: 700, color: "#374151", textTransform: "uppercase", letterSpacing: "0.6px" }}>
                 Account Actions
               </p>
 
-              {/* Set temp password */}
+              {/* Set password */}
               <div style={{ marginBottom: "12px" }}>
                 <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#374151", marginBottom: "6px" }}>
-                  Set new password for this account
+                  Set new password
                 </label>
                 <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                   <input
-                    style={{ ...inp, flex: 1, minWidth: "200px" }}
+                    style={{ ...inp, flex: 1, minWidth: "180px" }}
                     type="text"
                     placeholder="New password (min 6 chars)"
-                    value={tempPasswords[biz.email] || ""}
-                    onChange={e => setTempPasswords(p => ({ ...p, [biz.email]: e.target.value }))}
+                    value={tempPwds[biz.email] || ""}
+                    onChange={e => setTempPwds(p => ({ ...p, [biz.email]: e.target.value }))}
                   />
                   <button
                     onClick={() => handleSetPassword(biz.email)}
                     disabled={working[biz.email]}
-                    style={{ background: "#f59e0b", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: working[biz.email] ? "not-allowed" : "pointer", fontSize: "14px", fontWeight: 700, whiteSpace: "nowrap" }}
+                    style={{ background: "#f59e0b", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: working[biz.email] ? "not-allowed" : "pointer", fontSize: "14px", fontWeight: 700 }}
                   >
                     {working[biz.email] ? "Saving..." : "Set Password"}
                   </button>
@@ -212,7 +233,7 @@ export default function AdminBusinessLookup() {
                 )}
               </div>
 
-              {/* Send reset email */}
+              {/* Reset email */}
               <div>
                 <button
                   onClick={() => handleResetEmail(biz.email)}
