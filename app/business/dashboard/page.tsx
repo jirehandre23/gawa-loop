@@ -165,8 +165,8 @@ export default function BusinessDashboard() {
 
   const inp: React.CSSProperties = {
     width:"100%", padding:"10px 14px", borderRadius:"8px",
-    border:"1px solid #e5e7eb", fontSize:"14px", boxSizing:"border-box",
-    outline:"none", background:"#fff",
+    border:"1px solid #d1d5db", fontSize:"14px", boxSizing:"border-box",
+    outline:"none", background:"#fff", color:"#111827",
   };
   const lbl: React.CSSProperties = {
     display:"block", fontSize:"13px", fontWeight:600, color:"#374151", marginBottom:"4px"
@@ -230,11 +230,11 @@ export default function BusinessDashboard() {
               <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:"16px"}}>
                 <div style={{gridColumn:"1/-1"}}>
                   <label style={lbl}>Business Name</label>
-                  <input style={{...inp, background:"#f9fafb", color:"#6b7280"}} value={businessName||""} disabled/>
+                  <input style={{...inp, background:"#f9fafb", color:"#111827"}} value={businessName||""} disabled/>
                 </div>
                 <div style={{gridColumn:"1/-1"}}>
                   <label style={lbl}>Pickup Address</label>
-                  <input style={{...inp, background:"#f9fafb", color:"#6b7280"}} value={businessAddress||""} disabled/>
+                  <input style={{...inp, background:"#f9fafb", color:"#111827"}} value={businessAddress||""} disabled/>
                 </div>
                 <div style={{gridColumn:"1/-1"}}>
                   <label style={lbl}>Exact food name *</label>
@@ -243,7 +243,7 @@ export default function BusinessDashboard() {
                 </div>
                 <div>
                   <label style={lbl}>Category *</label>
-                  <select style={{...inp, cursor:"pointer"}} value={form.category} onChange={e => setForm(f=>({...f,category:e.target.value}))}>
+                  <select style={{...inp, cursor:"pointer", color:"#111827"}} value={form.category} onChange={e => setForm(f=>({...f,category:e.target.value}))}>
                     <option>Food</option><option>Bakery</option><option>Beverages</option>
                     <option>Prepared Meals</option><option>Produce</option><option>Other</option>
                   </select>
@@ -265,7 +265,7 @@ export default function BusinessDashboard() {
                 </div>
                 <div>
                   <label style={lbl}>Keep listing active for</label>
-                  <select style={{...inp, cursor:"pointer"}} value={form.active_hours} onChange={e => setForm(f=>({...f,active_hours:e.target.value}))}>
+                  <select style={{...inp, cursor:"pointer", color:"#111827"}} value={form.active_hours} onChange={e => setForm(f=>({...f,active_hours:e.target.value}))}>
                     <option value="0.5">30 minutes</option>
                     <option value="1">1 hour</option>
                     <option value="2">2 hours</option>
@@ -275,7 +275,7 @@ export default function BusinessDashboard() {
                 </div>
                 <div style={{gridColumn:"1/-1"}}>
                   <label style={lbl}>Hold item after claim for</label>
-                  <select style={{...inp, cursor:"pointer"}} value={form.claim_hold} onChange={e => setForm(f=>({...f,claim_hold:e.target.value}))}>
+                  <select style={{...inp, cursor:"pointer", color:"#111827"}} value={form.claim_hold} onChange={e => setForm(f=>({...f,claim_hold:e.target.value}))}>
                     <option value="10">10 minutes</option><option value="15">15 minutes</option>
                     <option value="20">20 minutes</option><option value="30">30 minutes</option>
                     <option value="45">45 minutes</option><option value="60">1 hour</option>
