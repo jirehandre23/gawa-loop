@@ -1,129 +1,117 @@
-// app/business/reset-password/page.tsx
 "use client";
+import { useEffect, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
+import { Suspense } from "react";
 
-import { Suspense, useEffect, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
-function ResetForm() {
-  const router = useRouter();
-  const params = useSearchParams();
+function ResetContent() {
+  const [password, setPassword]   = useState("");
+  const [confirm, setConfirm]     = useState("");
+  const [status, setStatus]       = useState<"idle"|"loading"|"success"|"error">("idle");
+  const [message, setMessage]     = useState("");
+  const [ready, setReady]         = useState(false);
 
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [ready, setReady] = useState(false);
-  const [error, setError] = useState("");
-
-  // Reads session tokens from the URL and sets the Supabase session.
   useEffect(() => {
-    async function init() {
-      const code = params.get("code");
-      const access = params.get("access_token");
-      const refresh = params.get("refresh_token");
-      const type = params.get("type");
-
-      try {
-        if (code) {
-          // If there's an OAuth code (magic link), exchange it for a session
-          await supabase.auth.exchangeCodeForSession(code);
-        } else if (access) {
-          // Recovery links include an access_token (and sometimes a refresh_token)
-          const session: any = { access_token: access };
-          if (refresh) {
-            session.refresh_token = refresh;
-          }
-          await supabase.auth.setSession(session);
-        } else if (type === "recovery") {
-          // Handle older recovery links with fragments (#access_token=...)
-          const fragment = window.location.hash.substring(1);
-          const fragParams = new URLSearchParams(fragment);
-          const fragAccess = fragParams.get("access_token");
-          const fragRefresh = fragParams.get("refresh_token");
-          if (fragAccess) {
-            const session: any = { access_token: fragAccess };
-            if (fragRefresh) {
-              session.refresh_token = fragRefresh;
-            }
-            await supabase.auth.setSession(session);
-          }
-        }
+    // Supabase puts the token in the URL hash — this detects the session
+    const { data: listener } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
         setReady(true);
-      } catch {
-        setError(
-          "This reset link is invalid or expired. Please request a new reset email."
-        );
       }
-    }
-    init();
-  }, [params]);
+    });
+    return () => listener.subscription.unsubscribe();
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (password !== confirm) {
-      setError("Passwords do not match");
+      setMessage("Passwords do not match.");
+      setStatus("error");
       return;
     }
-    setError("");
-    const { error: updateError } = await supabase.auth.updateUser({
-      password,
-    });
-    if (updateError) {
-      setError(updateError.message);
+    if (password.length < 6) {
+      setMessage("Password must be at least 6 characters.");
+      setStatus("error");
       return;
     }
-    alert("Password updated successfully.");
-    router.push("/business/login");
+    setStatus("loading");
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) {
+      setMessage(error.message);
+      setStatus("error");
+    } else {
+      setStatus("success");
+      setMessage("Password updated! You can now log in with your new password.");
+    }
   }
 
-  if (!ready) {
-    return <p>Loading…</p>;
-  }
-
-  if (error) {
-    return <p className="text-red-600">{error}</p>;
-  }
+  const inp: React.CSSProperties = {
+    width: "100%", padding: "12px 14px", borderRadius: "8px",
+    border: "1px solid #d1d5db", fontSize: "15px", color: "#111827",
+    background: "#fff", outline: "none", boxSizing: "border-box",
+  };
 
   return (
-    <form onSubmit={handleSubmit}>
-      <label className="block">
-        New password
-        <input
-          type="password"
-          className="w-full border rounded p-2 mt-1"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-      </label>
-      <label className="block mt-4">
-        Confirm new password
-        <input
-          type="password"
-          className="w-full border rounded p-2 mt-1"
-          value={confirm}
-          onChange={(e) => setConfirm(e.target.value)}
-          required
-        />
-      </label>
-      <button
-        type="submit"
-        className="mt-4 px-4 py-2 bg-blue-600 text-white rounded"
-      >
-        Reset Password
-      </button>
-    </form>
+    <div style={{ minHeight: "100vh", background: "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", padding: "24px" }}>
+      <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "20px", padding: "40px", maxWidth: "420px", width: "100%", boxShadow: "0 8px 32px rgba(0,0,0,0.08)" }}>
+
+        <div style={{ textAlign: "center", marginBottom: "28px" }}>
+          <img src="/gawa-logo-green.png" alt="GAWA Loop" style={{ width: "48px", height: "48px", objectFit: "contain", marginBottom: "12px" }} />
+          <h1 style={{ margin: "0 0 6px", fontSize: "22px", fontWeight: 800, color: "#0a2e1a" }}>Set New Password</h1>
+          <p style={{ margin: 0, fontSize: "14px", color: "#6b7280" }}>GAWA Loop Business Account</p>
+        </div>
+
+        {status === "success" ? (
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: "48px", marginBottom: "16px" }}>✅</div>
+            <p style={{ fontSize: "15px", color: "#16a34a", fontWeight: 600, marginBottom: "24px" }}>{message}</p>
+            <a href="/business/login" style={{ display: "inline-block", background: "#16a34a", color: "#fff", padding: "12px 28px", borderRadius: "10px", textDecoration: "none", fontWeight: 700 }}>
+              Go to Login
+            </a>
+          </div>
+        ) : !ready ? (
+          <div style={{ textAlign: "center", padding: "20px" }}>
+            <p style={{ color: "#6b7280", fontSize: "14px" }}>
+              ⏳ Verifying your reset link... If nothing happens, please check your email and click the link again.
+            </p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#374151", marginBottom: "6px" }}>
+                New Password
+              </label>
+              <input style={inp} type="password" placeholder="Minimum 6 characters" required
+                value={password} onChange={e => setPassword(e.target.value)} />
+            </div>
+            <div style={{ marginBottom: "20px" }}>
+              <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#374151", marginBottom: "6px" }}>
+                Confirm Password
+              </label>
+              <input style={inp} type="password" placeholder="Repeat your new password" required
+                value={confirm} onChange={e => setConfirm(e.target.value)} />
+            </div>
+            {message && status === "error" && (
+              <p style={{ margin: "0 0 14px", fontSize: "13px", color: "#dc2626", fontWeight: 600 }}>{message}</p>
+            )}
+            <button type="submit" disabled={status === "loading"}
+              style={{ width: "100%", background: status === "loading" ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "13px", borderRadius: "10px", cursor: status === "loading" ? "not-allowed" : "pointer", fontSize: "15px", fontWeight: 700 }}>
+              {status === "loading" ? "Updating..." : "Update Password"}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
   );
 }
 
 export default function ResetPasswordPage() {
   return (
-    <main className="min-h-screen flex items-center justify-center bg-slate-100 p-6">
-      <div className="max-w-md w-full bg-white p-6 rounded shadow">
-        <h1 className="text-xl font-bold mb-4">Reset Password</h1>
-        <Suspense fallback={<p>Loading…</p>}>
-          <ResetForm />
-        </Suspense>
-      </div>
-    </main>
+    <Suspense fallback={<div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>Loading...</div>}>
+      <ResetContent />
+    </Suspense>
   );
 }
