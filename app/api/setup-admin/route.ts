@@ -7,16 +7,12 @@ const adminSupabase = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
+// Admin user ID from Supabase database
+const ADMIN_USER_ID = "b417d903-e385-483d-97ff-c66c20a2716f";
+
 export async function GET() {
-  const { data: users } = await adminSupabase.auth.admin.listUsers();
-  const admin = users?.users?.find(u => u.email === "admin@gawaloop.com");
-
-  if (!admin) {
-    return NextResponse.json({ error: "Admin user not found" });
-  }
-
-  const { error } = await adminSupabase.auth.admin.updateUserById(
-    admin.id,
+  const { data, error } = await adminSupabase.auth.admin.updateUserById(
+    ADMIN_USER_ID,
     { password: "GawaLoop2026!" }
   );
 
@@ -24,5 +20,9 @@ export async function GET() {
     return NextResponse.json({ error: error.message });
   }
 
-  return NextResponse.json({ success: true, message: "Admin password set to: GawaLoop2026!" });
+  return NextResponse.json({
+    success: true,
+    email: data.user.email,
+    message: "Password set to: GawaLoop2026!"
+  });
 }
