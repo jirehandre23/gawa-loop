@@ -11,20 +11,22 @@ const supabase = createClient(
 
 type Listing = {
   id: string; food_name: string; category: string; quantity: string;
-  address: string; maps_url?: string; allergy_note: string; estimated_value: number;
-  note: string; status: string; expires_at: string; created_at: string; business_name: string;
+  address: string; maps_url?: string; allergy_note: string;
+  estimated_value: number; note: string; status: string;
+  expires_at: string; created_at: string; business_name: string;
 };
 
-type ClaimForm = { first_name: string; email: string; phone: string; eta_minutes: number; };
-
 export default function BrowsePage() {
-  const [locale, setLocale]       = useState<Locale>("en");
-  const [listings, setListings]   = useState<Listing[]>([]);
-  const [search, setSearch]       = useState("");
-  const [loading, setLoading]     = useState(true);
-  const [claiming, setClaiming]   = useState<string | null>(null);
-  const [form, setForm]           = useState<ClaimForm>({ first_name:"", email:"", phone:"", eta_minutes:15 });
-  const [claimed, setClaimed]     = useState<{ listingId:string; code:string } | null>(null);
+  const [locale, setLocale]         = useState<Locale>("en");
+  const [listings, setListings]     = useState<Listing[]>([]);
+  const [search, setSearch]         = useState("");
+  const [loading, setLoading]       = useState(true);
+  const [claiming, setClaiming]     = useState<string | null>(null);
+  const [firstName, setFirstName]   = useState("");
+  const [email, setEmail]           = useState("");
+  const [phone, setPhone]           = useState("");
+  const [eta, setEta]               = useState(15);
+  const [claimed, setClaimed]       = useState<{ code: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [claimError, setClaimError] = useState("");
 
@@ -55,48 +57,49 @@ export default function BrowsePage() {
       .some(f => f?.toLowerCase().includes(search.toLowerCase()))
   );
 
-  async function handleClaim(e: React.FormEvent) {
+  async function handleClaim(e: React.FormEvent, listingId: string) {
     e.preventDefault();
-    if (!claiming) return;
-    if (!form.first_name || !form.email) { setClaimError("Missing required fields."); return; }
-    setSubmitting(true); setClaimError("");
+    setSubmitting(true);
+    setClaimError("");
 
     const res = await fetch("/api/claim-submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        listing_id: claiming,
-        first_name: form.first_name,
-        email: form.email,
-        phone: form.phone || null,
-        eta_minutes: form.eta_minutes,
+        listing_id: listingId,
+        first_name: firstName,
+        email:      email,
+        phone:      phone || null,
+        eta_minutes: eta,
       }),
     });
+
     const data = await res.json();
+
     if (data.success) {
-      setClaimed({ listingId: claiming, code: data.code });
+      setClaimed({ code: data.code });
       setClaiming(null);
-      setListings(prev => prev.filter(l => l.id !== claiming));
+      setListings(prev => prev.filter(l => l.id !== listingId));
+      setFirstName(""); setEmail(""); setPhone(""); setEta(15);
     } else {
       setClaimError(data.error || "Something went wrong. Please try again.");
     }
     setSubmitting(false);
   }
 
-  // Build maps links from address
   function getMapsLinks(address: string, mapsUrl?: string) {
-    const encoded = encodeURIComponent(address);
+    const enc = encodeURIComponent(address);
     return {
-      google: mapsUrl || `https://www.google.com/maps/search/?api=1&query=${encoded}`,
-      apple: `https://maps.apple.com/?q=${encoded}`,
-      waze: `https://waze.com/ul?q=${encoded}`,
+      google: mapsUrl || `https://www.google.com/maps/search/?api=1&query=${enc}`,
+      apple:  `https://maps.apple.com/?q=${enc}`,
+      waze:   `https://waze.com/ul?q=${enc}`,
     };
   }
 
   const inp: React.CSSProperties = {
-    width: "100%", padding: "10px 14px", borderRadius: "8px",
-    border: "1px solid #d1d5db", fontSize: "14px",
-    color: "#111827", background: "#fff", outline: "none", boxSizing: "border-box",
+    width:"100%", padding:"10px 14px", borderRadius:"8px",
+    border:"1px solid #d1d5db", fontSize:"14px",
+    color:"#111827", background:"#fff", outline:"none", boxSizing:"border-box",
   };
 
   return (
@@ -117,11 +120,11 @@ export default function BrowsePage() {
         <p style={{ margin:"0 0 24px", fontSize:"15px", color:"#e2f5ea", maxWidth:"560px", marginLeft:"auto", marginRight:"auto", lineHeight:1.6 }}>
           {T.browse_subtitle}
         </p>
-        {/* Search bar — white background, dark text, fully visible */}
+        {/* Search — white background, fully visible */}
         <div style={{ maxWidth:"560px", margin:"0 auto", position:"relative" }}>
-          <span style={{ position:"absolute", left:"16px", top:"50%", transform:"translateY(-50%)", fontSize:"16px", color:"#9ca3af" }}>🔍</span>
+          <span style={{ position:"absolute", left:"16px", top:"50%", transform:"translateY(-50%)", fontSize:"16px", pointerEvents:"none" }}>🔍</span>
           <input
-            style={{ width:"100%", padding:"14px 20px 14px 44px", borderRadius:"12px", border:"none", fontSize:"15px", outline:"none", color:"#111827", background:"#fff", boxSizing:"border-box" }}
+            style={{ width:"100%", padding:"14px 20px 14px 48px", borderRadius:"12px", border:"2px solid #fff", fontSize:"15px", outline:"none", color:"#111827", background:"#fff", boxSizing:"border-box" }}
             placeholder={T.browse_search}
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -129,12 +132,12 @@ export default function BrowsePage() {
         </div>
       </div>
 
-      {/* Success claimed banner */}
+      {/* Claimed success banner */}
       {claimed && (
-        <div style={{ background:"#f0fdf4", border:"1px solid #bbf7d0", margin:"24px auto", maxWidth:"600px", borderRadius:"12px", padding:"20px 24px", textAlign:"center" }}>
-          <p style={{ margin:0, fontSize:"18px", fontWeight:800, color:"#166534" }}>{T.claim_success}</p>
-          <p style={{ margin:"8px 0 0", fontSize:"36px", fontWeight:800, color:"#16a34a", letterSpacing:"6px" }}>{claimed.code}</p>
-          <p style={{ margin:"8px 0 0", fontSize:"13px", color:"#6b7280" }}>{T.claim_show}</p>
+        <div style={{ background:"#f0fdf4", border:"2px solid #16a34a", margin:"24px auto", maxWidth:"600px", borderRadius:"16px", padding:"24px", textAlign:"center" }}>
+          <p style={{ margin:"0 0 8px", fontSize:"18px", fontWeight:800, color:"#166534" }}>✅ {T.claim_success}</p>
+          <p style={{ margin:"0 0 4px", fontSize:"48px", fontWeight:900, color:"#16a34a", letterSpacing:"8px" }}>{claimed.code}</p>
+          <p style={{ margin:0, fontSize:"13px", color:"#6b7280" }}>{T.claim_show}</p>
         </div>
       )}
 
@@ -153,10 +156,10 @@ export default function BrowsePage() {
           return (
             <div key={listing.id} style={{ background:"#fff", border:"1px solid #e5e7eb", borderRadius:"16px", padding:"24px", marginBottom:"16px", boxShadow:"0 2px 8px rgba(0,0,0,0.04)" }}>
 
-              {/* Title + status badge */}
+              {/* Title + badge */}
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:"14px", gap:"8px" }}>
                 <h2 style={{ margin:0, fontSize:"20px", fontWeight:800, color:"#0a2e1a" }}>{listing.food_name}</h2>
-                <span style={{ background:"#dcfce7", color:"#166534", fontSize:"12px", fontWeight:700, padding:"4px 12px", borderRadius:"20px", flexShrink:0, display:"flex", alignItems:"center", gap:"4px" }}>
+                <span style={{ background:"#dcfce7", color:"#166534", fontSize:"12px", fontWeight:700, padding:"4px 12px", borderRadius:"20px", flexShrink:0, display:"flex", alignItems:"center", gap:"5px" }}>
                   <span style={{ width:"7px", height:"7px", borderRadius:"50%", background:"#16a34a", display:"inline-block" }}></span>
                   AVAILABLE
                 </span>
@@ -172,22 +175,22 @@ export default function BrowsePage() {
                 <p style={{ margin:"2px 0" }}><b>{T.expires}:</b> {new Date(listing.expires_at).toLocaleString()}</p>
               </div>
 
-              {/* Address + Maps links */}
-              <div style={{ marginTop:"12px", padding:"12px 16px", background:"#f9fafb", borderRadius:"10px", border:"1px solid #e5e7eb" }}>
-                <p style={{ margin:"0 0 8px", fontSize:"14px", color:"#374151" }}>
-                  <b>📍 {T.address}:</b> {listing.address}
+              {/* Address + Maps — always visible */}
+              <div style={{ marginTop:"14px", padding:"14px 16px", background:"#f9fafb", borderRadius:"12px", border:"1px solid #e5e7eb" }}>
+                <p style={{ margin:"0 0 10px", fontSize:"14px", color:"#1f2937", fontWeight:600 }}>
+                  📍 {listing.address}
                 </p>
                 <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
                   <a href={maps.google} target="_blank" rel="noopener noreferrer"
-                    style={{ display:"inline-flex", alignItems:"center", gap:"4px", background:"#fff", border:"1px solid #e5e7eb", borderRadius:"8px", padding:"6px 12px", fontSize:"12px", fontWeight:600, color:"#374151", textDecoration:"none" }}>
+                    style={{ display:"inline-flex", alignItems:"center", gap:"5px", background:"#fff", border:"1.5px solid #e5e7eb", borderRadius:"8px", padding:"7px 14px", fontSize:"13px", fontWeight:600, color:"#374151", textDecoration:"none" }}>
                     🗺️ Google Maps
                   </a>
                   <a href={maps.apple} target="_blank" rel="noopener noreferrer"
-                    style={{ display:"inline-flex", alignItems:"center", gap:"4px", background:"#fff", border:"1px solid #e5e7eb", borderRadius:"8px", padding:"6px 12px", fontSize:"12px", fontWeight:600, color:"#374151", textDecoration:"none" }}>
+                    style={{ display:"inline-flex", alignItems:"center", gap:"5px", background:"#fff", border:"1.5px solid #e5e7eb", borderRadius:"8px", padding:"7px 14px", fontSize:"13px", fontWeight:600, color:"#374151", textDecoration:"none" }}>
                     🍎 Apple Maps
                   </a>
                   <a href={maps.waze} target="_blank" rel="noopener noreferrer"
-                    style={{ display:"inline-flex", alignItems:"center", gap:"4px", background:"#fff", border:"1px solid #e5e7eb", borderRadius:"8px", padding:"6px 12px", fontSize:"12px", fontWeight:600, color:"#374151", textDecoration:"none" }}>
+                    style={{ display:"inline-flex", alignItems:"center", gap:"5px", background:"#fff", border:"1.5px solid #e5e7eb", borderRadius:"8px", padding:"7px 14px", fontSize:"13px", fontWeight:600, color:"#374151", textDecoration:"none" }}>
                     🔵 Waze
                   </a>
                 </div>
@@ -195,32 +198,24 @@ export default function BrowsePage() {
 
               {/* Claim form */}
               {claiming === listing.id ? (
-                <form onSubmit={handleClaim} style={{ marginTop:"16px", background:"#f9fafb", borderRadius:"12px", padding:"20px", border:"1px solid #e5e7eb" }}>
+                <form onSubmit={e => handleClaim(e, listing.id)} style={{ marginTop:"16px", background:"#f9fafb", borderRadius:"12px", padding:"20px", border:"1px solid #e5e7eb" }}>
                   <h3 style={{ margin:"0 0 16px", fontSize:"16px", fontWeight:800, color:"#0a2e1a" }}>{T.claim_title}</h3>
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px", marginBottom:"12px" }}>
                     <div>
                       <label style={{ display:"block", fontSize:"12px", fontWeight:600, color:"#374151", marginBottom:"4px" }}>{T.claim_name} *</label>
-                      <input style={inp} required
-                        value={form.first_name}
-                        onChange={e => setForm(f => ({ ...f, first_name: e.target.value }))} />
+                      <input style={inp} required value={firstName} onChange={e => setFirstName(e.target.value)} />
                     </div>
                     <div>
                       <label style={{ display:"block", fontSize:"12px", fontWeight:600, color:"#374151", marginBottom:"4px" }}>{T.claim_email} *</label>
-                      <input style={inp} type="email" required
-                        value={form.email}
-                        onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+                      <input style={inp} type="email" required value={email} onChange={e => setEmail(e.target.value)} />
                     </div>
                     <div>
                       <label style={{ display:"block", fontSize:"12px", fontWeight:600, color:"#374151", marginBottom:"4px" }}>{T.claim_phone}</label>
-                      <input style={inp}
-                        value={form.phone}
-                        onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
+                      <input style={inp} type="tel" value={phone} onChange={e => setPhone(e.target.value)} />
                     </div>
                     <div>
                       <label style={{ display:"block", fontSize:"12px", fontWeight:600, color:"#374151", marginBottom:"4px" }}>{T.claim_eta} *</label>
-                      <select style={{ ...inp, cursor:"pointer" }}
-                        value={form.eta_minutes}
-                        onChange={e => setForm(f => ({ ...f, eta_minutes: Number(e.target.value) }))}>
+                      <select style={{ ...inp, cursor:"pointer" }} value={eta} onChange={e => setEta(Number(e.target.value))}>
                         <option value={5}>5 min</option>
                         <option value={10}>10 min</option>
                         <option value={15}>15 min</option>
@@ -231,7 +226,9 @@ export default function BrowsePage() {
                       </select>
                     </div>
                   </div>
-                  {claimError && <p style={{ color:"#dc2626", fontSize:"13px", marginBottom:"8px", fontWeight:600 }}>{claimError}</p>}
+                  {claimError && (
+                    <p style={{ color:"#dc2626", fontSize:"13px", fontWeight:600, marginBottom:"10px" }}>{claimError}</p>
+                  )}
                   <div style={{ display:"flex", gap:"10px" }}>
                     <button type="submit" disabled={submitting}
                       style={{ flex:1, background: submitting ? "#9ca3af" : "#16a34a", color:"#fff", border:"none", padding:"13px", borderRadius:"10px", cursor: submitting ? "not-allowed" : "pointer", fontSize:"15px", fontWeight:700 }}>
@@ -244,7 +241,8 @@ export default function BrowsePage() {
                   </div>
                 </form>
               ) : (
-                <button onClick={() => { setClaiming(listing.id); setClaimError(""); setForm({ first_name:"", email:"", phone:"", eta_minutes:15 }); }}
+                <button
+                  onClick={() => { setClaiming(listing.id); setClaimError(""); setFirstName(""); setEmail(""); setPhone(""); setEta(15); }}
                   style={{ marginTop:"16px", background:"#16a34a", color:"#fff", border:"none", padding:"13px 24px", borderRadius:"10px", cursor:"pointer", fontSize:"15px", fontWeight:700, width:"100%" }}>
                   {T.claim_btn}
                 </button>
