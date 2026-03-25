@@ -1,3 +1,4 @@
+
 "use client";
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
@@ -66,16 +67,15 @@ export default function BrowsePage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        listing_id: listingId,
-        first_name: firstName,
-        email:      email,
-        phone:      phone || null,
+        listing_id:  listingId,
+        first_name:  firstName,
+        email:       email,
+        phone:       phone || null,
         eta_minutes: eta,
       }),
     });
 
     const data = await res.json();
-
     if (data.success) {
       setClaimed({ code: data.code });
       setClaiming(null);
@@ -105,12 +105,12 @@ export default function BrowsePage() {
   return (
     <div dir={isRTL ? "rtl" : "ltr"} style={{ minHeight:"100vh", background:"#f9fafb", fontFamily: isRTL ? "'Noto Sans Arabic',sans-serif" : "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
 
-      {/* Header */}
+      {/* Header — logo links to homepage */}
       <div style={{ background:"#0a2e1a", padding:"16px 24px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+        <a href="/" style={{ display:"flex", alignItems:"center", gap:"10px", textDecoration:"none" }}>
           <img src="/gawa-logo-green.png" alt="GAWA Loop" style={{ width:"36px", height:"36px", objectFit:"contain" }} />
           <span style={{ fontWeight:800, fontSize:"18px", color:"#fff" }}>GAWA Loop</span>
-        </div>
+        </a>
         <LanguageSwitcher />
       </div>
 
@@ -120,7 +120,7 @@ export default function BrowsePage() {
         <p style={{ margin:"0 0 24px", fontSize:"15px", color:"#e2f5ea", maxWidth:"560px", marginLeft:"auto", marginRight:"auto", lineHeight:1.6 }}>
           {T.browse_subtitle}
         </p>
-        {/* Search — white background, fully visible */}
+        {/* Search — white background, dark text, visible */}
         <div style={{ maxWidth:"560px", margin:"0 auto", position:"relative" }}>
           <span style={{ position:"absolute", left:"16px", top:"50%", transform:"translateY(-50%)", fontSize:"16px", pointerEvents:"none" }}>🔍</span>
           <input
@@ -175,7 +175,7 @@ export default function BrowsePage() {
                 <p style={{ margin:"2px 0" }}><b>{T.expires}:</b> {new Date(listing.expires_at).toLocaleString()}</p>
               </div>
 
-              {/* Address + Maps — always visible */}
+              {/* Address + Maps — always visible, clickable */}
               <div style={{ marginTop:"14px", padding:"14px 16px", background:"#f9fafb", borderRadius:"12px", border:"1px solid #e5e7eb" }}>
                 <p style={{ margin:"0 0 10px", fontSize:"14px", color:"#1f2937", fontWeight:600 }}>
                   📍 {listing.address}
