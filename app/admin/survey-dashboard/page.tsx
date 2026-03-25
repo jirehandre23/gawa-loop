@@ -21,7 +21,9 @@ export default function SurveyDashboard() {
     try {
       const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&gid=${gid}`;
 
-      const res = await fetch(url, { cache: "no-store" });
+      const res = await fetch(url, {
+        cache: "no-store",
+      });
 
       if (!res.ok) {
         throw new Error(`HTTP error ${res.status}`);
@@ -29,22 +31,20 @@ export default function SurveyDashboard() {
 
       const text = await res.text();
 
-      // ✅ FIXED parsing (no /s flag)
+      // ✅ FIXED parsing (no regex /s issue)
       const json = JSON.parse(
         text.substring(text.indexOf("{"), text.lastIndexOf("}") + 1)
       );
 
       const cols = (json.table?.cols || []).map((c: any) => c.label as string);
 
-      const rows = (json.table?.rows || [])
-        .map((r: any) => {
-          const obj: Record<string, string> = {};
-          (r.c || []).forEach((cell: any, i: number) => {
-            obj[cols[i]] = cell?.v != null ? String(cell.v) : "";
-          });
-          return obj;
-        })
-        .filter((r: any) => Object.values(r).some((v: any) => v !== ""));
+      const rows = (json.table?.rows || []).map((r: any) => {
+        const obj: Record<string, string> = {};
+        (r.c || []).forEach((cell: any, i: number) => {
+          obj[cols[i]] = cell?.v != null ? String(cell.v) : "";
+        });
+        return obj;
+      }).filter((r: any) => Object.values(r).some((v: any) => v !== ""));
 
       return { cols, rows };
     } catch (err) {
@@ -141,4 +141,15 @@ export default function SurveyDashboard() {
         </div>
       </div>
 
-      {/* ✅ EVERYTHING ELSE REMAINS EXACTLY AS YOUR ORIGINAL */}
+      <div style={{ maxWidth: "920px", margin: "0 auto", padding: "32px 20px" }}>
+        <h1 style={{ margin: "0 0 4px", fontSize: "24px", fontWeight: 800, color: "#0a2e1a" }}>📊 Outreach Dashboard</h1>
+        <p style={{ margin: "0 0 28px", fontSize: "14px", color: "#6b7280" }}>Live progress toward investor-ready survey goals — Brooklyn, NY</p>
+
+        <div style={{ textAlign: "center", padding: "40px", color: "#6b7280" }}>
+          {loading ? "Loading data..." : "If this is still empty → check console + Google Sheets permissions"}
+        </div>
+
+      </div>
+    </div>
+  );
+}
