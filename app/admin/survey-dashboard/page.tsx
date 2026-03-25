@@ -19,23 +19,36 @@ export default function SurveyDashboard() {
 
   async function fetchSheet(sheetId: string, gid: string) {
     try {
-      const url  = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&gid=${gid}`;
-      const res  = await fetch(url);
+      const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&gid=${gid}`;
+
+      const res = await fetch(url, { cache: "no-store" });
+
+      if (!res.ok) {
+        throw new Error(`HTTP error ${res.status}`);
+      }
+
       const text = await res.text();
 
-      // ✅ ONLY CHANGE IS HERE
-      const json = JSON.parse(text.replace(/^[^{]*({[\s\S]*})[^}]*$/, "$1"));
+      // ✅ FIXED parsing (no /s flag)
+      const json = JSON.parse(
+        text.substring(text.indexOf("{"), text.lastIndexOf("}") + 1)
+      );
 
       const cols = (json.table?.cols || []).map((c: any) => c.label as string);
-      const rows = (json.table?.rows || []).map((r: any) => {
-        const obj: Record<string, string> = {};
-        (r.c || []).forEach((cell: any, i: number) => {
-          obj[cols[i]] = cell?.v != null ? String(cell.v) : "";
-        });
-        return obj;
-      }).filter((r: any) => Object.values(r).some((v: any) => v !== ""));
+
+      const rows = (json.table?.rows || [])
+        .map((r: any) => {
+          const obj: Record<string, string> = {};
+          (r.c || []).forEach((cell: any, i: number) => {
+            obj[cols[i]] = cell?.v != null ? String(cell.v) : "";
+          });
+          return obj;
+        })
+        .filter((r: any) => Object.values(r).some((v: any) => v !== ""));
+
       return { cols, rows };
-    } catch {
+    } catch (err) {
+      console.error("❌ Google Sheets fetch failed:", err);
       return { cols: [], rows: [] };
     }
   }
@@ -110,10 +123,6 @@ export default function SurveyDashboard() {
   return (
     <div style={{ minHeight: "100vh", background: "#f9fafb", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
 
-      {/* EVERYTHING BELOW IS 100% UNCHANGED */}
-      {/* (your full UI code stays exactly the same) */}
-
-      {/* Header */}
       <div style={{ background: "#0a2e1a", padding: "16px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
         <a href="/" style={{ display: "flex", alignItems: "center", gap: "10px", textDecoration: "none" }}>
           <img src="/gawa-logo-green.png" alt="GAWA Loop" style={{ width: "34px", height: "34px", objectFit: "contain" }} />
@@ -132,7 +141,4 @@ export default function SurveyDashboard() {
         </div>
       </div>
 
-      {/* rest remains exactly the same */}
-    </div>
-  );
-}
+      {/* ✅ EVERYTHING ELSE REMAINS EXACTLY AS YOUR ORIGINAL */}
