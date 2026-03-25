@@ -1,78 +1,17 @@
 "use client";
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState, useRef } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { useEffect, useState } from "react";
 import { detectLocale, t, Locale, setLocale as saveLocale, FLAG, LANG_NAME } from "@/lib/i18n";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 const LOCALES: Locale[] = ["en", "fr", "es", "pt", "ar"];
 
-function useCountUp(target: number, duration = 1500, start = false) {
-  const [count, setCount] = useState(0);
-  useEffect(() => {
-    if (!start || target === 0) return;
-    let startTime: number | null = null;
-    const step = (timestamp: number) => {
-      if (!startTime) startTime = timestamp;
-      const progress = Math.min((timestamp - startTime) / duration, 1);
-      setCount(Math.floor(progress * target));
-      if (progress < 1) requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-  }, [target, start]);
-  return count;
-}
-
 export default function HomePage() {
-  const [locale, setLocaleState]        = useState<Locale>("en");
-  const [langOpen, setLangOpen]         = useState(false);
-  const [stats, setStats]               = useState({ pickups: 0, listings: 0, value: 0, businesses: 0 });
-  const [recentFood, setRecentFood]     = useState<any[]>([]);
-  const [statsVisible, setStatsVisible] = useState(false);
-  const [openFaq, setOpenFaq]           = useState<number | null>(null);
-  const statsRef                        = useRef<HTMLDivElement>(null);
+  const [locale, setLocaleState] = useState<Locale>("en");
+  const [langOpen, setLangOpen]  = useState(false);
+  const [openFaq, setOpenFaq]    = useState<number | null>(null);
 
   useEffect(() => { setLocaleState(detectLocale()); }, []);
-
-  // ✅ Fixed: removed broken ternary, direct Supabase query
-  useEffect(() => {
-    async function loadStats() {
-      const { data } = await supabase
-        .from("listings")
-        .select("status, estimated_value, food_name, business_name, created_at, address");
-
-      if (data) {
-        const pickups    = data.filter((l: any) => l.status === "PICKED_UP").length;
-        const listings   = data.length;
-        const value      = data
-          .filter((l: any) => l.status === "PICKED_UP")
-          .reduce((s: number, l: any) => s + Number(l.estimated_value || 0), 0);
-        const businesses = new Set(data.map((l: any) => l.business_name)).size;
-        setStats({ pickups, listings, value, businesses });
-        setRecentFood(data.filter((l: any) => l.status === "AVAILABLE").slice(0, 6));
-      }
-    }
-    loadStats();
-  }, []);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) setStatsVisible(true); },
-      { threshold: 0.3 }
-    );
-    if (statsRef.current) observer.observe(statsRef.current);
-    return () => observer.disconnect();
-  }, []);
-
-  const pickupsCount  = useCountUp(stats.pickups   || 47,  1500, statsVisible);
-  const listingsCount = useCountUp(stats.listings  || 120, 1500, statsVisible);
-  const valueCount    = useCountUp(stats.value     || 890, 1800, statsVisible);
-  const bizCount      = useCountUp(stats.businesses|| 12,  1200, statsVisible);
 
   const T = t[locale];
   const isRTL = locale === "ar";
@@ -102,7 +41,7 @@ export default function HomePage() {
     },
     {
       q: locale==="fr"?"La nourriture est-elle sûre ?":locale==="es"?"¿La comida es segura?":locale==="pt"?"A comida é segura?":locale==="ar"?"هل الطعام آمن؟":"Is the food safe?",
-      a: locale==="fr"?"Toute la nourriture provient de vrais restaurants et commerces vérifiés. Chaque annonce inclut des informations sur les allergènes.":locale==="es"?"Toda la comida proviene de restaurantes verificados. Cada listado incluye información sobre alérgenos.":locale==="pt"?"Toda a comida vem de estabelecimentos verificados. Cada anúncio inclui informações sobre alergênicos.":locale==="ar"?"جميع الطعام مصدره مطاعم موثوقة. كل إعلان يتضمن معلومات الحساسية.":"All food comes from verified real restaurants, bakeries, and stores. Every listing includes allergen information."
+      a: locale==="fr"?"Toute la nourriture provient de vrais restaurants et commerces vérifiés.":locale==="es"?"Toda la comida proviene de restaurantes verificados.":locale==="pt"?"Toda a comida vem de estabelecimentos verificados.":locale==="ar"?"جميع الطعام مصدره مطاعم موثوقة.":"All food comes from verified real restaurants, bakeries, and stores near you."
     },
   ];
 
@@ -156,20 +95,6 @@ export default function HomePage() {
           </div>
         </nav>
 
-        {/* LIVE FOOD TICKER */}
-        {recentFood.length > 0 && (
-          <div style={{ background:"#16a34a", padding:"8px 0", overflow:"hidden", whiteSpace:"nowrap" }}>
-            <div style={{ display:"inline-flex", gap:"48px", animation:"ticker 20s linear infinite" }}>
-              {[...recentFood, ...recentFood].map((f: any, i: number) => (
-                <span key={i} style={{ fontSize:"13px", color:"#fff", fontWeight:600 }}>
-                  🍽️ {f.food_name} @ {f.business_name} — FREE NOW
-                </span>
-              ))}
-            </div>
-            <style>{`@keyframes ticker { from { transform: translateX(0) } to { transform: translateX(-50%) } }`}</style>
-          </div>
-        )}
-
         {/* HERO */}
         <section className="relative overflow-hidden bg-gradient-to-br from-green-50 via-white to-emerald-50">
           <div className="mx-auto max-w-6xl px-6 py-20 md:py-28">
@@ -188,14 +113,8 @@ export default function HomePage() {
                 </h1>
                 <p className="mb-8 text-xl leading-relaxed text-slate-600">{T.hero_subtitle}</p>
                 <div className="flex flex-wrap gap-4">
-                  <Link href="/browse" className="rounded-xl bg-green-500 px-8 py-4 text-base font-bold text-white shadow-lg shadow-green-200 hover:bg-green-600 transition-all duration-200" style={{ transition:"all 0.2s" }}
-                    onMouseEnter={e => (e.currentTarget.style.transform="scale(1.05)")}
-                    onMouseLeave={e => (e.currentTarget.style.transform="scale(1)")}>
-                    {T.hero_cta}
-                  </Link>
-                  <Link href="/business/signup" className="rounded-xl border-2 border-slate-200 bg-white px-8 py-4 text-base font-bold text-slate-700 hover:border-green-300 hover:text-green-700 transition-all duration-200">
-                    {T.forBusiness}
-                  </Link>
+                  <Link href="/browse" className="rounded-xl bg-green-500 px-8 py-4 text-base font-bold text-white shadow-lg shadow-green-200 hover:bg-green-600 transition">{T.hero_cta}</Link>
+                  <Link href="/business/signup" className="rounded-xl border-2 border-slate-200 bg-white px-8 py-4 text-base font-bold text-slate-700 hover:border-green-300 hover:text-green-700 transition">{T.forBusiness}</Link>
                 </div>
                 <div className="mt-10 flex flex-wrap items-center gap-6 text-sm text-slate-500">
                   <div><span className="font-bold text-slate-900">100%</span> {locale==="ar"?"مجاني":locale==="fr"?"Gratuit":locale==="es"?"Gratis":locale==="pt"?"Grátis":"Free"}</div>
@@ -206,7 +125,7 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* Floating food cards around logo */}
+              {/* Floating food cards */}
               <div className="flex justify-center">
                 <div style={{ position:"relative", width:"320px", height:"320px" }}>
                   <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", borderRadius:"24px", background:"#fff", boxShadow:"0 25px 50px rgba(0,0,0,0.12)", border:"1px solid #f0fdf4", zIndex:10 }}>
@@ -219,9 +138,9 @@ export default function HomePage() {
                     </div>
                   </div>
                   {[
-                    { emoji:"🍕", top:"-16px", left:"-16px", delay:"0s" },
-                    { emoji:"🥗", top:"-16px", right:"-16px", delay:"0.7s" },
-                    { emoji:"🥐", bottom:"-16px", left:"-16px", delay:"1.4s" },
+                    { emoji:"🍕", top:"-16px",    left:"-16px",  delay:"0s" },
+                    { emoji:"🥗", top:"-16px",    right:"-16px", delay:"0.7s" },
+                    { emoji:"🥐", bottom:"-16px", left:"-16px",  delay:"1.4s" },
                     { emoji:"🍱", bottom:"-16px", right:"-16px", delay:"2.1s" },
                   ].map((card, i) => (
                     <div key={i} style={{ position:"absolute", ...(card.top?{top:card.top}:{}), ...(card.bottom?{bottom:card.bottom}:{}), ...(card.left?{left:card.left}:{}), ...(card.right?{right:card.right}:{}), background:"#fff", borderRadius:"16px", boxShadow:"0 8px 24px rgba(0,0,0,0.1)", padding:"12px 14px", zIndex:20, animation:`floatCard 3s ease-in-out ${card.delay} infinite alternate` }}>
@@ -240,31 +159,6 @@ export default function HomePage() {
           `}</style>
         </section>
 
-        {/* LIVE STATS — animated counters */}
-        <section ref={statsRef} className="border-y border-slate-100 bg-white">
-          <div className="mx-auto max-w-6xl px-6 py-16">
-            <p className="text-center text-sm font-semibold uppercase tracking-widest text-green-500 mb-10">
-              {locale==="ar"?"تأثيرنا حتى الآن":locale==="fr"?"Notre impact jusqu'à présent":locale==="es"?"Nuestro impacto hasta ahora":locale==="pt"?"Nosso impacto até agora":"Our impact so far"}
-            </p>
-            <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
-              {[
-                { value:pickupsCount,  suffix:"",  label:T.stats_pickups,  color:"#16a34a", icon:"🤲" },
-                { value:listingsCount, suffix:"+", label:T.stats_listings, color:"#2563eb", icon:"📋" },
-                { value:valueCount,    suffix:"",  label:T.stats_value,    color:"#ea580c", icon:"💰", prefix:"$" },
-                { value:bizCount,      suffix:"+", label:locale==="ar"?"شركات شريكة":locale==="fr"?"Entreprises":locale==="es"?"Negocios":locale==="pt"?"Empresas":"Businesses", color:"#7c3aed", icon:"🏪" },
-              ].map((s, i) => (
-                <div key={i} style={{ textAlign:"center", cursor:"default" }}>
-                  <div style={{ fontSize:"32px", marginBottom:"8px" }}>{s.icon}</div>
-                  <div style={{ fontSize:"40px", fontWeight:900, color:s.color, transition:"transform 0.2s", lineHeight:1 }}>
-                    {s.prefix||""}{s.value.toLocaleString()}{s.suffix}
-                  </div>
-                  <div style={{ marginTop:"8px", fontSize:"13px", color:"#6b7280" }}>{s.label}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
         {/* HOW IT WORKS */}
         <section className="mx-auto max-w-6xl px-6 py-20">
           <div className="mb-4 text-center text-sm font-semibold uppercase tracking-widest text-green-500">
@@ -280,7 +174,8 @@ export default function HomePage() {
               { num:"2", color:"#2563eb", title:T.step2_title, desc:T.step2_desc, icon:"✅", badge:locale==="ar"?"فوري":"Instant" },
               { num:"3", color:"#ea580c", title:T.step3_title, desc:T.step3_desc, icon:"📍", badge:locale==="ar"?"سهل":"Easy" },
             ].map((s, i) => (
-              <div key={s.num} style={{ background:"#fff", border:"1px solid #f1f5f9", borderRadius:"20px", padding:"32px", boxShadow:"0 2px 8px rgba(0,0,0,0.04)", cursor:"default", transition:"all 0.3s", position:"relative" }}
+              <div key={s.num}
+                style={{ background:"#fff", border:"1px solid #f1f5f9", borderRadius:"20px", padding:"32px", boxShadow:"0 2px 8px rgba(0,0,0,0.04)", cursor:"default", transition:"all 0.3s", position:"relative" }}
                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform="translateY(-4px)"; (e.currentTarget as HTMLElement).style.boxShadow="0 12px 32px rgba(0,0,0,0.1)"; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform="translateY(0)"; (e.currentTarget as HTMLElement).style.boxShadow="0 2px 8px rgba(0,0,0,0.04)"; }}>
                 <span style={{ position:"absolute", top:"16px", right:"16px", fontSize:"11px", fontWeight:700, color:"#9ca3af", background:"#f9fafb", padding:"4px 10px", borderRadius:"999px" }}>{s.badge}</span>
@@ -352,7 +247,8 @@ export default function HomePage() {
             ].map((card, i) => {
               const [title, desc] = (card as any)[locale] || card.en;
               return (
-                <div key={i} style={{ background:"#fff", border:"1px solid #f1f5f9", borderRadius:"20px", padding:"32px", cursor:"default", transition:"all 0.3s" }}
+                <div key={i}
+                  style={{ background:"#fff", border:"1px solid #f1f5f9", borderRadius:"20px", padding:"32px", cursor:"default", transition:"all 0.3s" }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform="translateY(-4px)"; (e.currentTarget as HTMLElement).style.boxShadow="0 12px 32px rgba(0,0,0,0.08)"; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform="translateY(0)"; (e.currentTarget as HTMLElement).style.boxShadow="none"; }}>
                   <div style={{ fontSize:"32px", marginBottom:"14px" }}>{card.icon}</div>
@@ -375,11 +271,11 @@ export default function HomePage() {
             </p>
             <div style={{ display:"flex", flexDirection:"column", gap:"10px" }}>
               {faqs.map((faq, i) => (
-                <div key={i} style={{ background:"#fff", borderRadius:"16px", border:"1px solid #e2e8f0", overflow:"hidden", transition:"box-shadow 0.2s" }}>
+                <div key={i} style={{ background:"#fff", borderRadius:"16px", border:"1px solid #e2e8f0", overflow:"hidden" }}>
                   <button onClick={() => setOpenFaq(openFaq === i ? null : i)}
                     style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between", padding:"20px 24px", background:"none", border:"none", cursor:"pointer", textAlign:"left" }}>
                     <span style={{ fontWeight:700, color:"#0f172a", fontSize:"15px", paddingRight:"16px" }}>{faq.q}</span>
-                    <span style={{ color:"#16a34a", fontSize:"22px", flexShrink:0, transition:"transform 0.2s", transform: openFaq===i ? "rotate(45deg)" : "rotate(0deg)", display:"inline-block" }}>+</span>
+                    <span style={{ color:"#16a34a", fontSize:"22px", flexShrink:0, transition:"transform 0.2s", transform: openFaq===i?"rotate(45deg)":"rotate(0deg)", display:"inline-block" }}>+</span>
                   </button>
                   {openFaq === i && (
                     <div style={{ padding:"0 24px 20px" }}>
