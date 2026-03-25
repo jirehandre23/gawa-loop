@@ -96,9 +96,17 @@ export default function BusinessDashboard() {
 
   const T = t[locale];
 
+  // ✅ Calls /api/mark-picked-up — sends thank-you email to customer
   async function handlePickedUp(id: string) {
-    await supabase.from("listings").update({ status: "PICKED_UP" }).eq("id", id);
-    setListings(prev => prev.map(l => l.id===id ? {...l, status:"PICKED_UP"} : l));
+    const res = await fetch("/api/mark-picked-up", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ listingId: id }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setListings(prev => prev.map(l => l.id===id ? {...l, status:"PICKED_UP"} : l));
+    }
   }
 
   async function handleCancelReservation(id: string) {
@@ -106,6 +114,7 @@ export default function BusinessDashboard() {
     setListings(prev => prev.map(l => l.id===id ? {...l, status:"AVAILABLE", reserved_until:null as any, claim_code:null as any} : l));
   }
 
+  // ✅ Calls /api/cancel-listing — sends cancellation emails to customers
   async function handleCancelListing(id: string) {
     if (!confirm("Cancel this listing? Customers will be notified by email.")) return;
     const res = await fetch("/api/cancel-listing", {
@@ -155,7 +164,7 @@ export default function BusinessDashboard() {
     <div style={{minHeight:"100vh", background:"#f9fafb", fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", padding:"24px 16px"}}>
       <div style={{maxWidth:"780px", margin:"0 auto"}}>
 
-        {/* ── Header ── */}
+        {/* Header */}
         <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"28px", flexWrap:"wrap", gap:"12px"}}>
           <div style={{display:"flex", alignItems:"center", gap:"12px"}}>
             <img src="/gawa-logo-green.png" alt="GAWA Loop" style={{width:"42px",height:"42px",objectFit:"contain"}}/>
@@ -187,7 +196,7 @@ export default function BusinessDashboard() {
           </div>
         </div>
 
-        {/* ── New Listing Form ── */}
+        {/* New Listing Form */}
         {showForm && (
           <div style={{background:"#fff", border:"1px solid #e5e7eb", borderRadius:"16px", padding:"28px", marginBottom:"24px", boxShadow:"0 2px 12px rgba(0,0,0,0.06)"}}>
             <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"20px"}}>
@@ -261,7 +270,7 @@ export default function BusinessDashboard() {
           </div>
         )}
 
-        {/* ── Impact Summary ── */}
+        {/* Impact Summary */}
         <div style={{background:"#fff", border:"1px solid #e5e7eb", borderRadius:"16px", padding:"24px 28px", marginBottom:"24px"}}>
           <h2 style={{margin:"0 0 16px", fontSize:"17px", fontWeight:800, color:"#0a2e1a"}}>{T.dash_impact}</h2>
           <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px"}}>
@@ -287,7 +296,7 @@ export default function BusinessDashboard() {
           <p style={{margin:"12px 0 0", fontSize:"12px", color:"#9ca3af"}}>For recordkeeping and operational reporting.</p>
         </div>
 
-        {/* ── Listings ── */}
+        {/* Listings */}
         <h2 style={{fontSize:"17px", fontWeight:800, color:"#0a2e1a", marginBottom:"14px"}}>{T.dash_listings}</h2>
 
         {listings.length === 0 ? (
@@ -387,3 +396,4 @@ export default function BusinessDashboard() {
     </div>
   );
 }
+
