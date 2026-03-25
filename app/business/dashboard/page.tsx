@@ -266,21 +266,17 @@ export default function BusinessDashboard() {
           <h2 style={{margin:"0 0 16px", fontSize:"17px", fontWeight:800, color:"#0a2e1a"}}>{T.dash_impact}</h2>
           <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px"}}>
             {[
-              { label: `${T.dash_monthly} (${now.toLocaleString("default",{month:"long"})})`, items:[
-                {k:T.dash_posted, v:monthlyL.length},
-                {k:T.dash_pickups, v:mPickups},
-                {k:T.dash_value, v:`$${mValue.toFixed(2)}`},
+              { label:`${T.dash_monthly} (${now.toLocaleString("default",{month:"long"})})`, items:[
+                {k:T.dash_posted,v:monthlyL.length},{k:T.dash_pickups,v:mPickups},{k:T.dash_value,v:`$${mValue.toFixed(2)}`},
               ]},
-              { label: `${T.dash_yearly} (${thisYear})`, items:[
-                {k:T.dash_posted, v:yearlyL.length},
-                {k:T.dash_pickups, v:yPickups},
-                {k:T.dash_value, v:`$${yValue.toFixed(2)}`},
+              { label:`${T.dash_yearly} (${thisYear})`, items:[
+                {k:T.dash_posted,v:yearlyL.length},{k:T.dash_pickups,v:yPickups},{k:T.dash_value,v:`$${yValue.toFixed(2)}`},
               ]},
             ].map(section => (
               <div key={section.label} style={{background:"#f9fafb", borderRadius:"12px", padding:"16px 20px", border:"1px solid #e5e7eb"}}>
                 <p style={{margin:"0 0 12px", fontSize:"12px", fontWeight:700, color:"#6b7280", textTransform:"uppercase", letterSpacing:"0.8px"}}>{section.label}</p>
                 {section.items.map(item => (
-                  <div key={item.k} style={{display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:"1px solid #f0f0f0"}}>
+                  <div key={String(item.k)} style={{display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:"1px solid #f0f0f0"}}>
                     <span style={{fontSize:"13px", color:"#374151"}}>{item.k}</span>
                     <span style={{fontSize:"14px", fontWeight:700, color:"#0a2e1a"}}>{item.v}</span>
                   </div>
@@ -315,16 +311,12 @@ export default function BusinessDashboard() {
 
           return (
             <div key={listing.id} style={{background:"#fff", border:"1px solid #e5e7eb", borderRadius:"16px", padding:"24px", marginBottom:"16px", opacity:isTerminal?0.85:1}}>
-
-              {/* Title + badge */}
               <div style={{display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:"14px", gap:"12px"}}>
                 <h3 style={{margin:0, fontSize:"18px", fontWeight:800, color:"#0a2e1a"}}>{listing.food_name||"Unnamed food"}</h3>
                 <span style={{background:sc.bg, color:sc.text, fontSize:"12px", fontWeight:700, padding:"5px 14px", borderRadius:"20px", flexShrink:0}}>
                   {listing.status}
                 </span>
               </div>
-
-              {/* Details */}
               <div style={{fontSize:"14px", color:"#1f2937", lineHeight:"1.9"}}>
                 <p style={{margin:"2px 0"}}><b>{T.category}:</b> {listing.category||"N/A"}</p>
                 <p style={{margin:"2px 0"}}><b>{T.quantity}:</b> {listing.quantity||"N/A"}</p>
@@ -335,8 +327,6 @@ export default function BusinessDashboard() {
                 <p style={{margin:"2px 0"}}><b>{T.expires}:</b> {listing.expires_at ? new Date(listing.expires_at).toLocaleString() : "N/A"}</p>
                 <p style={{margin:"2px 0"}}><b>{T.posted}:</b> {new Date(listing.created_at).toLocaleString()}</p>
               </div>
-
-              {/* Reserved customer */}
               {isReserved && activeClaim && (
                 <div style={{background:"#eff6ff", border:"1.5px solid #bfdbfe", borderRadius:"12px", padding:"16px 20px", marginTop:"16px"}}>
                   <p style={{margin:"0 0 10px", fontWeight:700, color:"#1d4ed8", fontSize:"14px"}}>{T.reserved_customer}</p>
@@ -345,13 +335,11 @@ export default function BusinessDashboard() {
                     <p style={{margin:"2px 0"}}><b>Email:</b> {activeClaim.email}</p>
                     <p style={{margin:"2px 0"}}><b>Phone:</b> {activeClaim.phone||"Not provided"}</p>
                     <p style={{margin:"2px 0"}}><b>ETA:</b> {activeClaim.eta_minutes} minutes</p>
-                    <p style={{margin:"2px 0"}}><b>Code:</b> <span style={{fontWeight:800, fontSize:"16px", color:"#2563eb"}}>{activeClaim.confirmation_code}</span></p>
+                    <p style={{margin:"2px 0"}}><b>Code:</b> <span style={{fontWeight:800,fontSize:"16px",color:"#2563eb"}}>{activeClaim.confirmation_code}</span></p>
                     <p style={{margin:"2px 0"}}><b>Reserved until:</b> {activeClaim.reserved_until ? new Date(activeClaim.reserved_until).toLocaleString() : "N/A"}</p>
                   </div>
                 </div>
               )}
-
-              {/* Picked up by */}
               {listing.status==="PICKED_UP" && activeClaim && (
                 <div style={{background:"#f5f3ff", border:"1.5px solid #ddd6fe", borderRadius:"12px", padding:"16px 20px", marginTop:"16px"}}>
                   <p style={{margin:"0 0 10px", fontWeight:700, color:"#6d28d9", fontSize:"14px"}}>{T.picked_up_by}</p>
@@ -359,37 +347,34 @@ export default function BusinessDashboard() {
                     <p style={{margin:"2px 0"}}><b>Name:</b> {activeClaim.first_name}</p>
                     <p style={{margin:"2px 0"}}><b>Email:</b> {activeClaim.email}</p>
                     <p style={{margin:"2px 0"}}><b>Phone:</b> {activeClaim.phone||"Not provided"}</p>
-                    <p style={{margin:"2px 0"}}><b>Code:</b> <span style={{fontWeight:800, fontSize:"16px", color:"#7c3aed"}}>{activeClaim.confirmation_code}</span></p>
+                    <p style={{margin:"2px 0"}}><b>Code:</b> <span style={{fontWeight:800,fontSize:"16px",color:"#7c3aed"}}>{activeClaim.confirmation_code}</span></p>
                   </div>
                 </div>
               )}
-
-              {/* Action buttons — only for non-terminal */}
               {!isTerminal && (
                 <div style={{display:"flex", gap:"10px", marginTop:"20px", flexWrap:"wrap"}}>
                   {isReserved && (
                     <button onClick={() => handlePickedUp(listing.id)}
-                      style={{background:"#16a34a", color:"#fff", border:"none", padding:"10px 20px", borderRadius:"8px", cursor:"pointer", fontWeight:700, fontSize:"14px"}}>
+                      style={{background:"#16a34a",color:"#fff",border:"none",padding:"10px 20px",borderRadius:"8px",cursor:"pointer",fontWeight:700,fontSize:"14px"}}>
                       {T.dash_mark_picked}
                     </button>
                   )}
                   {isReserved && (
                     <button onClick={() => handleCancelReservation(listing.id)}
-                      style={{background:"#f59e0b", color:"#fff", border:"none", padding:"10px 20px", borderRadius:"8px", cursor:"pointer", fontWeight:700, fontSize:"14px"}}>
+                      style={{background:"#f59e0b",color:"#fff",border:"none",padding:"10px 20px",borderRadius:"8px",cursor:"pointer",fontWeight:700,fontSize:"14px"}}>
                       {T.dash_cancel_res}
                     </button>
                   )}
                   {(isAvailable || isReserved) && (
                     <button onClick={() => handleCancelListing(listing.id)}
-                      style={{background:"#ef4444", color:"#fff", border:"none", padding:"10px 20px", borderRadius:"8px", cursor:"pointer", fontWeight:700, fontSize:"14px"}}>
+                      style={{background:"#ef4444",color:"#fff",border:"none",padding:"10px 20px",borderRadius:"8px",cursor:"pointer",fontWeight:700,fontSize:"14px"}}>
                       {T.dash_cancel_listing}
                     </button>
                   )}
                 </div>
               )}
-
               {isTerminal && (
-                <p style={{marginTop:"14px", fontSize:"13px", color:"#6b7280", fontStyle:"italic"}}>
+                <p style={{marginTop:"14px",fontSize:"13px",color:"#6b7280",fontStyle:"italic"}}>
                   {listing.status==="PICKED_UP" && "✅ Successfully picked up."}
                   {listing.status==="EXPIRED"   && "⏰ This listing has expired."}
                   {listing.status==="CANCELLED" && "❌ This listing was cancelled."}
