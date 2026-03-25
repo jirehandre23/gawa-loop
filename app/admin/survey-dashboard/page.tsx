@@ -6,6 +6,8 @@ const CUSTOMER_SHEET_ID = "1Xm83TUkKrBrbiUgmHrl6iDh5441Yro3wZLUD7SpKrgc";
 const BUSINESS_GOAL = 50;
 const CUSTOMER_GOAL = 100;
 
+type SheetRow = Record<string, string>;
+
 type BizRow = {
   date: string;
   businessName: string;
@@ -16,46 +18,47 @@ type BizRow = {
   barriers: string;
 };
 
+type SheetResult = {
+  cols: string[];
+  rows: SheetRow[];
+};
+
 export default function SurveyDashboard() {
   const [bizData, setBizData]         = useState<BizRow[]>([]);
   const [custTotal, setCustTotal]     = useState(0);
   const [loading, setLoading]         = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
-  async function fetchSheet(sheetId: string, gid: string) {
+  async function fetchSheet(sheetId: string, gid: string): Promise<SheetResult> {
     try {
       const url  = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&gid=${gid}`;
       const res  = await fetch(url);
       const text = await res.text();
-      // ✅ No regex /s flag — use indexOf/lastIndexOf instead
       const start = text.indexOf("{");
       const end   = text.lastIndexOf("}");
       const json  = JSON.parse(text.slice(start, end + 1));
-      const cols  = (json.table?.cols || []).map((c: any) => c.label as string);
-      const rows  = (json.table?.rows || [])
-        .map((r: any) => {
-          const obj: Record<string, string> = {};
-          (r.c || []).forEach((cell: any, i: number) => {
+      const cols: string[] = (json.table?.cols || []).map((c: { label: string }) => c.label);
+      const rows: SheetRow[] = (json.table?.rows || [])
+        .map((r: { c: Array<{ v: unknown } | null> }) => {
+          const obj: SheetRow = {};
+          (r.c || []).forEach((cell, i) => {
             obj[cols[i]] = cell?.v != null ? String(cell.v) : "";
           });
           return obj;
         })
-        .filter((r: Record<string, string>) =>
-          Object.values(r).some((v) => v !== "")
-        );
+        .filter((r: SheetRow) => Object.values(r).some((v) => v !== ""));
       return { cols, rows };
     } catch {
-      return { cols: [] as string[], rows: [] as Record<string, string>[] };
+      return { cols: [], rows: [] };
     }
   }
 
   async function refresh() {
     setLoading(true);
 
-    // Business sheet
     const biz = await fetchSheet(BUSINESS_SHEET_ID, "728361962");
     setBizData(
-      biz.rows.map((r) => ({
+      biz.rows.map((r: SheetRow): BizRow => ({
         date:         r["Date of Interview"] || r[biz.cols[0]] || "",
         businessName: r["Business Name"] || "",
         address:      r["Business Address"] || "",
@@ -66,7 +69,6 @@ export default function SurveyDashboard() {
       }))
     );
 
-    // Customer sheet
     const cust = await fetchSheet(CUSTOMER_SHEET_ID, "1882785104");
     setCustTotal(cust.rows.length);
 
@@ -76,7 +78,6 @@ export default function SurveyDashboard() {
 
   useEffect(() => { refresh(); }, []);
 
-  // Computed stats
   const bizCompleted = bizData.filter((r) => {
     const s = r.status?.toLowerCase() || "";
     return s.includes("completed") && !s.includes("not") && !s.includes("partial");
@@ -96,9 +97,7 @@ export default function SurveyDashboard() {
       if (k) motivCounts[k] = (motivCounts[k] || 0) + 1;
     });
   });
-  const topMotivations = Object.entries(motivCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
+  const topMotivations = Object.entries(motivCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
   const barrierCounts: Record<string, number> = {};
   bizData.forEach((r) => {
@@ -107,9 +106,7 @@ export default function SurveyDashboard() {
       if (k) barrierCounts[k] = (barrierCounts[k] || 0) + 1;
     });
   });
-  const topBarriers = Object.entries(barrierCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3);
+  const topBarriers = Object.entries(barrierCounts).sort((a, b) => b[1] - a[1]).slice(0, 3);
 
   function ProgressBar({ pct, color }: { pct: number; color: string }) {
     return (
@@ -142,11 +139,8 @@ export default function SurveyDashboard() {
               Updated {lastRefresh.toLocaleTimeString()}
             </span>
           )}
-          <button
-            onClick={refresh}
-            disabled={loading}
-            style={{ background: "#16a34a", color: "#fff", border: "none", borderRadius: "8px", padding: "8px 18px", cursor: "pointer", fontSize: "13px", fontWeight: 700 }}
-          >
+          <button onClick={refresh} disabled={loading}
+            style={{ background: "#16a34a", color: "#fff", border: "none", borderRadius: "8px", padding: "8px 18px", cursor: "pointer", fontSize: "13px", fontWeight: 700 }}>
             {loading ? "..." : "↻ Refresh"}
           </button>
         </div>
@@ -165,9 +159,7 @@ export default function SurveyDashboard() {
           <div style={card}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
-                <p style={{ margin: "0 0 4px", fontSize: "12px", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.6px" }}>
-                  Business Interviews
-                </p>
+                <p style={{ margin: "0 0 4px", fontSize: "12px", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.6px" }}>Business Interviews</p>
                 <p style={{ margin: 0, fontSize: "44px", fontWeight: 900, color: "#16a34a", lineHeight: 1 }}>
                   {loading ? "—" : bizCompleted}
                   <span style={{ fontSize: "18px", color: "#9ca3af", fontWeight: 500 }}>/{BUSINESS_GOAL}</span>
@@ -180,21 +172,9 @@ export default function SurveyDashboard() {
               {bizPct}% of goal · <b>{BUSINESS_GOAL - bizCompleted}</b> remaining
             </p>
             <div style={{ marginTop: "10px", display: "flex", gap: "6px", flexWrap: "wrap" }}>
-              {bizPartial > 0 && (
-                <span style={{ background: "#fef9c3", color: "#854d0e", fontSize: "11px", fontWeight: 700, padding: "3px 8px", borderRadius: "6px" }}>
-                  {bizPartial} partial
-                </span>
-              )}
-              {bizAttempted > 0 && (
-                <span style={{ background: "#fef2f2", color: "#991b1b", fontSize: "11px", fontWeight: 700, padding: "3px 8px", borderRadius: "6px" }}>
-                  {bizAttempted} attempted
-                </span>
-              )}
-              {bizTotal > 0 && (
-                <span style={{ background: "#f0f9ff", color: "#0369a1", fontSize: "11px", fontWeight: 700, padding: "3px 8px", borderRadius: "6px" }}>
-                  {bizTotal} total contacts
-                </span>
-              )}
+              {bizPartial > 0 && <span style={{ background: "#fef9c3", color: "#854d0e", fontSize: "11px", fontWeight: 700, padding: "3px 8px", borderRadius: "6px" }}>{bizPartial} partial</span>}
+              {bizAttempted > 0 && <span style={{ background: "#fef2f2", color: "#991b1b", fontSize: "11px", fontWeight: 700, padding: "3px 8px", borderRadius: "6px" }}>{bizAttempted} attempted</span>}
+              {bizTotal > 0 && <span style={{ background: "#f0f9ff", color: "#0369a1", fontSize: "11px", fontWeight: 700, padding: "3px 8px", borderRadius: "6px" }}>{bizTotal} total contacts</span>}
             </div>
           </div>
 
@@ -202,9 +182,7 @@ export default function SurveyDashboard() {
           <div style={card}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
-                <p style={{ margin: "0 0 4px", fontSize: "12px", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.6px" }}>
-                  Customer Surveys
-                </p>
+                <p style={{ margin: "0 0 4px", fontSize: "12px", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.6px" }}>Customer Surveys</p>
                 <p style={{ margin: 0, fontSize: "44px", fontWeight: 900, color: "#2563eb", lineHeight: 1 }}>
                   {loading ? "—" : custTotal}
                   <span style={{ fontSize: "18px", color: "#9ca3af", fontWeight: 500 }}>/{CUSTOMER_GOAL}</span>
@@ -228,9 +206,7 @@ export default function SurveyDashboard() {
               { name: "Liam",  count: liam,  color: "#7c3aed", emoji: "💜" },
             ].map((rep) => (
               <div key={rep.name} style={{ background: "#f9fafb", borderRadius: "12px", padding: "18px 20px", border: "1px solid #e5e7eb" }}>
-                <p style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: 700, color: "#374151" }}>
-                  {rep.emoji} {rep.name}
-                </p>
+                <p style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: 700, color: "#374151" }}>{rep.emoji} {rep.name}</p>
                 <p style={{ margin: "0 0 10px", fontSize: "32px", fontWeight: 900, color: rep.color }}>
                   {loading ? "—" : rep.count}
                   <span style={{ fontSize: "13px", fontWeight: 500, color: "#9ca3af" }}> interviews</span>
@@ -285,7 +261,7 @@ export default function SurveyDashboard() {
           </div>
         )}
 
-        {/* Interview table */}
+        {/* Table */}
         <div style={{ ...card, marginBottom: "20px" }}>
           <h2 style={{ margin: "0 0 16px", fontSize: "16px", fontWeight: 800, color: "#0a2e1a" }}>
             🏪 Business Interviews ({loading ? "..." : bizTotal} total)
@@ -313,9 +289,9 @@ export default function SurveyDashboard() {
                   {[...bizData].reverse().map((row, i) => {
                     const s = row.status?.toLowerCase() || "";
                     const st =
-                      s.includes("not")       ? { bg: "#fef2f2", text: "#991b1b", label: "Not completed" } :
-                      s.includes("partial")   ? { bg: "#fef9c3", text: "#854d0e", label: "Partial" } :
-                      s.includes("completed") ? { bg: "#f0fdf4", text: "#166534", label: "Completed" } :
+                      s.includes("not")        ? { bg: "#fef2f2", text: "#991b1b", label: "Not completed" } :
+                      s.includes("partial")    ? { bg: "#fef9c3", text: "#854d0e", label: "Partial" } :
+                      s.includes("completed")  ? { bg: "#f0fdf4", text: "#166534", label: "Completed" } :
                       { bg: "#f9fafb", text: "#6b7280", label: row.status || "—" };
                     return (
                       <tr key={i} style={{ borderBottom: "1px solid #f9fafb" }}>
@@ -344,9 +320,9 @@ export default function SurveyDashboard() {
           </p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px", marginBottom: "20px" }}>
             {[
-              { label: "Businesses surveyed", value: bizCompleted,        icon: "🏪" },
-              { label: "Customers surveyed",  value: custTotal,           icon: "🙋" },
-              { label: "Total outreach",       value: bizTotal + custTotal, icon: "📊" },
+              { label: "Businesses surveyed", value: bizCompleted,          icon: "🏪" },
+              { label: "Customers surveyed",  value: custTotal,             icon: "🙋" },
+              { label: "Total outreach",       value: bizTotal + custTotal,  icon: "📊" },
             ].map((s) => (
               <div key={s.label} style={{ background: "rgba(255,255,255,0.07)", borderRadius: "12px", padding: "16px 18px" }}>
                 <p style={{ margin: "0 0 4px", fontSize: "11px", color: "#a3c9b0", textTransform: "uppercase", letterSpacing: "0.5px" }}>
