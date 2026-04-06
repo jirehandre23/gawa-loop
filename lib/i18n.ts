@@ -102,6 +102,19 @@ const en: T = {
   weight: "Weight (lbs)",
   phone_required: "Phone number is required",
   phone_placeholder: "e.g. +1 718 555 0123",
+  // LOGIN PAGE KEYS (were missing — added now)
+  login_title: "Business Portal",
+  login_subtitle: "Sign in to manage your food listings",
+  login_email: "Email Address",
+  login_password: "Password",
+  login_forgot: "Forgot password?",
+  login_btn: "Sign In",
+  login_loading: "Signing in...",
+  login_error: "Invalid email or password. Please try again.",
+  login_help: "Need help? Contact us at",
+  login_reset_sent: "Check Your Email",
+  login_reset_msg: "We sent a password reset link to",
+  login_back: "Back to Login",
 };
 
 const fr: T = {
@@ -183,6 +196,19 @@ const fr: T = {
   weight: "Poids (lbs)",
   phone_required: "Le numéro de téléphone est obligatoire",
   phone_placeholder: "ex. +33 6 12 34 56 78",
+  // LOGIN PAGE KEYS
+  login_title: "Portail Entreprise",
+  login_subtitle: "Connectez-vous pour gérer vos annonces",
+  login_email: "Adresse email",
+  login_password: "Mot de passe",
+  login_forgot: "Mot de passe oublié ?",
+  login_btn: "Se connecter",
+  login_loading: "Connexion...",
+  login_error: "Email ou mot de passe invalide. Veuillez réessayer.",
+  login_help: "Besoin d'aide ? Contactez-nous à",
+  login_reset_sent: "Vérifiez votre email",
+  login_reset_msg: "Nous avons envoyé un lien de réinitialisation à",
+  login_back: "Retour à la connexion",
 };
 
 const es: T = {
@@ -264,6 +290,19 @@ const es: T = {
   weight: "Peso (lbs)",
   phone_required: "El número de teléfono es obligatorio",
   phone_placeholder: "ej. +1 718 555 0123",
+  // LOGIN PAGE KEYS
+  login_title: "Portal de Empresas",
+  login_subtitle: "Inicia sesión para gestionar tus anuncios",
+  login_email: "Correo electrónico",
+  login_password: "Contraseña",
+  login_forgot: "¿Olvidaste tu contraseña?",
+  login_btn: "Iniciar sesión",
+  login_loading: "Iniciando sesión...",
+  login_error: "Email o contraseña incorrectos. Por favor intenta de nuevo.",
+  login_help: "¿Necesitas ayuda? Contáctanos en",
+  login_reset_sent: "Revisa tu email",
+  login_reset_msg: "Enviamos un enlace de restablecimiento a",
+  login_back: "Volver al inicio de sesión",
 };
 
 const pt: T = {
@@ -345,6 +384,19 @@ const pt: T = {
   weight: "Peso (lbs)",
   phone_required: "O número de telefone é obrigatório",
   phone_placeholder: "ex. +55 11 99999-0000",
+  // LOGIN PAGE KEYS
+  login_title: "Portal Empresarial",
+  login_subtitle: "Entre para gerenciar seus anúncios",
+  login_email: "Endereço de email",
+  login_password: "Senha",
+  login_forgot: "Esqueceu a senha?",
+  login_btn: "Entrar",
+  login_loading: "Entrando...",
+  login_error: "Email ou senha inválidos. Por favor tente novamente.",
+  login_help: "Precisa de ajuda? Fale conosco em",
+  login_reset_sent: "Verifique seu email",
+  login_reset_msg: "Enviamos um link de redefinição para",
+  login_back: "Voltar ao login",
 };
 
 const ar: T = {
@@ -426,6 +478,19 @@ const ar: T = {
   weight: "الوزن (lbs)",
   phone_required: "رقم الهاتف مطلوب",
   phone_placeholder: "مثال: +1 718 555 0123",
+  // LOGIN PAGE KEYS
+  login_title: "بوابة الأعمال",
+  login_subtitle: "سجل الدخول لإدارة إعلاناتك",
+  login_email: "البريد الإلكتروني",
+  login_password: "كلمة المرور",
+  login_forgot: "نسيت كلمة المرور؟",
+  login_btn: "تسجيل الدخول",
+  login_loading: "جارٍ تسجيل الدخول...",
+  login_error: "البريد الإلكتروني أو كلمة المرور غير صحيحة. يرجى المحاولة مرة أخرى.",
+  login_help: "تحتاج مساعدة؟ تواصل معنا على",
+  login_reset_sent: "تحقق من بريدك الإلكتروني",
+  login_reset_msg: "أرسلنا رابط إعادة تعيين إلى",
+  login_back: "العودة لتسجيل الدخول",
 };
 
 export const t: Record<Locale, T> = { en, fr, es, pt, ar };
