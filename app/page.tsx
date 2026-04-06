@@ -7,13 +7,22 @@ import { detectLocale, t, Locale, setLocale as saveLocale, FLAG, LANG_NAME } fro
 const LOCALES: Locale[] = ["en", "fr", "es", "pt", "ar"];
 
 export default function HomePage() {
-  const [locale, setLocaleState] = useState<Locale>("en");
-  const [langOpen, setLangOpen]  = useState(false);
-  const [openFaq, setOpenFaq]    = useState<number | null>(null);
+  const [locale, setLocaleState]   = useState<Locale>("en");
+  const [langOpen, setLangOpen]    = useState(false);
+  const [openFaq, setOpenFaq]      = useState<number | null>(null);
+  const [liveStats, setLiveStats]  = useState({ total_pickups: 0, co2_saved_kg: 0 });
+  const [statsLoaded, setStatsLoaded] = useState(false);
 
   useEffect(() => { setLocaleState(detectLocale()); }, []);
 
-  const T = t[locale];
+  useEffect(() => {
+    fetch("/api/platform-stats")
+      .then(r => r.json())
+      .then(d => { setLiveStats(d); setStatsLoaded(true); })
+      .catch(() => {});
+  }, []);
+
+  const T    = t[locale];
   const isRTL = locale === "ar";
 
   function switchLocale(loc: Locale) {
@@ -29,19 +38,19 @@ export default function HomePage() {
     },
     {
       q: locale==="fr"?"Comment réserver de la nourriture ?":locale==="es"?"¿Cómo reservo comida?":locale==="pt"?"Como reservar comida?":locale==="ar"?"كيف أحجز طعاماً؟":"How do I claim food?",
-      a: locale==="fr"?"Allez sur Browse, choisissez un aliment disponible, entrez votre prénom et email, et réservez en quelques secondes.":locale==="es"?"Ve a Browse, elige un alimento, ingresa tu nombre y correo, y reserva en segundos.":locale==="pt"?"Vá para Browse, escolha um alimento, insira seu nome e email, e reserve em segundos.":locale==="ar"?"اذهب إلى Browse، اختر طعاماً متاحاً، أدخل اسمك وبريدك الإلكتروني، واحجز في ثوانٍ.":"Go to Browse, pick an available item, enter your name and email, and reserve in seconds. You'll get a confirmation code by email."
+      a: locale==="fr"?"Allez sur Browse, choisissez un aliment, entrez votre prénom et email, réservez en quelques secondes.":locale==="es"?"Ve a Browse, elige un alimento, ingresa tu nombre y correo, reserva en segundos.":locale==="pt"?"Vá para Browse, escolha um alimento, insira seu nome e email, reserve em segundos.":locale==="ar"?"اذهب إلى Browse، اختر طعاماً، أدخل اسمك وبريدك، واحجز في ثوانٍ.":"Create a free account, go to Browse, pick an available item, and reserve in seconds. You'll get a confirmation code by email."
     },
     {
       q: locale==="fr"?"Que se passe-t-il si je ne peux pas récupérer la nourriture ?":locale==="es"?"¿Qué pasa si no puedo recoger la comida?":locale==="pt"?"O que acontece se não puder buscar a comida?":locale==="ar"?"ماذا يحدث إذا لم أستطع استلام الطعام؟":"What if I can't pick up the food?",
-      a: locale==="fr"?"Annulez via le lien dans votre email de confirmation. Le listing sera libéré pour quelqu'un d'autre.":locale==="es"?"Cancela usando el enlace en tu correo. El listado se liberará para otra persona.":locale==="pt"?"Cancele usando o link no seu email. O anúncio será liberado para outra pessoa.":locale==="ar"?"الغِ حجزك باستخدام الرابط في بريد التأكيد. سيُتاح الإعلان لشخص آخر.":"No problem! Cancel using the link in your confirmation email. The listing is instantly released for someone else."
+      a: locale==="fr"?"Annulez via le lien dans votre email. Le listing sera libéré pour quelqu'un d'autre.":locale==="es"?"Cancela usando el enlace en tu correo.":locale==="pt"?"Cancele usando o link no seu email.":locale==="ar"?"الغِ حجزك باستخدام الرابط في بريد التأكيد.":"No problem! Cancel using the link in your confirmation email. The listing is instantly released for someone else."
     },
     {
       q: locale==="fr"?"Comment inscrire mon restaurant ?":locale==="es"?"¿Cómo registro mi restaurante?":locale==="pt"?"Como cadastro meu restaurante?":locale==="ar"?"كيف أسجل مطعمي؟":"How do I register my restaurant?",
-      a: locale==="fr"?"Cliquez sur Pour les entreprises et inscrivez-vous en 2 minutes.":locale==="es"?"Haz clic en Para negocios y regístrate en 2 minutos.":locale==="pt"?"Clique em Para empresas e cadastre-se em 2 minutos.":locale==="ar"?"انقر على للشركات وسجّل في دقيقتين.":"Click 'For Businesses' and sign up in 2 minutes. Start posting food immediately."
+      a: locale==="fr"?"Cliquez sur Pour les entreprises et inscrivez-vous en 2 minutes.":locale==="es"?"Haz clic en Para negocios y regístrate en 2 minutos.":locale==="pt"?"Clique em Para empresas e cadastre-se em 2 minutos.":locale==="ar"?"انقر على للشركات وسجّل في دقيقتين.":"Click 'For Businesses' and sign up in 2 minutes. Your account is manually reviewed within 24–48 hours."
     },
     {
       q: locale==="fr"?"La nourriture est-elle sûre ?":locale==="es"?"¿La comida es segura?":locale==="pt"?"A comida é segura?":locale==="ar"?"هل الطعام آمن؟":"Is the food safe?",
-      a: locale==="fr"?"Toute la nourriture provient de vrais restaurants et commerces vérifiés.":locale==="es"?"Toda la comida proviene de restaurantes verificados.":locale==="pt"?"Toda a comida vem de estabelecimentos verificados.":locale==="ar"?"جميع الطعام مصدره مطاعم موثوقة.":"All food comes from verified real restaurants, bakeries, and stores near you."
+      a: locale==="fr"?"Toute la nourriture provient de vrais restaurants et commerces vérifiés.":locale==="es"?"Toda la comida proviene de restaurantes verificados.":locale==="pt"?"Toda a comida vem de estabelecimentos verificados.":locale==="ar"?"جميع الطعام مصدره مطاعم موثوقة.":"All food comes from verified real restaurants, bakeries, and stores. Every listing includes allergen information."
     },
   ];
 
@@ -95,68 +104,84 @@ export default function HomePage() {
           </div>
         </nav>
 
-        {/* HERO */}
-        <section className="relative overflow-hidden bg-gradient-to-br from-green-50 via-white to-emerald-50">
-          <div className="mx-auto max-w-6xl px-6 py-20 md:py-28">
-            <div className="grid items-center gap-16 md:grid-cols-2">
-              <div>
-                <div className="mb-6 inline-flex items-center gap-2 rounded-full bg-green-100 px-4 py-2 text-sm font-semibold text-green-700">
-                  <span className="h-2 w-2 rounded-full bg-green-500 inline-block" style={{ animation:"pulse 2s infinite" }}></span>
-                  {locale==="ar"?"طعام متاح الآن في منطقتك":locale==="fr"?"Nourriture disponible maintenant":locale==="es"?"Comida disponible ahora":locale==="pt"?"Comida disponível agora":"Live food available now in your area"}
-                </div>
-                <h1 className="mb-6 text-5xl font-extrabold leading-tight tracking-tight text-slate-900 md:text-6xl">
-                  {locale==="ar"?<><span>طعام مجاني،</span><br/><span className="text-green-500">لا هدر.</span></>:
-                   locale==="fr"?<><span>Nourriture gratuite,</span><br/><span className="text-green-500">zéro gaspillage.</span></>:
-                   locale==="es"?<><span>Comida gratis,</span><br/><span className="text-green-500">cero desperdicio.</span></>:
-                   locale==="pt"?<><span>Comida grátis,</span><br/><span className="text-green-500">zero desperdício.</span></>:
-                   <><span>Free food,</span><br/><span className="text-green-500">zero waste.</span></>}
-                </h1>
-                <p className="mb-8 text-xl leading-relaxed text-slate-600">{T.hero_subtitle}</p>
-                <div className="flex flex-wrap gap-4">
-                  <Link href="/browse" className="rounded-xl bg-green-500 px-8 py-4 text-base font-bold text-white shadow-lg shadow-green-200 hover:bg-green-600 transition">{T.hero_cta}</Link>
-                  <Link href="/business/signup" className="rounded-xl border-2 border-slate-200 bg-white px-8 py-4 text-base font-bold text-slate-700 hover:border-green-300 hover:text-green-700 transition">{T.forBusiness}</Link>
-                </div>
-                <div className="mt-10 flex flex-wrap items-center gap-6 text-sm text-slate-500">
-                  <div><span className="font-bold text-slate-900">100%</span> {locale==="ar"?"مجاني":locale==="fr"?"Gratuit":locale==="es"?"Gratis":locale==="pt"?"Grátis":"Free"}</div>
-                  <div className="h-4 w-px bg-slate-200 hidden sm:block"></div>
-                  <div><span className="font-bold text-slate-900">{locale==="ar"?"فوري":"Real-time"}</span> {locale==="ar"?"إعلانات":locale==="fr"?"annonces":locale==="es"?"anuncios":locale==="pt"?"anúncios":"listings"}</div>
-                  <div className="h-4 w-px bg-slate-200 hidden sm:block"></div>
-                  <div><span className="font-bold text-slate-900">NYC</span> {locale==="ar"?"محلي":locale==="fr"?"local":locale==="es"?"local":locale==="pt"?"local":"based"}</div>
-                </div>
-              </div>
-
-              {/* Floating food cards */}
-              <div className="flex justify-center">
-                <div style={{ position:"relative", width:"320px", height:"320px" }}>
-                  <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", borderRadius:"24px", background:"#fff", boxShadow:"0 25px 50px rgba(0,0,0,0.12)", border:"1px solid #f0fdf4", zIndex:10 }}>
-                    <Image src="/gawa-logo-green.png" width={120} height={120} alt="GAWA Loop" style={{ objectFit:"contain" }} />
-                    <div style={{ marginTop:"16px", display:"flex", alignItems:"center", gap:"8px", background:"#f0fdf4", borderRadius:"999px", padding:"8px 16px" }}>
-                      <span style={{ width:"8px", height:"8px", borderRadius:"50%", background:"#16a34a", display:"inline-block", animation:"pulse 2s infinite" }}></span>
-                      <span style={{ fontSize:"13px", fontWeight:600, color:"#16a34a" }}>
-                        {locale==="ar"?"طعام متاح الآن":locale==="fr"?"Nourriture dispo":locale==="es"?"Comida disponible":locale==="pt"?"Comida disponível":"Food available now"}
-                      </span>
-                    </div>
-                  </div>
-                  {[
-                    { emoji:"🍕", top:"-16px",    left:"-16px",  delay:"0s" },
-                    { emoji:"🥗", top:"-16px",    right:"-16px", delay:"0.7s" },
-                    { emoji:"🥐", bottom:"-16px", left:"-16px",  delay:"1.4s" },
-                    { emoji:"🍱", bottom:"-16px", right:"-16px", delay:"2.1s" },
-                  ].map((card, i) => (
-                    <div key={i} style={{ position:"absolute", ...(card.top?{top:card.top}:{}), ...(card.bottom?{bottom:card.bottom}:{}), ...(card.left?{left:card.left}:{}), ...(card.right?{right:card.right}:{}), background:"#fff", borderRadius:"16px", boxShadow:"0 8px 24px rgba(0,0,0,0.1)", padding:"12px 14px", zIndex:20, animation:`floatCard 3s ease-in-out ${card.delay} infinite alternate` }}>
-                      <span style={{ fontSize:"28px" }}>{card.emoji}</span>
-                      <div style={{ fontSize:"10px", fontWeight:700, color:"#16a34a", textAlign:"center", marginTop:"4px" }}>FREE</div>
-                    </div>
-                  ))}
-                  <div style={{ position:"absolute", inset:"-32px", borderRadius:"50%", background:"linear-gradient(135deg, #bbf7d0, #d1fae5, #a7f3d0)", filter:"blur(40px)", opacity:0.5, zIndex:0 }}></div>
-                </div>
-              </div>
+        {/* VIDEO HERO */}
+        <section style={{ position:"relative", width:"100%", height:"480px", overflow:"hidden" }}>
+          <video autoPlay muted loop playsInline
+            style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }}>
+            <source src="/hero-video.mp4" type="video/mp4"/>
+          </video>
+          <div style={{ position:"absolute", inset:0, background:"linear-gradient(to bottom, rgba(10,46,26,0.55), rgba(10,46,26,0.82))", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", textAlign:"center", padding:"32px" }}>
+            <div style={{ marginBottom:"16px", display:"inline-flex", alignItems:"center", gap:"8px", background:"rgba(74,222,128,0.15)", border:"1px solid rgba(74,222,128,0.4)", borderRadius:"999px", padding:"7px 16px" }}>
+              <span style={{ width:"8px", height:"8px", borderRadius:"50%", background:"#4ade80", display:"inline-block", animation:"pulse 2s infinite" }}></span>
+              <span style={{ fontSize:"13px", fontWeight:700, color:"#4ade80" }}>
+                {locale==="ar"?"طعام متاح الآن":locale==="fr"?"Nourriture dispo maintenant":locale==="es"?"Comida disponible ahora":locale==="pt"?"Comida disponível agora":"Live food available now"}
+              </span>
+            </div>
+            <h1 style={{ margin:"0 0 16px", fontSize:"clamp(36px,6vw,64px)", fontWeight:900, color:"#fff", lineHeight:1.1 }}>
+              {locale==="ar"?"طعام مجاني،":locale==="fr"?"Nourriture gratuite,":locale==="es"?"Comida gratis,":locale==="pt"?"Comida grátis,":"Free food,"}<br/>
+              <span style={{ color:"#4ade80" }}>
+                {locale==="ar"?"لا هدر.":locale==="fr"?"zéro gaspillage.":locale==="es"?"cero desperdicio.":locale==="pt"?"zero desperdício.":"zero waste."}
+              </span>
+            </h1>
+            <p style={{ margin:"0 0 32px", fontSize:"18px", color:"rgba(255,255,255,0.9)", maxWidth:"560px", lineHeight:1.6 }}>
+              {T.hero_subtitle}
+            </p>
+            <div style={{ display:"flex", gap:"14px", flexWrap:"wrap", justifyContent:"center" }}>
+              <Link href="/browse"
+                style={{ background:"#16a34a", color:"#fff", fontWeight:700, fontSize:"16px", padding:"14px 36px", borderRadius:"12px", textDecoration:"none", boxShadow:"0 4px 20px rgba(22,163,74,0.5)" }}>
+                {T.hero_cta}
+              </Link>
+              <Link href="/business/signup"
+                style={{ background:"rgba(255,255,255,0.15)", color:"#fff", fontWeight:700, fontSize:"16px", padding:"14px 36px", borderRadius:"12px", textDecoration:"none", border:"2px solid rgba(255,255,255,0.4)" }}>
+                {T.forBusiness}
+              </Link>
             </div>
           </div>
-          <style>{`
-            @keyframes floatCard { from { transform: translateY(0) rotate(-3deg); } to { transform: translateY(-14px) rotate(3deg); } }
-            @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
-          `}</style>
+          <style>{`@keyframes pulse { 0%,100%{opacity:1;}50%{opacity:0.4;} }`}</style>
+        </section>
+
+        {/* TRUST BAR */}
+        <section style={{ borderBottom:"1px solid #e5e7eb", background:"#fff" }}>
+          <div style={{ maxWidth:"900px", margin:"0 auto", padding:"18px 24px", display:"flex", flexWrap:"wrap", justifyContent:"center", gap:"32px" }}>
+            {[
+              { val:"100%", label: locale==="ar"?"مجاني":locale==="fr"?"Gratuit":locale==="es"?"Gratis":locale==="pt"?"Grátis":"Free" },
+              { val:locale==="ar"?"فوري":"Real-time", label: locale==="ar"?"إعلانات":locale==="fr"?"annonces":locale==="es"?"anuncios":locale==="pt"?"anúncios":"listings" },
+              { val:"NYC", label: locale==="ar"?"محلي":locale==="fr"?"local":locale==="es"?"local":locale==="pt"?"local":"based" },
+              { val:"5", label: locale==="ar"?"لغات":locale==="fr"?"langues":locale==="es"?"idiomas":locale==="pt"?"idiomas":"languages" },
+            ].map((item, i) => (
+              <div key={i} style={{ textAlign:"center" }}>
+                <span style={{ fontWeight:800, color:"#0a2e1a", fontSize:"15px" }}>{item.val} </span>
+                <span style={{ color:"#6b7280", fontSize:"14px" }}>{item.label}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* PHOTO GRID */}
+        <section style={{ padding:0 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gridTemplateRows:"220px 220px", gap:"3px" }}>
+            <div style={{ gridColumn:"1/3", overflow:"hidden" }}>
+              <img src="/hero-community.jpg" alt="Community sharing food" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/>
+            </div>
+            <div style={{ overflow:"hidden" }}>
+              <img src="/hero-kitchen.jpg" alt="Restaurant kitchen" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/>
+            </div>
+            <div style={{ overflow:"hidden" }}>
+              <img src="/hero-chefs.jpg" alt="Chefs preparing food" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/>
+            </div>
+            <div style={{ overflow:"hidden" }}>
+              <img src="/hero-restaurant.jpg" alt="Restaurant" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/>
+            </div>
+            <div style={{ overflow:"hidden" }}>
+              <img src="/hero-buffet.jpg" alt="Food buffet" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/>
+            </div>
+            <div style={{ overflow:"hidden" }}>
+              <img src="/hero-phone.jpg" alt="Using the app on phone" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/>
+            </div>
+            <div style={{ overflow:"hidden" }}>
+              <img src="/hero-market.jpg" alt="Fresh produce market" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/>
+            </div>
+          </div>
         </section>
 
         {/* HOW IT WORKS */}
@@ -170,12 +195,11 @@ export default function HomePage() {
           </p>
           <div className="grid gap-8 md:grid-cols-3">
             {[
-              { num:"1", color:"#16a34a", title:T.step1_title, desc:T.step1_desc, icon:"📱", badge:"60s" },
-              { num:"2", color:"#2563eb", title:T.step2_title, desc:T.step2_desc, icon:"✅", badge:locale==="ar"?"فوري":"Instant" },
-              { num:"3", color:"#ea580c", title:T.step3_title, desc:T.step3_desc, icon:"📍", badge:locale==="ar"?"سهل":"Easy" },
+              { color:"#16a34a", title:T.step1_title, desc:T.step1_desc, icon:"📱", badge:"60s" },
+              { color:"#2563eb", title:T.step2_title, desc:T.step2_desc, icon:"✅", badge:locale==="ar"?"فوري":"Instant" },
+              { color:"#ea580c", title:T.step3_title, desc:T.step3_desc, icon:"📍", badge:locale==="ar"?"سهل":"Easy" },
             ].map((s, i) => (
-              <div key={s.num}
-                style={{ background:"#fff", border:"1px solid #f1f5f9", borderRadius:"20px", padding:"32px", boxShadow:"0 2px 8px rgba(0,0,0,0.04)", cursor:"default", transition:"all 0.3s", position:"relative" }}
+              <div key={i} style={{ background:"#fff", border:"1px solid #f1f5f9", borderRadius:"20px", padding:"32px", boxShadow:"0 2px 8px rgba(0,0,0,0.04)", transition:"all 0.3s", position:"relative", cursor:"default" }}
                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform="translateY(-4px)"; (e.currentTarget as HTMLElement).style.boxShadow="0 12px 32px rgba(0,0,0,0.1)"; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform="translateY(0)"; (e.currentTarget as HTMLElement).style.boxShadow="0 2px 8px rgba(0,0,0,0.04)"; }}>
                 <span style={{ position:"absolute", top:"16px", right:"16px", fontSize:"11px", fontWeight:700, color:"#9ca3af", background:"#f9fafb", padding:"4px 10px", borderRadius:"999px" }}>{s.badge}</span>
@@ -187,6 +211,39 @@ export default function HomePage() {
           </div>
           <div className="mt-12 text-center">
             <Link href="/browse" className="inline-block rounded-xl bg-green-500 px-8 py-4 font-bold text-white shadow-lg shadow-green-100 hover:bg-green-600 transition">{T.hero_cta}</Link>
+          </div>
+        </section>
+
+        {/* LIVE IMPACT COUNTER */}
+        <section style={{ background:"#0a2e1a", padding:"72px 24px" }}>
+          <div style={{ maxWidth:"820px", margin:"0 auto", textAlign:"center" }}>
+            <p style={{ margin:"0 0 8px", fontSize:"13px", fontWeight:700, color:"#4ade80", textTransform:"uppercase", letterSpacing:"0.8px" }}>
+              🌍 {locale==="ar"?"تأثير حقيقي":locale==="fr"?"Impact Réel":locale==="es"?"Impacto Real":locale==="pt"?"Impacto Real":"Real Impact, Right Now"}
+            </p>
+            <h2 style={{ margin:"0 0 12px", fontSize:"36px", fontWeight:800, color:"#fff" }}>
+              {locale==="ar"?"مجتمعنا في العمل":locale==="fr"?"Notre Communauté en Action":locale==="es"?"Nuestra Comunidad en Acción":locale==="pt"?"Nossa Comunidade em Ação":"Our Community in Action"}
+            </h2>
+            <p style={{ margin:"0 0 48px", fontSize:"16px", color:"#a3c9b0" }}>
+              {locale==="ar"?"كل وجبة محجوزة هي طعام نُقذ من الهدر.":locale==="fr"?"Chaque repas réclamé est de la nourriture sauvée.":locale==="es"?"Cada comida reclamada es alimento rescatado.":locale==="pt"?"Cada refeição salva vai direto para a comunidade.":"Every meal claimed is food saved from the landfill."}
+            </p>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"20px" }}>
+              <div style={{ background:"rgba(255,255,255,0.08)", borderRadius:"20px", padding:"36px 24px" }}>
+                <p style={{ margin:"0 0 8px", fontSize:"56px", fontWeight:900, color:"#4ade80", lineHeight:1 }}>
+                  {statsLoaded ? liveStats.total_pickups.toLocaleString() : "—"}
+                </p>
+                <p style={{ margin:0, fontSize:"16px", color:"#a3c9b0", fontWeight:600 }}>
+                  🤲 {locale==="ar"?"وجبات مجانية محجوزة":locale==="fr"?"Repas offerts":locale==="es"?"Comidas reclamadas":locale==="pt"?"Refeições resgatadas":"Free meals claimed"}
+                </p>
+              </div>
+              <div style={{ background:"rgba(255,255,255,0.08)", borderRadius:"20px", padding:"36px 24px" }}>
+                <p style={{ margin:"0 0 8px", fontSize:"56px", fontWeight:900, color:"#4ade80", lineHeight:1 }}>
+                  {statsLoaded ? liveStats.co2_saved_kg.toLocaleString() : "—"}
+                </p>
+                <p style={{ margin:0, fontSize:"16px", color:"#a3c9b0", fontWeight:600 }}>
+                  🌱 {locale==="ar"?"كغ CO₂ تم توفيرها":locale==="fr"?"kg de CO₂ économisés":locale==="es"?"kg CO₂ ahorrados":locale==="pt"?"kg CO₂ salvos":"kg CO₂ saved"}
+                </p>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -247,8 +304,7 @@ export default function HomePage() {
             ].map((card, i) => {
               const [title, desc] = (card as any)[locale] || card.en;
               return (
-                <div key={i}
-                  style={{ background:"#fff", border:"1px solid #f1f5f9", borderRadius:"20px", padding:"32px", cursor:"default", transition:"all 0.3s" }}
+                <div key={i} style={{ background:"#fff", border:"1px solid #f1f5f9", borderRadius:"20px", padding:"32px", cursor:"default", transition:"all 0.3s" }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform="translateY(-4px)"; (e.currentTarget as HTMLElement).style.boxShadow="0 12px 32px rgba(0,0,0,0.08)"; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform="translateY(0)"; (e.currentTarget as HTMLElement).style.boxShadow="none"; }}>
                   <div style={{ fontSize:"32px", marginBottom:"14px" }}>{card.icon}</div>
@@ -267,7 +323,7 @@ export default function HomePage() {
               {locale==="ar"?"الأسئلة الشائعة":locale==="fr"?"Questions fréquentes":locale==="es"?"Preguntas frecuentes":locale==="pt"?"Perguntas frequentes":"Frequently Asked Questions"}
             </h2>
             <p style={{ margin:"0 0 48px", textAlign:"center", color:"#64748b", fontSize:"15px" }}>
-              {locale==="ar"?"كل ما تحتاج معرفته عن GAWA Loop":locale==="fr"?"Tout ce que vous devez savoir sur GAWA Loop":locale==="es"?"Todo lo que necesitas saber sobre GAWA Loop":locale==="pt"?"Tudo o que você precisa saber":"Everything you need to know about GAWA Loop"}
+              {locale==="ar"?"كل ما تحتاج معرفته":locale==="fr"?"Tout ce que vous devez savoir":locale==="es"?"Todo lo que necesitas saber":locale==="pt"?"Tudo o que você precisa saber":"Everything you need to know about GAWA Loop"}
             </p>
             <div style={{ display:"flex", flexDirection:"column", gap:"10px" }}>
               {faqs.map((faq, i) => (
@@ -321,7 +377,7 @@ export default function HomePage() {
                 <Link href="/browse" className="hover:text-green-600 transition">{T.browse}</Link>
                 <Link href="/business/signup" className="hover:text-green-600 transition">{T.forBusiness}</Link>
                 <Link href="/business/login" className="hover:text-green-600 transition">{T.login}</Link>
-                <Link href="/support" className="hover:text-green-600 transition">{T.support_contact}</Link>
+                <Link href="/customer/signup" className="hover:text-green-600 transition">Join as Customer</Link>
               </div>
               <div className="text-sm text-slate-400">© 2026 GAWA Loop · Free food. Less waste. Real impact.</div>
             </div>
