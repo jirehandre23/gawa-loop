@@ -6,10 +6,11 @@ export default function BusinessSignup() {
   const [locale, setLocale] = useState<Locale>("en");
   const [step, setStep]     = useState<"terms" | "form">("terms");
   const [form, setForm]     = useState({
-    name: "", email: "", phone: "", address: "", type: "Restaurant",
-    account_type: "restaurant", password: "", confirmPassword: "", description: "",
+    name: "", email: "", phone: "", address: "",
+    type: "Restaurant", account_type: "restaurant",
+    password: "", confirmPassword: "", description: "",
   });
-  const [accepted, setAccepted]     = useState({
+  const [accepted, setAccepted] = useState({
     terms: false, food_safety: false, accuracy: false, community: false, compliance: false,
   });
   const [submitting, setSubmitting] = useState(false);
@@ -17,9 +18,8 @@ export default function BusinessSignup() {
   const [error, setError]           = useState("");
 
   useEffect(() => { setLocale(detectLocale()); }, []);
-  const T    = t[locale];
+  const T     = t[locale];
   const isRTL = locale === "ar";
-
   const allAccepted = Object.values(accepted).every(Boolean);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -32,11 +32,14 @@ export default function BusinessSignup() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: form.name, email: form.email, phone: form.phone,
-        address: form.address, type: form.type,
+        name:         form.name,
+        email:        form.email,
+        phone:        form.phone,
+        address:      form.address,
+        type:         form.type,
         account_type: form.account_type,
-        password: form.password,
-        description: form.description,
+        password:     form.password,
+        description:  form.description,
       }),
     });
     const data = await res.json();
@@ -51,14 +54,15 @@ export default function BusinessSignup() {
     background: "#fff", outline: "none", boxSizing: "border-box",
   };
   const lbl: React.CSSProperties = {
-    display: "block", fontSize: "13px", fontWeight: 600,
-    color: "#374151", marginBottom: "6px",
+    display: "block", fontSize: "13px", fontWeight: 600, color: "#374151", marginBottom: "6px",
   };
-  const checkRow: React.CSSProperties = {
+  const checkRow = (checked: boolean): React.CSSProperties => ({
     display: "flex", gap: "12px", alignItems: "flex-start",
-    padding: "14px 16px", borderRadius: "10px", background: "#f9fafb",
-    border: "1px solid #e5e7eb", cursor: "pointer", marginBottom: "10px",
-  };
+    padding: "14px 16px", borderRadius: "10px",
+    background: checked ? "#f0fdf4" : "#f9fafb",
+    border: `1px solid ${checked ? "#bbf7d0" : "#e5e7eb"}`,
+    cursor: "pointer", marginBottom: "10px", transition: "all 0.15s",
+  });
 
   if (done) return (
     <div dir={isRTL ? "rtl" : "ltr"}
@@ -82,7 +86,6 @@ export default function BusinessSignup() {
       style={{ minHeight: "100vh", background: "#f3f4f6", padding: "32px 16px", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
       <div style={{ maxWidth: "560px", margin: "0 auto" }}>
 
-        {/* Header */}
         <div style={{ textAlign: "center", marginBottom: "28px" }}>
           <a href="/"><img src="/gawa-logo-green.png" alt="GAWA Loop" style={{ width: "52px", height: "52px", objectFit: "contain", marginBottom: "12px" }}/></a>
           <h1 style={{ margin: "0 0 4px", fontSize: "26px", fontWeight: 800, color: "#0a2e1a" }}>
@@ -93,19 +96,14 @@ export default function BusinessSignup() {
           </p>
         </div>
 
-        {/* Progress steps */}
+        {/* Steps */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", marginBottom: "24px" }}>
           {["Terms", "Account Info"].map((label, i) => (
             <div key={label} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <div style={{
-                width: "28px", height: "28px", borderRadius: "50%", fontSize: "13px", fontWeight: 700,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                background: (step === "form" && i === 0) || (i === 0 && step === "terms") || (i === 1 && step === "form") ? "#16a34a" : "#e5e7eb",
-                color: (step === "form" && i === 0) || (i === 0 && step === "terms") || (i === 1 && step === "form") ? "#fff" : "#9ca3af",
-              }}>
+              <div style={{ width: "28px", height: "28px", borderRadius: "50%", fontSize: "13px", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", background: (step === "form" && i === 0) || (i === 0 && step === "terms") || (i === 1 && step === "form") ? "#16a34a" : "#e5e7eb", color: (step === "form" && i === 0) || (i === 0 && step === "terms") || (i === 1 && step === "form") ? "#fff" : "#9ca3af" }}>
                 {step === "form" && i === 0 ? "✓" : i + 1}
               </div>
-              <span style={{ fontSize: "13px", fontWeight: 600, color: (i === 0 && step === "terms") || (i === 1 && step === "form") ? "#0a2e1a" : "#9ca3af" }}>{label}</span>
+              <span style={{ fontSize: "13px", fontWeight: 600, color: "#6b7280" }}>{label}</span>
               {i === 0 && <div style={{ width: "32px", height: "2px", background: step === "form" ? "#16a34a" : "#e5e7eb", borderRadius: "2px" }}/>}
             </div>
           ))}
@@ -113,92 +111,42 @@ export default function BusinessSignup() {
 
         <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "32px", boxShadow: "0 4px 20px rgba(0,0,0,0.06)" }}>
 
-          {/* ─── STEP 1: TERMS ─── */}
+          {/* STEP 1: TERMS */}
           {step === "terms" && (
             <div>
-              <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "12px", padding: "16px 20px", marginBottom: "24px" }}>
+              <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "12px", padding: "14px 18px", marginBottom: "24px" }}>
                 <p style={{ margin: 0, fontSize: "14px", color: "#166534", lineHeight: 1.6 }}>
-                  <b>GAWA Loop</b> is a free platform that connects businesses and NGOs with community members to share surplus food before it goes to waste.
-                  By creating an account, you agree to the following terms.
+                  <b>GAWA Loop</b> is a free platform connecting businesses and NGOs with community members to share surplus food before it goes to waste. By creating an account, you agree to the following terms.
                 </p>
               </div>
 
-              {/* Authorization checkboxes */}
-              <label style={checkRow} onClick={() => setAccepted(a => ({ ...a, terms: !a.terms }))}>
-                <div style={{ width: "20px", height: "20px", borderRadius: "5px", border: `2px solid ${accepted.terms ? "#16a34a" : "#d1d5db"}`, background: accepted.terms ? "#16a34a" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: "1px" }}>
-                  {accepted.terms && <span style={{ color: "#fff", fontSize: "13px", fontWeight: 700 }}>✓</span>}
-                </div>
-                <div>
-                  <p style={{ margin: "0 0 2px", fontSize: "13px", fontWeight: 700, color: "#0a2e1a" }}>I agree to the Platform Terms of Use *</p>
-                  <p style={{ margin: 0, fontSize: "12px", color: "#6b7280", lineHeight: 1.5 }}>
-                    I understand that GAWA Loop is a free food-sharing platform. I will use it responsibly and only for its intended purpose of sharing surplus food with community members.
-                  </p>
-                </div>
-              </label>
-
-              <label style={checkRow} onClick={() => setAccepted(a => ({ ...a, food_safety: !a.food_safety }))}>
-                <div style={{ width: "20px", height: "20px", borderRadius: "5px", border: `2px solid ${accepted.food_safety ? "#16a34a" : "#d1d5db"}`, background: accepted.food_safety ? "#16a34a" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: "1px" }}>
-                  {accepted.food_safety && <span style={{ color: "#fff", fontSize: "13px", fontWeight: 700 }}>✓</span>}
-                </div>
-                <div>
-                  <p style={{ margin: "0 0 2px", fontSize: "13px", fontWeight: 700, color: "#0a2e1a" }}>I commit to food safety standards *</p>
-                  <p style={{ margin: 0, fontSize: "12px", color: "#6b7280", lineHeight: 1.5 }}>
-                    I confirm that all food listed on GAWA Loop will be safe for consumption, properly stored, and clearly described. I will not post expired, contaminated, or unsafe food items.
-                  </p>
-                </div>
-              </label>
-
-              <label style={checkRow} onClick={() => setAccepted(a => ({ ...a, accuracy: !a.accuracy }))}>
-                <div style={{ width: "20px", height: "20px", borderRadius: "5px", border: `2px solid ${accepted.accuracy ? "#16a34a" : "#d1d5db"}`, background: accepted.accuracy ? "#16a34a" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: "1px" }}>
-                  {accepted.accuracy && <span style={{ color: "#fff", fontSize: "13px", fontWeight: 700 }}>✓</span>}
-                </div>
-                <div>
-                  <p style={{ margin: "0 0 2px", fontSize: "13px", fontWeight: 700, color: "#0a2e1a" }}>I will provide accurate information *</p>
-                  <p style={{ margin: 0, fontSize: "12px", color: "#6b7280", lineHeight: 1.5 }}>
-                    I agree to provide truthful and accurate information about my business or organization, including name, address, and the food items I post. I understand that false information may result in immediate account suspension.
-                  </p>
-                </div>
-              </label>
-
-              <label style={checkRow} onClick={() => setAccepted(a => ({ ...a, community: !a.community }))}>
-                <div style={{ width: "20px", height: "20px", borderRadius: "5px", border: `2px solid ${accepted.community ? "#16a34a" : "#d1d5db"}`, background: accepted.community ? "#16a34a" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: "1px" }}>
-                  {accepted.community && <span style={{ color: "#fff", fontSize: "13px", fontWeight: 700 }}>✓</span>}
-                </div>
-                <div>
-                  <p style={{ margin: "0 0 2px", fontSize: "13px", fontWeight: 700, color: "#0a2e1a" }}>I will respect community members *</p>
-                  <p style={{ margin: 0, fontSize: "12px", color: "#6b7280", lineHeight: 1.5 }}>
-                    I agree to treat all community members with dignity and respect. I will not discriminate on the basis of race, ethnicity, religion, gender, or any other characteristic. GAWA Loop serves all communities equally.
-                  </p>
-                </div>
-              </label>
-
-              <label style={checkRow} onClick={() => setAccepted(a => ({ ...a, compliance: !a.compliance }))}>
-                <div style={{ width: "20px", height: "20px", borderRadius: "5px", border: `2px solid ${accepted.compliance ? "#16a34a" : "#d1d5db"}`, background: accepted.compliance ? "#16a34a" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: "1px" }}>
-                  {accepted.compliance && <span style={{ color: "#fff", fontSize: "13px", fontWeight: 700 }}>✓</span>}
-                </div>
-                <div>
-                  <p style={{ margin: "0 0 2px", fontSize: "13px", fontWeight: 700, color: "#0a2e1a" }}>I acknowledge data and compliance terms *</p>
-                  <p style={{ margin: 0, fontSize: "12px", color: "#6b7280", lineHeight: 1.5 }}>
-                    I understand that GAWA Loop may share my business information (name, address, food listings) publicly on the platform. I consent to GAWA Loop contacting me by email about my account and listings. I acknowledge that GAWA Loop reserves the right to suspend or remove accounts that violate these terms.
-                  </p>
-                </div>
-              </label>
+              {[
+                { key: "terms",       title: "I agree to the Platform Terms of Use *",         body: "I understand that GAWA Loop is a free food-sharing platform. I will use it responsibly and only for its intended purpose of sharing surplus food with community members." },
+                { key: "food_safety", title: "I commit to food safety standards *",              body: "I confirm that all food listed on GAWA Loop will be safe for consumption, properly stored, and clearly described. I will not post expired, contaminated, or unsafe food items." },
+                { key: "accuracy",    title: "I will provide accurate information *",            body: "I agree to provide truthful and accurate information about my business or organization. I understand that false information may result in immediate account suspension." },
+                { key: "community",   title: "I will respect community members *",               body: "I agree to treat all community members with dignity and respect. I will not discriminate on the basis of race, ethnicity, religion, gender, or any other characteristic." },
+                { key: "compliance",  title: "I acknowledge data and compliance terms *",        body: "I understand that GAWA Loop may share my business name, address, and food listings publicly. I consent to GAWA Loop contacting me by email about my account. GAWA Loop reserves the right to suspend accounts that violate these terms." },
+              ].map(item => (
+                <label key={item.key} style={checkRow((accepted as any)[item.key])}
+                  onClick={() => setAccepted(a => ({ ...a, [item.key]: !(a as any)[item.key] }))}>
+                  <div style={{ width: "20px", height: "20px", borderRadius: "5px", border: `2px solid ${(accepted as any)[item.key] ? "#16a34a" : "#d1d5db"}`, background: (accepted as any)[item.key] ? "#16a34a" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: "1px" }}>
+                    {(accepted as any)[item.key] && <span style={{ color: "#fff", fontSize: "13px", fontWeight: 700 }}>✓</span>}
+                  </div>
+                  <div>
+                    <p style={{ margin: "0 0 3px", fontSize: "13px", fontWeight: 700, color: "#0a2e1a" }}>{item.title}</p>
+                    <p style={{ margin: 0, fontSize: "12px", color: "#6b7280", lineHeight: 1.5 }}>{item.body}</p>
+                  </div>
+                </label>
+              ))}
 
               {!allAccepted && (
-                <p style={{ margin: "8px 0 16px", fontSize: "12px", color: "#9ca3af", textAlign: "center" }}>
+                <p style={{ margin: "8px 0 12px", fontSize: "12px", color: "#9ca3af", textAlign: "center" }}>
                   Please accept all terms above to continue
                 </p>
               )}
 
-              <button
-                onClick={() => { if (allAccepted) setStep("form"); }}
-                disabled={!allAccepted}
-                style={{
-                  width: "100%", background: allAccepted ? "#16a34a" : "#d1d5db",
-                  color: "#fff", border: "none", padding: "13px", borderRadius: "10px",
-                  cursor: allAccepted ? "pointer" : "not-allowed", fontSize: "15px", fontWeight: 700,
-                  marginTop: "8px",
-                }}>
+              <button onClick={() => { if (allAccepted) setStep("form"); }} disabled={!allAccepted}
+                style={{ width: "100%", background: allAccepted ? "#16a34a" : "#d1d5db", color: "#fff", border: "none", padding: "13px", borderRadius: "10px", cursor: allAccepted ? "pointer" : "not-allowed", fontSize: "15px", fontWeight: 700, marginTop: "8px" }}>
                 Continue to Account Setup →
               </button>
 
@@ -209,7 +157,7 @@ export default function BusinessSignup() {
             </div>
           )}
 
-          {/* ─── STEP 2: FORM ─── */}
+          {/* STEP 2: FORM */}
           {step === "form" && (
             <form onSubmit={handleSubmit}>
               {error && (
@@ -218,7 +166,6 @@ export default function BusinessSignup() {
                 </div>
               )}
 
-              {/* Account type selector */}
               <div style={{ marginBottom: "20px" }}>
                 <label style={lbl}>Account Type *</label>
                 <div style={{ display: "flex", gap: "10px" }}>
@@ -228,21 +175,14 @@ export default function BusinessSignup() {
                   ].map(opt => (
                     <button key={opt.val} type="button"
                       onClick={() => setForm(f => ({ ...f, account_type: opt.val }))}
-                      style={{
-                        flex: 1, padding: "12px", borderRadius: "10px",
-                        border: `2px solid ${form.account_type === opt.val ? "#16a34a" : "#e5e7eb"}`,
-                        background: form.account_type === opt.val ? "#f0fdf4" : "#fff",
-                        color: form.account_type === opt.val ? "#15803d" : "#374151",
-                        fontWeight: form.account_type === opt.val ? 700 : 400,
-                        cursor: "pointer", fontSize: "13px",
-                      }}>
+                      style={{ flex: 1, padding: "12px", borderRadius: "10px", border: `2px solid ${form.account_type === opt.val ? "#16a34a" : "#e5e7eb"}`, background: form.account_type === opt.val ? "#f0fdf4" : "#fff", color: form.account_type === opt.val ? "#15803d" : "#374151", fontWeight: form.account_type === opt.val ? 700 : 400, cursor: "pointer", fontSize: "13px" }}>
                       {opt.label}
                     </button>
                   ))}
                 </div>
                 {form.account_type === "ngo" && (
                   <div style={{ marginTop: "10px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "8px", padding: "10px 14px" }}>
-                    <p style={{ margin: 0, fontSize: "12px", color: "#1d4ed8", lineHeight: 1.5 }}>
+                    <p style={{ margin: 0, fontSize: "12px", color: "#1d4ed8" }}>
                       ℹ️ As an NGO or Food Bank, you can both <b>post surplus food</b> and <b>claim food</b> from other businesses on GAWA Loop.
                     </p>
                   </div>
@@ -252,62 +192,44 @@ export default function BusinessSignup() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                 <div style={{ gridColumn: "1/-1" }}>
                   <label style={lbl}>{T.signup_name} *</label>
-                  <input style={inp} required value={form.name}
-                    onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                    placeholder="e.g. Mami's Kitchen / Brooklyn Food Bank"/>
+                  <input style={inp} required value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Mami's Kitchen / Brooklyn Food Bank"/>
                 </div>
                 <div>
                   <label style={lbl}>{T.signup_email} *</label>
-                  <input style={inp} type="email" required value={form.email}
-                    onChange={e => setForm(f => ({ ...f, email: e.target.value }))}/>
+                  <input style={inp} type="email" required value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}/>
                 </div>
                 <div>
                   <label style={lbl}>{T.signup_phone}</label>
-                  <input style={inp} type="tel" value={form.phone}
-                    onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}/>
+                  <input style={inp} type="tel" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}/>
                 </div>
                 <div style={{ gridColumn: "1/-1" }}>
                   <label style={lbl}>{T.signup_address} *</label>
-                  <input style={inp} required value={form.address}
-                    onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
-                    placeholder="Full street address"/>
+                  <input style={inp} required value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} placeholder="Full street address"/>
                 </div>
                 <div>
                   <label style={lbl}>{T.signup_type}</label>
-                  <select style={{ ...inp, cursor: "pointer" }} value={form.type}
-                    onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
-                    <option>Restaurant</option>
-                    <option>Bakery</option>
-                    <option>Café</option>
-                    <option>Grocery / Bodega</option>
-                    <option>Catering</option>
-                    <option>Food Bank</option>
-                    <option>NGO</option>
-                    <option>Other</option>
+                  <select style={{ ...inp, cursor: "pointer" }} value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
+                    <option>Restaurant</option><option>Bakery</option><option>Café</option>
+                    <option>Grocery / Bodega</option><option>Catering</option>
+                    <option>Food Bank</option><option>NGO</option><option>Other</option>
                   </select>
                 </div>
                 <div style={{ gridColumn: "1/-1" }}>
                   <label style={lbl}>Short Description</label>
-                  <textarea style={{ ...inp, height: "70px", resize: "vertical" }}
-                    value={form.description}
-                    onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                    placeholder="Tell us briefly about your business or organization"/>
+                  <textarea style={{ ...inp, height: "70px", resize: "vertical" }} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Tell us briefly about your business or organization"/>
                 </div>
                 <div>
                   <label style={lbl}>{T.signup_password} *</label>
-                  <input style={inp} type="password" required minLength={8} value={form.password}
-                    onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                    placeholder="Min. 8 characters"/>
+                  <input style={inp} type="password" required minLength={8} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder="Min. 8 characters"/>
                 </div>
                 <div>
                   <label style={lbl}>Confirm Password *</label>
-                  <input style={inp} type="password" required value={form.confirmPassword}
-                    onChange={e => setForm(f => ({ ...f, confirmPassword: e.target.value }))}/>
+                  <input style={inp} type="password" required value={form.confirmPassword} onChange={e => setForm(f => ({ ...f, confirmPassword: e.target.value }))}/>
                 </div>
               </div>
 
               <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "10px", padding: "12px 14px", marginTop: "20px", marginBottom: "20px" }}>
-                <p style={{ margin: 0, fontSize: "13px", color: "#92400e", lineHeight: 1.5 }}>
+                <p style={{ margin: 0, fontSize: "13px", color: "#92400e" }}>
                   ⏳ <b>Manual review:</b> All business and NGO accounts are manually reviewed before activation. You'll receive an email within 24–48 hours.
                 </p>
               </div>
