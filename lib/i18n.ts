@@ -3,6 +3,7 @@ export type Locale = "en" | "fr" | "es" | "pt" | "ar";
 export const FLAG: Record<Locale, string> = {
   en: "🇺🇸", fr: "🇫🇷", es: "🇪🇸", pt: "🇧🇷", ar: "🇸🇦",
 };
+
 export const LANG_NAME: Record<Locale, string> = {
   en: "English", fr: "Français", es: "Español", pt: "Português", ar: "العربية",
 };
@@ -36,13 +37,13 @@ const en: T = {
   step1_desc: "See available free food from local restaurants, bakeries, and stores near you in real time.",
   step2_title: "Reserve Instantly",
   step2_desc: "Claim food in seconds. Get an email confirmation with your unique pickup code.",
-  step3_title: "Pick Up & Enjoy",
+  step3_title: "Pick Up and Enjoy",
   step3_desc: "Head to the restaurant, show your code, and pick up your free food.",
   signup_title: "Create Your Account",
   signup_subtitle: "Free to join. Start claiming food today.",
   signup_name: "Business / Organization Name",
   signup_email: "Email",
-  signup_phone: "Phone",
+  signup_phone: "Phone Number",
   signup_address: "Address",
   signup_type: "Business Type",
   signup_password: "Password",
@@ -67,9 +68,9 @@ const en: T = {
   dash_posted: "Listings Posted",
   dash_pickups: "Pickups",
   dash_listings: "Your Listings",
-  dash_mark_picked: "✅ Mark as Picked Up",
+  dash_mark_picked: "Mark as Picked Up",
   dash_cancel_res: "Cancel Reservation",
-  dash_cancel_listing: "❌ Cancel Listing",
+  dash_cancel_listing: "Cancel Listing",
   reserved_customer: "Reserved by Customer",
   picked_up_by: "Picked Up By",
   category: "Category",
@@ -80,13 +81,13 @@ const en: T = {
   claim_title: "Reserve This Food",
   claim_name: "Your First Name",
   claim_email: "Email",
-  claim_phone: "Phone (optional)",
+  claim_phone: "Phone Number (with country code)",
   claim_eta: "Your Arrival Time",
-  claim_btn: "Reserve Now — It's Free",
+  claim_btn: "Reserve Now — It is Free",
   no_listings: "No food available right now",
   no_listings_sub: "Check back soon — restaurants post new food throughout the day.",
   search_placeholder: "Search food, restaurant, category...",
-  browse_footer: "Listings refresh every 30 seconds · All food is free",
+  browse_footer: "Listings refresh every 30 seconds — All food is free",
   back_home: "Back to Home",
   contact: "Contact Us",
   partnership: "Partnership",
@@ -98,6 +99,9 @@ const en: T = {
   send_reset: "Send Reset Link",
   profile: "My Profile",
   my_account: "My Account",
+  weight: "Weight (lbs)",
+  phone_required: "Phone number is required",
+  phone_placeholder: "e.g. +1 718 555 0123",
 };
 
 const fr: T = {
@@ -120,7 +124,7 @@ const fr: T = {
   signup_subtitle: "Gratuit. Commencez à réserver de la nourriture aujourd'hui.",
   signup_name: "Nom de l'entreprise / organisation",
   signup_email: "Email",
-  signup_phone: "Téléphone",
+  signup_phone: "Numéro de téléphone",
   signup_address: "Adresse",
   signup_type: "Type d'entreprise",
   signup_password: "Mot de passe",
@@ -145,9 +149,9 @@ const fr: T = {
   dash_posted: "Annonces publiées",
   dash_pickups: "Retraits",
   dash_listings: "Vos annonces",
-  dash_mark_picked: "✅ Marquer comme retiré",
+  dash_mark_picked: "Marquer comme retiré",
   dash_cancel_res: "Annuler la réservation",
-  dash_cancel_listing: "❌ Annuler l'annonce",
+  dash_cancel_listing: "Annuler l'annonce",
   reserved_customer: "Réservé par le client",
   picked_up_by: "Retiré par",
   category: "Catégorie",
@@ -158,13 +162,13 @@ const fr: T = {
   claim_title: "Réserver cet aliment",
   claim_name: "Votre prénom",
   claim_email: "Email",
-  claim_phone: "Téléphone (optionnel)",
+  claim_phone: "Numéro de téléphone (avec indicatif pays)",
   claim_eta: "Votre heure d'arrivée",
   claim_btn: "Réserver maintenant — Gratuit",
   no_listings: "Aucune nourriture disponible",
   no_listings_sub: "Revenez bientôt — les restaurants publient tout au long de la journée.",
   search_placeholder: "Chercher nourriture, restaurant, catégorie...",
-  browse_footer: "Actualisation toutes les 30 secondes · Toute la nourriture est gratuite",
+  browse_footer: "Actualisation toutes les 30 secondes — Toute la nourriture est gratuite",
   back_home: "Retour à l'accueil",
   contact: "Nous contacter",
   partnership: "Partenariat",
@@ -176,6 +180,9 @@ const fr: T = {
   send_reset: "Envoyer le lien",
   profile: "Mon profil",
   my_account: "Mon compte",
+  weight: "Poids (lbs)",
+  phone_required: "Le numéro de téléphone est obligatoire",
+  phone_placeholder: "ex. +33 6 12 34 56 78",
 };
 
 const es: T = {
@@ -198,12 +205,12 @@ const es: T = {
   signup_subtitle: "Gratis. Empieza a reclamar comida hoy.",
   signup_name: "Nombre del negocio / organización",
   signup_email: "Email",
-  signup_phone: "Teléfono",
+  signup_phone: "Número de teléfono",
   signup_address: "Dirección",
   signup_type: "Tipo de negocio",
   signup_password: "Contraseña",
   signup_btn: "Enviar solicitud",
-  signup_have_account: "¿Ya tienes una cuenta?",
+  signup_have_account: "Ya tienes una cuenta?",
   signup_login: "Iniciar sesión",
   dash_title: "Panel de control",
   dash_new: "+ Nuevo anuncio",
@@ -223,9 +230,9 @@ const es: T = {
   dash_posted: "Anuncios publicados",
   dash_pickups: "Recogidas",
   dash_listings: "Tus anuncios",
-  dash_mark_picked: "✅ Marcar como recogido",
+  dash_mark_picked: "Marcar como recogido",
   dash_cancel_res: "Cancelar reserva",
-  dash_cancel_listing: "❌ Cancelar anuncio",
+  dash_cancel_listing: "Cancelar anuncio",
   reserved_customer: "Reservado por cliente",
   picked_up_by: "Recogido por",
   category: "Categoría",
@@ -236,24 +243,27 @@ const es: T = {
   claim_title: "Reservar esta comida",
   claim_name: "Tu nombre",
   claim_email: "Email",
-  claim_phone: "Teléfono (opcional)",
+  claim_phone: "Número de teléfono (con código de país)",
   claim_eta: "Tu hora de llegada",
   claim_btn: "Reservar ahora — Gratis",
   no_listings: "No hay comida disponible ahora",
   no_listings_sub: "Vuelve pronto — los restaurantes publican durante todo el día.",
   search_placeholder: "Buscar comida, restaurante, categoría...",
-  browse_footer: "Se actualiza cada 30 segundos · Toda la comida es gratis",
+  browse_footer: "Se actualiza cada 30 segundos — Toda la comida es gratis",
   back_home: "Volver al inicio",
   contact: "Contáctanos",
   partnership: "Asociación",
   order_history: "Historial de pedidos",
   email_confirm_title: "Revisa tu email",
   email_confirm_msg: "Enviamos un enlace de confirmación a tu email. Haz clic en él para activar tu cuenta.",
-  forgot_password: "¿Olvidaste tu contraseña?",
+  forgot_password: "Olvidaste tu contraseña?",
   reset_password: "Restablecer contraseña",
   send_reset: "Enviar enlace",
   profile: "Mi perfil",
   my_account: "Mi cuenta",
+  weight: "Peso (lbs)",
+  phone_required: "El número de teléfono es obligatorio",
+  phone_placeholder: "ej. +1 718 555 0123",
 };
 
 const pt: T = {
@@ -276,7 +286,7 @@ const pt: T = {
   signup_subtitle: "Grátis. Comece a reservar comida hoje.",
   signup_name: "Nome do negócio / organização",
   signup_email: "Email",
-  signup_phone: "Telefone",
+  signup_phone: "Número de telefone",
   signup_address: "Endereço",
   signup_type: "Tipo de negócio",
   signup_password: "Senha",
@@ -301,9 +311,9 @@ const pt: T = {
   dash_posted: "Anúncios publicados",
   dash_pickups: "Retiradas",
   dash_listings: "Seus anúncios",
-  dash_mark_picked: "✅ Marcar como retirado",
+  dash_mark_picked: "Marcar como retirado",
   dash_cancel_res: "Cancelar reserva",
-  dash_cancel_listing: "❌ Cancelar anúncio",
+  dash_cancel_listing: "Cancelar anúncio",
   reserved_customer: "Reservado pelo cliente",
   picked_up_by: "Retirado por",
   category: "Categoria",
@@ -314,13 +324,13 @@ const pt: T = {
   claim_title: "Reservar esta comida",
   claim_name: "Seu nome",
   claim_email: "Email",
-  claim_phone: "Telefone (opcional)",
+  claim_phone: "Número de telefone (com código do país)",
   claim_eta: "Seu horário de chegada",
   claim_btn: "Reservar agora — Grátis",
   no_listings: "Nenhuma comida disponível agora",
   no_listings_sub: "Volte em breve — os restaurantes publicam ao longo do dia.",
   search_placeholder: "Buscar comida, restaurante, categoria...",
-  browse_footer: "Atualizado a cada 30 segundos · Toda comida é grátis",
+  browse_footer: "Atualizado a cada 30 segundos — Toda comida é grátis",
   back_home: "Voltar ao início",
   contact: "Contato",
   partnership: "Parceria",
@@ -332,6 +342,9 @@ const pt: T = {
   send_reset: "Enviar link",
   profile: "Meu perfil",
   my_account: "Minha conta",
+  weight: "Peso (lbs)",
+  phone_required: "O número de telefone é obrigatório",
+  phone_placeholder: "ex. +55 11 99999-0000",
 };
 
 const ar: T = {
@@ -354,7 +367,7 @@ const ar: T = {
   signup_subtitle: "مجاناً. ابدأ بحجز الطعام اليوم.",
   signup_name: "اسم الشركة / المؤسسة",
   signup_email: "البريد الإلكتروني",
-  signup_phone: "الهاتف",
+  signup_phone: "رقم الهاتف",
   signup_address: "العنوان",
   signup_type: "نوع الشركة",
   signup_password: "كلمة المرور",
@@ -379,9 +392,9 @@ const ar: T = {
   dash_posted: "الإعلانات المنشورة",
   dash_pickups: "عمليات الاستلام",
   dash_listings: "إعلاناتك",
-  dash_mark_picked: "✅ تحديد كمستلم",
+  dash_mark_picked: "تحديد كمستلم",
   dash_cancel_res: "إلغاء الحجز",
-  dash_cancel_listing: "❌ إلغاء الإعلان",
+  dash_cancel_listing: "إلغاء الإعلان",
   reserved_customer: "محجوز من قبل عميل",
   picked_up_by: "تم استلامه بواسطة",
   category: "الفئة",
@@ -392,13 +405,13 @@ const ar: T = {
   claim_title: "حجز هذا الطعام",
   claim_name: "اسمك الأول",
   claim_email: "البريد الإلكتروني",
-  claim_phone: "الهاتف (اختياري)",
+  claim_phone: "رقم الهاتف (مع رمز الدولة)",
   claim_eta: "وقت وصولك",
   claim_btn: "احجز الآن — مجاناً",
   no_listings: "لا يوجد طعام متاح الآن",
   no_listings_sub: "تحقق مرة أخرى قريباً — تنشر المطاعم طعاماً طوال اليوم.",
   search_placeholder: "ابحث عن طعام، مطعم، فئة...",
-  browse_footer: "يتحدث كل 30 ثانية · كل الطعام مجاني",
+  browse_footer: "يتحدث كل 30 ثانية — كل الطعام مجاني",
   back_home: "العودة للرئيسية",
   contact: "اتصل بنا",
   partnership: "شراكة",
@@ -410,32 +423,9 @@ const ar: T = {
   send_reset: "إرسال الرابط",
   profile: "ملفي الشخصي",
   my_account: "حسابي",
+  weight: "الوزن (lbs)",
+  phone_required: "رقم الهاتف مطلوب",
+  phone_placeholder: "مثال: +1 718 555 0123",
 };
 
 export const t: Record<Locale, T> = { en, fr, es, pt, ar };
-
-==================================================
-FILE 2 — app/page.tsx changes (3 small additions only)
-DO NOT replace the full page.tsx — just make these 3 additions
-==================================================
-
-ADDITION 1 — Add customer login to the nav (find the nav div with business login and add before it):
-
-Find this line in the NAV section:
-  <Link href="/business/login" className="hidden text-sm font-medium text-slate-600 hover:text-green-600 sm:block transition">{T.login}</Link>
-
-Add this LINE BEFORE it:
-  <Link href="/customer/login" className="hidden text-sm font-medium text-slate-600 hover:text-green-600 sm:block transition">{T.customer_login}</Link>
-
-ADDITION 2 — Add Contact link to footer (find the footer links div and add):
-
-After the last Link in the footer links div, add:
-  <Link href="/contact" className="hover:text-green-600 transition">{T.contact}</Link>
-
-ADDITION 3 — Add customer login to hero buttons (find the hero CTA buttons and add a third button):
-
-After the existing two hero buttons, add:
-  <Link href="/customer/login"
-    style={{ background:"rgba(255,255,255,0.12)", color:"#fff", fontWeight:700, fontSize:"16px", padding:"14px 36px", borderRadius:"12px", textDecoration:"none", border:"2px solid rgba(255,255,255,0.3)" }}>
-    {T.customer_login}
-  </Link>
