@@ -32,7 +32,6 @@ export default function BrowsePage() {
 
   useEffect(() => { setLocale(detectLocale()); }, []);
 
-  // Customer auth check — includes NGO users
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       setCustUser(user);
@@ -85,6 +84,22 @@ export default function BrowsePage() {
   async function submitClaim(listing: Listing) {
     setSubmitting(true);
     setClaimError("");
+
+    // Check suspension
+    if (custUser?.id) {
+      const suspCheck = await fetch("/api/check-suspension", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: custUser.id }),
+      });
+      const suspData = await suspCheck.json();
+      if (suspData.suspended) {
+        setClaimError(suspData.message);
+        setSubmitting(false);
+        return;
+      }
+    }
+
     const res = await fetch("/api/claim-submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -199,7 +214,7 @@ export default function BrowsePage() {
         </div>
       )}
 
-      {/* NAV — customer focused, NO business login */}
+      {/* NAV */}
       <nav style={{ background: "#0a2e1a", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px", position: "sticky", top: 0, zIndex: 50 }}>
         <a href="/" style={{ display: "flex", alignItems: "center", gap: "10px", textDecoration: "none" }}>
           <img src="/gawa-logo-green.png" alt="GAWA Loop" style={{ width: "32px", height: "32px", objectFit: "contain" }}/>
@@ -241,18 +256,18 @@ export default function BrowsePage() {
         <div style={{ position: "relative", marginBottom: "20px" }}>
           <span style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", fontSize: "16px" }}>🔍</span>
           <input
-            style={{ width: "100%", padding: "12px 14px 12px 42px", borderRadius: "12px", border: "1px solid #e5e7eb", fontSize: "14px", outline: "none", background: "#fff", color: "#111827", boxSizing: "border-box", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}
+            style={{ width: "100%", padding: "12px 14px 12px 42px", borderRadius: "12px", border: "1px solid #e5e7eb", fontSize: "14px", outline: "none", background: "#fff", color: "#111827", boxSizing: "border-box" }}
             placeholder={T.search_placeholder || "Search food, restaurant, category..."}
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
         </div>
 
-        {/* Not signed in banner */}
+        {/* Sign-in banner */}
         {!authLoading && !custUser && (
           <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "12px", padding: "14px 18px", marginBottom: "20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
             <p style={{ margin: 0, fontSize: "14px", color: "#1d4ed8", fontWeight: 600 }}>
-              🔒 Sign in to see addresses and claim food for free
+              🔒 Sign in to see business details and claim food for free
             </p>
             <div style={{ display: "flex", gap: "8px" }}>
               <a href="/customer/signup" style={{ background: "#2563eb", color: "#fff", fontWeight: 700, fontSize: "13px", padding: "8px 16px", borderRadius: "8px", textDecoration: "none" }}>Join Free</a>
@@ -276,85 +291,107 @@ export default function BrowsePage() {
           const googleM = listing.maps_url || `https://www.google.com/maps/search/?api=1&query=${enc(addr)}`;
           const appleM  = `https://maps.apple.com/?q=${enc(addr)}`;
           const waze    = `https://waze.com/ul?q=${enc(addr)}`;
+          const weightLbs = listing.weight_kg ? (listing.weight_kg * 2.205).toFixed(1) : null;
 
           return (
             <div key={listing.id}
-              style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "24px", marginBottom: "16px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)", transition: "box-shadow 0.2s" }}
+              style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", marginBottom: "16px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)", overflow: "hidden", transition: "box-shadow 0.2s" }}
               onMouseEnter={e => (e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,0,0,0.1)")}
               onMouseLeave={e => (e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.04)")}>
 
-              <div style={{ display: "flex", gap: "14px", alignItems: "flex-start" }}>
-                {/* Image or emoji */}
-                <div style={{ width: "72px", height: "72px", borderRadius: "12px", overflow: "hidden", flexShrink: 0, background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "32px" }}>
-                  {listing.image_url
-                    ? <img src={listing.image_url} alt={listing.food_name} style={{ width: "100%", height: "100%", objectFit: "cover" }}/>
-                    : "🍽️"
-                  }
+              {/* ── FOOD IMAGE — always visible, full width at top ── */}
+              {listing.image_url ? (
+                <div style={{ width: "100%", height: "200px", overflow: "hidden", background: "#f0fdf4" }}>
+                  <img
+                    src={listing.image_url}
+                    alt={listing.food_name}
+                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                  />
+                </div>
+              ) : (
+                <div style={{ width: "100%", height: "80px", background: "linear-gradient(135deg,#f0fdf4,#dcfce7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "36px" }}>
+                  🍽️
+                </div>
+              )}
+
+              <div style={{ padding: "20px 24px" }}>
+                {/* Food name + FREE badge */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginBottom: "8px" }}>
+                  <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a", lineHeight: 1.3 }}>
+                    {listing.food_name || "Food Available"}
+                  </h2>
+                  <span style={{ background: "#f0fdf4", color: "#16a34a", fontSize: "12px", fontWeight: 700, padding: "4px 12px", borderRadius: "20px", flexShrink: 0, border: "1px solid #bbf7d0" }}>
+                    FREE
+                  </span>
                 </div>
 
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginBottom: "6px" }}>
-                    <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "#0a2e1a", lineHeight: 1.3 }}>
-                      {listing.food_name || "Food Available"}
-                    </h2>
-                    <span style={{ background: "#f0fdf4", color: "#16a34a", fontSize: "12px", fontWeight: 700, padding: "4px 10px", borderRadius: "20px", flexShrink: 0, border: "1px solid #bbf7d0" }}>
-                      FREE
-                    </span>
-                  </div>
+                {/* Category / quantity / weight — always visible */}
+                <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#6b7280" }}>
+                  {listing.category} · {listing.quantity}
+                  {weightLbs ? ` · ⚖️ ${weightLbs} lbs` : ""}
+                  {listing.estimated_value && listing.estimated_value > 0 ? ` · 💰 $${Number(listing.estimated_value).toFixed(0)} value` : ""}
+                </p>
 
-                  <p style={{ margin: "0 0 4px", fontSize: "14px", color: "#374151", fontWeight: 600 }}>🏪 {listing.business_name || "Local Business"}</p>
+                {listing.note && <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#6b7280" }}>📝 {listing.note}</p>}
 
-                  <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#6b7280" }}>
-                    {listing.category} · {listing.quantity}
-                    {listing.weight_kg && listing.weight_kg > 0 ? ` · ⚖️ ${listing.weight_kg}kg` : ""}
-                    {listing.estimated_value && listing.estimated_value > 0 ? ` · 💰 $${Number(listing.estimated_value).toFixed(0)} value` : ""}
+                {listing.allergy_note && (
+                  <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#92400e", background: "#fffbeb", padding: "5px 10px", borderRadius: "6px", display: "inline-block" }}>
+                    ⚠️ {listing.allergy_note}
                   </p>
+                )}
 
-                  {listing.allergy_note && (
-                    <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#92400e", background: "#fffbeb", padding: "5px 10px", borderRadius: "6px", display: "inline-block" }}>
-                      ⚠️ {listing.allergy_note}
+                <p style={{ margin: "0 0 14px", fontSize: "12px", color: "#9ca3af" }}>
+                  ⏰ Expires: {listing.expires_at ? new Date(listing.expires_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}
+                </p>
+
+                {/* ── BUSINESS DETAILS — signed in users only ── */}
+                {custUser ? (
+                  <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "14px 16px", marginBottom: "14px" }}>
+                    <p style={{ margin: "0 0 6px", fontSize: "14px", fontWeight: 700, color: "#0a2e1a" }}>
+                      🏪 {listing.business_name || "Local Business"}
                     </p>
-                  )}
-
-                  {listing.note && <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#6b7280" }}>📝 {listing.note}</p>}
-
-                  <p style={{ margin: "0 0 12px", fontSize: "12px", color: "#9ca3af" }}>
-                    ⏰ Expires: {listing.expires_at ? new Date(listing.expires_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}
-                  </p>
-
-                  {/* Address — signed in only */}
-                  {custUser ? (
-                    <div style={{ marginBottom: "12px" }}>
-                      <p style={{ margin: "0 0 6px", fontSize: "14px", color: "#374151" }}>
-                        <b>📍 {T.address}:</b> {listing.address || "Address not provided"}
-                      </p>
-                      {listing.address && (
-                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                          <a href={googleM} target="_blank" rel="noopener noreferrer" style={{ fontSize: "12px", fontWeight: 600, color: "#374151", background: "#f3f4f6", border: "1px solid #e5e7eb", padding: "5px 10px", borderRadius: "6px", textDecoration: "none" }}>🗺️ Google Maps</a>
-                          <a href={appleM}  target="_blank" rel="noopener noreferrer" style={{ fontSize: "12px", fontWeight: 600, color: "#374151", background: "#f3f4f6", border: "1px solid #e5e7eb", padding: "5px 10px", borderRadius: "6px", textDecoration: "none" }}>🍎 Apple Maps</a>
-                          <a href={waze}    target="_blank" rel="noopener noreferrer" style={{ fontSize: "12px", fontWeight: 600, color: "#374151", background: "#f3f4f6", border: "1px solid #e5e7eb", padding: "5px 10px", borderRadius: "6px", textDecoration: "none" }}>🔵 Waze</a>
-                        </div>
-                      )}
+                    <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#374151" }}>
+                      📍 {listing.address || "Address not provided"}
+                    </p>
+                    {listing.address && (
+                      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                        <a href={googleM} target="_blank" rel="noopener noreferrer"
+                          style={{ fontSize: "12px", fontWeight: 600, color: "#374151", background: "#fff", border: "1px solid #e5e7eb", padding: "5px 10px", borderRadius: "6px", textDecoration: "none" }}>
+                          🗺️ Google Maps
+                        </a>
+                        <a href={appleM} target="_blank" rel="noopener noreferrer"
+                          style={{ fontSize: "12px", fontWeight: 600, color: "#374151", background: "#fff", border: "1px solid #e5e7eb", padding: "5px 10px", borderRadius: "6px", textDecoration: "none" }}>
+                          🍎 Apple Maps
+                        </a>
+                        <a href={waze} target="_blank" rel="noopener noreferrer"
+                          style={{ fontSize: "12px", fontWeight: 600, color: "#374151", background: "#fff", border: "1px solid #e5e7eb", padding: "5px 10px", borderRadius: "6px", textDecoration: "none" }}>
+                          🔵 Waze
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "14px 16px", marginBottom: "14px", display: "flex", alignItems: "center", gap: "10px" }}>
+                    <span style={{ fontSize: "20px" }}>🔒</span>
+                    <div>
+                      <p style={{ margin: "0 0 2px", fontSize: "13px", fontWeight: 700, color: "#374151" }}>Sign in to see business details</p>
+                      <p style={{ margin: 0, fontSize: "12px", color: "#9ca3af" }}>Business name, address, and directions are available after signing in</p>
                     </div>
-                  ) : (
-                    <div style={{ marginBottom: "12px", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "10px 14px" }}>
-                      <p style={{ margin: 0, fontSize: "13px", color: "#9ca3af" }}>🔒 Sign in to see the address and directions</p>
-                    </div>
-                  )}
+                  </div>
+                )}
 
-                  {/* Claim — signed in only */}
-                  {custUser ? (
-                    <button onClick={() => handleClaim(listing)}
-                      style={{ width: "100%", background: "#16a34a", color: "#fff", border: "none", padding: "13px 24px", borderRadius: "10px", cursor: "pointer", fontSize: "15px", fontWeight: 700, boxShadow: "0 4px 12px rgba(22,163,74,0.3)" }}>
-                      {T.claim_btn}
-                    </button>
-                  ) : (
-                    <a href="/customer/signup"
-                      style={{ display: "block", textAlign: "center", background: "#f0fdf4", color: "#16a34a", border: "2px solid #16a34a", padding: "13px 24px", borderRadius: "10px", fontSize: "15px", fontWeight: 700, textDecoration: "none" }}>
-                      🔒 Sign in to claim this food
-                    </a>
-                  )}
-                </div>
+                {/* ── CLAIM BUTTON ── */}
+                {custUser ? (
+                  <button onClick={() => handleClaim(listing)}
+                    style={{ width: "100%", background: "#16a34a", color: "#fff", border: "none", padding: "13px 24px", borderRadius: "10px", cursor: "pointer", fontSize: "15px", fontWeight: 700, boxShadow: "0 4px 12px rgba(22,163,74,0.3)" }}>
+                    {T.claim_btn}
+                  </button>
+                ) : (
+                  <a href="/customer/signup"
+                    style={{ display: "block", textAlign: "center", background: "#f0fdf4", color: "#16a34a", border: "2px solid #16a34a", padding: "13px 24px", borderRadius: "10px", fontSize: "15px", fontWeight: 700, textDecoration: "none" }}>
+                    🔒 Sign in to claim this food
+                  </a>
+                )}
               </div>
             </div>
           );
