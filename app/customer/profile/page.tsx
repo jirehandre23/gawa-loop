@@ -39,6 +39,7 @@ export default function CustomerProfile() {
   const [orders, setOrders]         = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [activeTab, setActiveTab]   = useState<"profile" | "orders">("profile");
+  const [copiedId, setCopiedId]     = useState<string | null>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const fileRef   = useRef<HTMLInputElement>(null);
 
@@ -97,7 +98,7 @@ export default function CustomerProfile() {
     const res  = await fetch("/api/upload-image", { method: "POST", body: fd });
     const data = await res.json();
     if (data.url) {
-      const newUrl = data.url + "?t=" + Date.now(); // cache bust
+      const newUrl = data.url + "?t=" + Date.now();
       setProfile(p => p ? { ...p, avatar_url: newUrl } : p);
       await supabase.from("customer_profiles")
         .update({ avatar_url: data.url, updated_at: new Date().toISOString() })
@@ -123,6 +124,13 @@ export default function CustomerProfile() {
     }).eq("user_id", userId);
     setMsg(error ? "Error saving. Please try again." : "✅ Profile saved!");
     setSaving(false);
+  }
+
+  function copyCode(code: string, orderId: string) {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopiedId(orderId);
+      setTimeout(() => setCopiedId(null), 2000);
+    });
   }
 
   const inp: React.CSSProperties = {
@@ -265,9 +273,12 @@ export default function CustomerProfile() {
             {!ordersLoading && orders.map(order => {
               const listing = order.listings;
               const st = STATUS_STYLE[order.noshow ? "noshow" : order.status] || STATUS_STYLE.active;
+              const isActive = !order.noshow && order.status === "active";
+              const copied = copiedId === order.id;
               return (
-                <div key={order.id} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "14px", padding: "18px 20px", marginBottom: "12px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
-                  <div style={{ display: "flex", gap: "14px", alignItems: "flex-start" }}>
+                <div key={order.id} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "14px", marginBottom: "12px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)", overflow: "hidden" }}>
+                  {/* Order info row */}
+                  <div style={{ padding: "18px 20px", display: "flex", gap: "14px", alignItems: "flex-start" }}>
                     {listing?.image_url ? (
                       <img src={listing.image_url} alt={listing.food_name} style={{ width: "60px", height: "60px", borderRadius: "10px", objectFit: "cover", flexShrink: 0 }}/>
                     ) : (
@@ -282,10 +293,50 @@ export default function CustomerProfile() {
                       <p style={{ margin: "0 0 4px", fontSize: "12px", color: "#6b7280" }}>📍 {listing?.address || "Address on file"}</p>
                       <p style={{ margin: 0, fontSize: "12px", color: "#9ca3af" }}>
                         {new Date(order.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                        {order.confirmation_code && ` · Code: ${order.confirmation_code}`}
                       </p>
                     </div>
                   </div>
+
+                  {/* Pickup code banner — only shown when code exists */}
+                  {order.confirmation_code && (
+                    <div style={{
+                      margin: "0 16px 16px",
+                      background: isActive ? "#f0fdf4" : "#f9fafb",
+                      border: `1.5px ${isActive ? "solid" : "dashed"} ${isActive ? "#16a34a" : "#d1d5db"}`,
+                      borderRadius: "10px",
+                      padding: "12px 16px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "12px",
+                    }}>
+                      <div>
+                        <p style={{ margin: "0 0 2px", fontSize: "11px", fontWeight: 700, color: isActive ? "#15803d" : "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                          {isActive ? "🎟️ Pickup Code" : "🎟️ Code"}
+                        </p>
+                        <p style={{ margin: 0, fontSize: "22px", fontWeight: 900, letterSpacing: "0.12em", color: isActive ? "#0a2e1a" : "#9ca3af", fontFamily: "monospace" }}>
+                          {order.confirmation_code}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => copyCode(order.confirmation_code, order.id)}
+                        style={{
+                          background: copied ? "#16a34a" : "#fff",
+                          color: copied ? "#fff" : "#374151",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: "8px",
+                          padding: "8px 14px",
+                          cursor: "pointer",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          flexShrink: 0,
+                          transition: "all 0.2s",
+                        }}
+                      >
+                        {copied ? "✅ Copied!" : "Copy"}
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}
