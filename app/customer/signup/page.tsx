@@ -14,9 +14,7 @@ export default function CustomerSignup() {
     phone: "", city: "", state: "",
     password: "", confirm: "",
   });
-  const [accepted, setAccepted] = useState({
-    terms: false, privacy: false, conduct: false,
-  });
+  const [accepted, setAccepted] = useState({ terms: false, privacy: false, conduct: false });
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone]             = useState(false);
   const [error, setError]           = useState("");
@@ -67,7 +65,6 @@ export default function CustomerSignup() {
         avatar_url: null,
       });
     }
-
     setDone(true);
     setSubmitting(false);
   }
@@ -81,12 +78,8 @@ export default function CustomerSignup() {
           Check your email to confirm your account, then start claiming free food from local businesses near you!
         </p>
         <div style={{ display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap" }}>
-          <a href="/browse" style={{ display: "inline-block", background: "#16a34a", color: "#fff", fontWeight: 700, padding: "13px 28px", borderRadius: "10px", textDecoration: "none", fontSize: "15px" }}>
-            Browse Free Food
-          </a>
-          <a href="/customer/profile" style={{ display: "inline-block", background: "#f3f4f6", color: "#374151", fontWeight: 700, padding: "13px 28px", borderRadius: "10px", textDecoration: "none", fontSize: "15px", border: "1px solid #e5e7eb" }}>
-            Set Up Profile and Photo
-          </a>
+          <a href="/browse" style={{ display: "inline-block", background: "#16a34a", color: "#fff", fontWeight: 700, padding: "13px 28px", borderRadius: "10px", textDecoration: "none", fontSize: "15px" }}>Browse Free Food</a>
+          <a href="/customer/profile" style={{ display: "inline-block", background: "#f3f4f6", color: "#374151", fontWeight: 700, padding: "13px 28px", borderRadius: "10px", textDecoration: "none", fontSize: "15px", border: "1px solid #e5e7eb" }}>Set Up Profile and Photo</a>
         </div>
       </div>
     </div>
@@ -95,11 +88,10 @@ export default function CustomerSignup() {
   return (
     <div style={{ minHeight: "100vh", background: "#f3f4f6", padding: "32px 16px", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
       <div style={{ maxWidth: "520px", margin: "0 auto" }}>
-
         <div style={{ textAlign: "center", marginBottom: "24px" }}>
           <a href="/"><img src="/gawa-logo-green.png" alt="GAWA Loop" style={{ width: "52px", height: "52px", objectFit: "contain", marginBottom: "8px" }}/></a>
           <h1 style={{ margin: "0 0 4px", fontSize: "26px", fontWeight: 800, color: "#0a2e1a" }}>
-            {step === "terms" ? "Terms & Authorization" : "Create Your Account"}
+            {step === "terms" ? "Terms and Authorization" : "Create Your Account"}
           </h1>
           <p style={{ margin: 0, fontSize: "14px", color: "#6b7280" }}>
             {step === "terms" ? "Please read and accept before joining" : "Free to join. Start claiming food today."}
@@ -145,17 +137,12 @@ export default function CustomerSignup() {
                 </label>
               ))}
 
-              {!allAccepted && (
-                <p style={{ margin: "8px 0 12px", fontSize: "12px", color: "#9ca3af", textAlign: "center" }}>
-                  Please accept all terms above to continue
-                </p>
-              )}
+              {!allAccepted && <p style={{ margin: "8px 0 12px", fontSize: "12px", color: "#9ca3af", textAlign: "center" }}>Please accept all terms above to continue</p>}
 
               <button onClick={() => { if (allAccepted) setStep("form"); }} disabled={!allAccepted}
                 style={{ width: "100%", background: allAccepted ? "#16a34a" : "#d1d5db", color: "#fff", border: "none", padding: "13px", borderRadius: "10px", cursor: allAccepted ? "pointer" : "not-allowed", fontSize: "15px", fontWeight: 700, marginTop: "8px" }}>
                 Continue to Sign Up
               </button>
-
               <p style={{ textAlign: "center", marginTop: "16px", fontSize: "13px", color: "#6b7280" }}>
                 Already have an account?{" "}
                 <a href="/customer/login" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>Log in</a>
