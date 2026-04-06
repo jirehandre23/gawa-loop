@@ -7,10 +7,10 @@ import { detectLocale, t, Locale, setLocale as saveLocale, FLAG, LANG_NAME } fro
 const LOCALES: Locale[] = ["en", "fr", "es", "pt", "ar"];
 
 export default function HomePage() {
-  const [locale, setLocaleState]   = useState<Locale>("en");
-  const [langOpen, setLangOpen]    = useState(false);
-  const [openFaq, setOpenFaq]      = useState<number | null>(null);
-  const [liveStats, setLiveStats]  = useState({ total_pickups: 0, co2_saved_kg: 0 });
+  const [locale, setLocaleState]      = useState<Locale>("en");
+  const [langOpen, setLangOpen]       = useState(false);
+  const [openFaq, setOpenFaq]         = useState<number | null>(null);
+  const [liveStats, setLiveStats]     = useState({ total_pickups: 0, co2_saved_kg: 0 });
   const [statsLoaded, setStatsLoaded] = useState(false);
 
   useEffect(() => { setLocaleState(detectLocale()); }, []);
@@ -22,7 +22,7 @@ export default function HomePage() {
       .catch(() => {});
   }, []);
 
-  const T    = t[locale];
+  const T     = t[locale];
   const isRTL = locale === "ar";
 
   function switchLocale(loc: Locale) {
@@ -38,19 +38,19 @@ export default function HomePage() {
     },
     {
       q: locale==="fr"?"Comment réserver de la nourriture ?":locale==="es"?"¿Cómo reservo comida?":locale==="pt"?"Como reservar comida?":locale==="ar"?"كيف أحجز طعاماً؟":"How do I claim food?",
-      a: locale==="fr"?"Allez sur Browse, choisissez un aliment, entrez votre prénom et email, réservez en quelques secondes.":locale==="es"?"Ve a Browse, elige un alimento, ingresa tu nombre y correo, reserva en segundos.":locale==="pt"?"Vá para Browse, escolha um alimento, insira seu nome e email, reserve em segundos.":locale==="ar"?"اذهب إلى Browse، اختر طعاماً، أدخل اسمك وبريدك، واحجز في ثوانٍ.":"Create a free account, go to Browse, pick an available item, and reserve in seconds. You'll get a confirmation code by email."
+      a: locale==="fr"?"Créez un compte gratuit, allez sur Browse, choisissez un aliment et réservez en quelques secondes.":locale==="es"?"Crea una cuenta gratuita, ve a Browse, elige un alimento y reserva en segundos.":locale==="pt"?"Crie uma conta gratuita, vá para Browse, escolha um alimento e reserve em segundos.":locale==="ar"?"أنشئ حساباً مجانياً، اذهب إلى Browse، اختر طعاماً واحجز في ثوانٍ.":"Create a free account, go to Browse, pick an available item, and reserve in seconds. You'll get a confirmation code by email."
     },
     {
       q: locale==="fr"?"Que se passe-t-il si je ne peux pas récupérer la nourriture ?":locale==="es"?"¿Qué pasa si no puedo recoger la comida?":locale==="pt"?"O que acontece se não puder buscar a comida?":locale==="ar"?"ماذا يحدث إذا لم أستطع استلام الطعام؟":"What if I can't pick up the food?",
-      a: locale==="fr"?"Annulez via le lien dans votre email. Le listing sera libéré pour quelqu'un d'autre.":locale==="es"?"Cancela usando el enlace en tu correo.":locale==="pt"?"Cancele usando o link no seu email.":locale==="ar"?"الغِ حجزك باستخدام الرابط في بريد التأكيد.":"No problem! Cancel using the link in your confirmation email. The listing is instantly released for someone else."
+      a: locale==="fr"?"Annulez via le lien dans votre email. Le listing sera libéré pour quelqu'un d'autre.":locale==="es"?"Cancela usando el enlace en tu correo. El listado se liberará para otra persona.":locale==="pt"?"Cancele usando o link no seu email. O anúncio será liberado para outra pessoa.":locale==="ar"?"الغِ حجزك باستخدام الرابط في بريد التأكيد. سيُتاح الإعلان لشخص آخر.":"No problem! Cancel using the link in your confirmation email. The listing is instantly released for someone else."
     },
     {
       q: locale==="fr"?"Comment inscrire mon restaurant ?":locale==="es"?"¿Cómo registro mi restaurante?":locale==="pt"?"Como cadastro meu restaurante?":locale==="ar"?"كيف أسجل مطعمي؟":"How do I register my restaurant?",
-      a: locale==="fr"?"Cliquez sur Pour les entreprises et inscrivez-vous en 2 minutes.":locale==="es"?"Haz clic en Para negocios y regístrate en 2 minutos.":locale==="pt"?"Clique em Para empresas e cadastre-se em 2 minutos.":locale==="ar"?"انقر على للشركات وسجّل في دقيقتين.":"Click 'For Businesses' and sign up in 2 minutes. Your account is manually reviewed within 24–48 hours."
+      a: locale==="fr"?"Cliquez sur Pour les entreprises et inscrivez-vous en 2 minutes. Votre compte est examiné manuellement sous 24-48h.":locale==="es"?"Haz clic en Para negocios y regístrate en 2 minutos. Tu cuenta se revisa manualmente en 24-48h.":locale==="pt"?"Clique em Para empresas e cadastre-se em 2 minutos. Sua conta é revisada manualmente em 24-48h.":locale==="ar"?"انقر على للشركات وسجّل في دقيقتين. سيتم مراجعة حسابك خلال 24-48 ساعة.":"Click 'For Businesses' and sign up in 2 minutes. Your account is manually reviewed within 24–48 hours."
     },
     {
       q: locale==="fr"?"La nourriture est-elle sûre ?":locale==="es"?"¿La comida es segura?":locale==="pt"?"A comida é segura?":locale==="ar"?"هل الطعام آمن؟":"Is the food safe?",
-      a: locale==="fr"?"Toute la nourriture provient de vrais restaurants et commerces vérifiés.":locale==="es"?"Toda la comida proviene de restaurantes verificados.":locale==="pt"?"Toda a comida vem de estabelecimentos verificados.":locale==="ar"?"جميع الطعام مصدره مطاعم موثوقة.":"All food comes from verified real restaurants, bakeries, and stores. Every listing includes allergen information."
+      a: locale==="fr"?"Toute la nourriture provient de vrais restaurants et commerces vérifiés près de chez vous.":locale==="es"?"Toda la comida proviene de restaurantes y tiendas verificados cerca de ti.":locale==="pt"?"Toda a comida vem de restaurantes e lojas verificadas perto de você.":locale==="ar"?"جميع الطعام مصدره مطاعم ومحلات تجارية موثوقة بالقرب منك.":"All food comes from verified real restaurants, bakeries, and stores near you."
     },
   ];
 
@@ -140,14 +140,13 @@ export default function HomePage() {
           <style>{`@keyframes pulse { 0%,100%{opacity:1;}50%{opacity:0.4;} }`}</style>
         </section>
 
-        {/* TRUST BAR */}
+        {/* TRUST BAR — 3 items only, "5 languages" removed */}
         <section style={{ borderBottom:"1px solid #e5e7eb", background:"#fff" }}>
           <div style={{ maxWidth:"900px", margin:"0 auto", padding:"18px 24px", display:"flex", flexWrap:"wrap", justifyContent:"center", gap:"32px" }}>
             {[
               { val:"100%", label: locale==="ar"?"مجاني":locale==="fr"?"Gratuit":locale==="es"?"Gratis":locale==="pt"?"Grátis":"Free" },
-              { val:locale==="ar"?"فوري":"Real-time", label: locale==="ar"?"إعلانات":locale==="fr"?"annonces":locale==="es"?"anuncios":locale==="pt"?"anúncios":"listings" },
+              { val: locale==="ar"?"فوري":"Real-time", label: locale==="ar"?"إعلانات":locale==="fr"?"annonces":locale==="es"?"anuncios":locale==="pt"?"anúncios":"listings" },
               { val:"NYC", label: locale==="ar"?"محلي":locale==="fr"?"local":locale==="es"?"local":locale==="pt"?"local":"based" },
-              { val:"5", label: locale==="ar"?"لغات":locale==="fr"?"langues":locale==="es"?"idiomas":locale==="pt"?"idiomas":"languages" },
             ].map((item, i) => (
               <div key={i} style={{ textAlign:"center" }}>
                 <span style={{ fontWeight:800, color:"#0a2e1a", fontSize:"15px" }}>{item.val} </span>
@@ -199,7 +198,8 @@ export default function HomePage() {
               { color:"#2563eb", title:T.step2_title, desc:T.step2_desc, icon:"✅", badge:locale==="ar"?"فوري":"Instant" },
               { color:"#ea580c", title:T.step3_title, desc:T.step3_desc, icon:"📍", badge:locale==="ar"?"سهل":"Easy" },
             ].map((s, i) => (
-              <div key={i} style={{ background:"#fff", border:"1px solid #f1f5f9", borderRadius:"20px", padding:"32px", boxShadow:"0 2px 8px rgba(0,0,0,0.04)", transition:"all 0.3s", position:"relative", cursor:"default" }}
+              <div key={i}
+                style={{ background:"#fff", border:"1px solid #f1f5f9", borderRadius:"20px", padding:"32px", boxShadow:"0 2px 8px rgba(0,0,0,0.04)", transition:"all 0.3s", position:"relative", cursor:"default" }}
                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform="translateY(-4px)"; (e.currentTarget as HTMLElement).style.boxShadow="0 12px 32px rgba(0,0,0,0.1)"; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform="translateY(0)"; (e.currentTarget as HTMLElement).style.boxShadow="0 2px 8px rgba(0,0,0,0.04)"; }}>
                 <span style={{ position:"absolute", top:"16px", right:"16px", fontSize:"11px", fontWeight:700, color:"#9ca3af", background:"#f9fafb", padding:"4px 10px", borderRadius:"999px" }}>{s.badge}</span>
@@ -210,7 +210,9 @@ export default function HomePage() {
             ))}
           </div>
           <div className="mt-12 text-center">
-            <Link href="/browse" className="inline-block rounded-xl bg-green-500 px-8 py-4 font-bold text-white shadow-lg shadow-green-100 hover:bg-green-600 transition">{T.hero_cta}</Link>
+            <Link href="/browse" className="inline-block rounded-xl bg-green-500 px-8 py-4 font-bold text-white shadow-lg shadow-green-100 hover:bg-green-600 transition">
+              {T.hero_cta}
+            </Link>
           </div>
         </section>
 
@@ -304,7 +306,8 @@ export default function HomePage() {
             ].map((card, i) => {
               const [title, desc] = (card as any)[locale] || card.en;
               return (
-                <div key={i} style={{ background:"#fff", border:"1px solid #f1f5f9", borderRadius:"20px", padding:"32px", cursor:"default", transition:"all 0.3s" }}
+                <div key={i}
+                  style={{ background:"#fff", border:"1px solid #f1f5f9", borderRadius:"20px", padding:"32px", cursor:"default", transition:"all 0.3s" }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform="translateY(-4px)"; (e.currentTarget as HTMLElement).style.boxShadow="0 12px 32px rgba(0,0,0,0.08)"; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform="translateY(0)"; (e.currentTarget as HTMLElement).style.boxShadow="none"; }}>
                   <div style={{ fontSize:"32px", marginBottom:"14px" }}>{card.icon}</div>
