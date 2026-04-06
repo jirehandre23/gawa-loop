@@ -15,19 +15,30 @@ export async function POST(req: NextRequest) {
 
     if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
 
-    const ext      = file.name.split(".").pop() || "jpg";
+    const ext      = file.name.split(".").pop()?.toLowerCase() || "jpg";
     const filename = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
     const buffer   = Buffer.from(await file.arrayBuffer());
 
+    // Delete old file in same folder to avoid duplicates
+    const { data: existingFiles } = await supabase.storage
+      .from(bucket)
+      .list(folder);
+
+    if (existingFiles && existingFiles.length > 0) {
+      const oldPaths = existingFiles.map(f => `${folder}/${f.name}`);
+      await supabase.storage.from(bucket).remove(oldPaths);
+    }
+
     const { error } = await supabase.storage
       .from(bucket)
-      .upload(filename, buffer, { contentType: file.type, upsert: false });
+      .upload(filename, buffer, { contentType: file.type, upsert: true });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(filename);
     return NextResponse.json({ success: true, url: publicUrl });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
