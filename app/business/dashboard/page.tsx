@@ -39,18 +39,21 @@ type ListingRow = {
 
 const EMPTY_FORM = {
   food_name: "", category: "Food", quantity: "", allergy_note: "",
-  estimated_value: "", weight_kg: "", note: "",
+  estimated_value: "", weight_lbs: "", note: "",
   active_hours: "1", claim_hold: "10",
 };
 
-function treeMetric(kg: number): { emoji: string; label: string } {
-  if (kg <= 0)   return { emoji: "🌱", label: "Plant a seed — start donating!" };
-  if (kg < 5)    return { emoji: "🌱", label: "Seedling saved" };
-  if (kg < 15)   return { emoji: "🪴", label: "Small plant" };
-  if (kg < 40)   return { emoji: "🌿", label: "Young tree" };
-  if (kg < 100)  return { emoji: "🌳", label: "Full tree" };
-  if (kg < 250)  return { emoji: "🌳🌳", label: "2 trees" };
-  if (kg < 500)  return { emoji: "🌲🌲🌲", label: "Small forest" };
+const LBS_TO_KG = 0.453592;
+
+// Tree metric in lbs (1 kg ≈ 2.205 lbs)
+function treeMetric(lbs: number): { emoji: string; label: string } {
+  if (lbs <= 0)    return { emoji: "🌱", label: "Plant a seed — start donating!" };
+  if (lbs < 11)    return { emoji: "🌱", label: "Seedling saved" };
+  if (lbs < 33)    return { emoji: "🪴", label: "Small plant" };
+  if (lbs < 88)    return { emoji: "🌿", label: "Young tree" };
+  if (lbs < 220)   return { emoji: "🌳", label: "Full tree" };
+  if (lbs < 551)   return { emoji: "🌳🌳", label: "2 trees" };
+  if (lbs < 1102)  return { emoji: "🌲🌲🌲", label: "Small forest" };
   return { emoji: "🌲🌲🌲🌲🌲", label: "Forest preserved!" };
 }
 
@@ -147,9 +150,13 @@ export default function BusinessDashboard() {
   const yearlyL       = listings.filter(l => new Date(l.created_at).getFullYear() === thisYear);
   const mPickups      = monthlyL.filter(l => l.status === "PICKED_UP").length;
   const yPickups      = yearlyL.filter(l => l.status === "PICKED_UP").length;
-  const totalWeightKg = listings.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.weight_kg || 0), 0);
-  const tree          = treeMetric(totalWeightKg);
-  const T             = t[locale];
+
+  // Total weight in lbs (DB stores kg, display in lbs)
+  const totalWeightLbs = listings
+    .filter(l => l.status === "PICKED_UP")
+    .reduce((s, l) => s + Number(l.weight_kg || 0) * 2.205, 0);
+  const tree = treeMetric(totalWeightLbs);
+  const T    = t[locale];
 
   async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -176,20 +183,24 @@ export default function BusinessDashboard() {
     }
 
     const expiresAt = new Date(Date.now() + Number(form.active_hours) * 3600000).toISOString();
+
+    // Convert lbs to kg for storage
+    const weightKg = form.weight_lbs ? Number(form.weight_lbs) * LBS_TO_KG : null;
+
     const { error } = await supabase.from("listings").insert({
-      business_name:     businessName,
-      address:           businessAddress,
-      food_name:         form.food_name,
-      category:          form.category,
-      quantity:          form.quantity,
-      allergy_note:      form.allergy_note || null,
-      estimated_value:   form.estimated_value ? Number(form.estimated_value) : null,
-      weight_kg:         form.weight_kg     ? Number(form.weight_kg)     : null,
-      note:              form.note || null,
-      status:            "AVAILABLE",
-      expires_at:        expiresAt,
+      business_name:      businessName,
+      address:            businessAddress,
+      food_name:          form.food_name,
+      category:           form.category,
+      quantity:           form.quantity,
+      allergy_note:       form.allergy_note || null,
+      estimated_value:    form.estimated_value ? Number(form.estimated_value) : null,
+      weight_kg:          weightKg,
+      note:               form.note || null,
+      status:             "AVAILABLE",
+      expires_at:         expiresAt,
       claim_hold_minutes: Number(form.claim_hold),
-      image_url:         imageUrl,
+      image_url:          imageUrl,
     });
 
     if (error) { setPostMsg("Error posting. Please try again."); }
@@ -230,6 +241,8 @@ export default function BusinessDashboard() {
 
   function startEdit(listing: ListingRow) {
     setEditingId(listing.id);
+    // Convert stored kg back to lbs for display in edit form
+    const lbs = listing.weight_kg ? (listing.weight_kg * 2.205).toFixed(1) : "";
     setEditForm({
       food_name:       listing.food_name,
       category:        listing.category,
@@ -237,11 +250,13 @@ export default function BusinessDashboard() {
       allergy_note:    listing.allergy_note || "",
       note:            listing.note || "",
       estimated_value: String(listing.estimated_value || ""),
-      weight_kg:       String(listing.weight_kg || ""),
+      weight_lbs:      lbs,
     });
   }
 
   async function handleSaveEdit(id: string) {
+    // Convert lbs back to kg for storage
+    const weightKg = editForm.weight_lbs ? Number(editForm.weight_lbs) * LBS_TO_KG : null;
     await supabase.from("listings").update({
       food_name:      editForm.food_name,
       category:       editForm.category,
@@ -249,11 +264,11 @@ export default function BusinessDashboard() {
       allergy_note:   editForm.allergy_note || null,
       note:           editForm.note || null,
       estimated_value: editForm.estimated_value ? Number(editForm.estimated_value) : null,
-      weight_kg:       editForm.weight_kg      ? Number(editForm.weight_kg)      : null,
+      weight_kg:       weightKg,
     }).eq("id", id);
     setListings(prev => prev.map(l =>
       l.id === id
-        ? { ...l, ...editForm, estimated_value: Number(editForm.estimated_value || 0), weight_kg: Number(editForm.weight_kg || 0) }
+        ? { ...l, ...editForm, estimated_value: Number(editForm.estimated_value || 0), weight_kg: weightKg || 0 }
         : l
     ));
     setEditingId(null);
@@ -331,8 +346,7 @@ export default function BusinessDashboard() {
                     style={{ width: "48px", height: "48px", borderRadius: "12px", objectFit: "cover", border: "2px solid #e5e7eb", cursor: "pointer" }}
                     onClick={() => logoRef.current?.click()}/>
                 : <div onClick={() => logoRef.current?.click()}
-                    style={{ width: "48px", height: "48px", borderRadius: "12px", background: "#f0fdf4", border: "2px dashed #16a34a", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: "20px" }}
-                    title="Upload logo">📷</div>
+                    style={{ width: "48px", height: "48px", borderRadius: "12px", background: "#f0fdf4", border: "2px dashed #16a34a", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: "20px" }}>📷</div>
               }
               <input ref={logoRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleLogoUpload}/>
               <div onClick={() => logoRef.current?.click()}
@@ -375,8 +389,8 @@ export default function BusinessDashboard() {
             <p style={{ margin: "0 0 2px", fontSize: "12px", fontWeight: 700, color: "#4ade80", textTransform: "uppercase", letterSpacing: "0.6px" }}>🌍 Environmental Impact</p>
             <p style={{ margin: "0 0 2px", fontSize: "20px", fontWeight: 800, color: "#fff" }}>{tree.label}</p>
             <p style={{ margin: 0, fontSize: "13px", color: "#a3c9b0" }}>
-              {totalWeightKg > 0
-                ? `${totalWeightKg.toFixed(1)} kg food donated · ~${(totalWeightKg * 2.5).toFixed(1)} kg CO₂ saved`
+              {totalWeightLbs > 0
+                ? `${totalWeightLbs.toFixed(1)} lbs food donated · ~${(totalWeightLbs * 0.513).toFixed(1)} kg CO₂ saved`
                 : "Start posting food to grow your impact"}
             </p>
           </div>
@@ -426,12 +440,12 @@ export default function BusinessDashboard() {
                     placeholder="e.g. 10 portions"/>
                 </div>
 
-                {/* Weight AND Estimated Value — side by side */}
+                {/* Weight in lbs + Estimated Value side by side */}
                 <div>
-                  <label style={lbl}>⚖️ Estimated Weight (kg)</label>
-                  <input style={inp} type="number" min="0" step="0.1" value={form.weight_kg}
-                    onChange={e => setForm(f => ({ ...f, weight_kg: e.target.value }))}
-                    placeholder="e.g. 3.5"/>
+                  <label style={lbl}>⚖️ Estimated Weight (lbs)</label>
+                  <input style={inp} type="number" min="0" step="0.1" value={form.weight_lbs}
+                    onChange={e => setForm(f => ({ ...f, weight_lbs: e.target.value }))}
+                    placeholder="e.g. 8"/>
                 </div>
                 <div>
                   <label style={lbl}>💰 Estimated Value ($)</label>
@@ -447,7 +461,6 @@ export default function BusinessDashboard() {
                     placeholder="e.g. Contains nuts, halal, vegetarian, gluten-free"/>
                 </div>
 
-                {/* Photo upload */}
                 <div style={{ gridColumn: "1/-1" }}>
                   <label style={lbl}>📷 Food Photo (optional)</label>
                   <input
@@ -526,7 +539,7 @@ export default function BusinessDashboard() {
                 items: [
                   { k: T.dash_posted,  v: yearlyL.length },
                   { k: T.dash_pickups, v: yPickups },
-                  { k: "Total weight", v: `${totalWeightKg.toFixed(1)} kg` },
+                  { k: "Total weight", v: `${totalWeightLbs.toFixed(1)} lbs` },
                 ],
               },
             ].map(section => (
@@ -565,12 +578,13 @@ export default function BusinessDashboard() {
           const sc          = STATUS_COLOR[listing.status] || { bg: "#6b7280", text: "#fff" };
           const activeClaim = listing.claims?.find(c => c.status === "active");
           const isEditing   = editingId === listing.id;
+          // Convert kg to lbs for display
+          const weightLbs   = listing.weight_kg ? (listing.weight_kg * 2.205) : null;
 
           return (
             <div key={listing.id}
               style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "24px", marginBottom: "16px", opacity: isTerminal ? 0.82 : 1 }}>
 
-              {/* Listing header */}
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "14px", gap: "12px" }}>
                 <div style={{ display: "flex", gap: "12px", alignItems: "flex-start", flex: 1 }}>
                   {listing.image_url && (
@@ -604,8 +618,8 @@ export default function BusinessDashboard() {
                       <input style={inp} value={editForm.quantity || ""} onChange={e => setEditForm(f => ({ ...f, quantity: e.target.value }))}/>
                     </div>
                     <div>
-                      <label style={lbl}>⚖️ Weight (kg)</label>
-                      <input style={inp} type="number" step="0.1" value={editForm.weight_kg || ""} onChange={e => setEditForm(f => ({ ...f, weight_kg: e.target.value }))}/>
+                      <label style={lbl}>⚖️ Weight (lbs)</label>
+                      <input style={inp} type="number" step="0.1" value={editForm.weight_lbs || ""} onChange={e => setEditForm(f => ({ ...f, weight_lbs: e.target.value }))}/>
                     </div>
                     <div>
                       <label style={lbl}>💰 Est. Value ($)</label>
@@ -636,8 +650,8 @@ export default function BusinessDashboard() {
                   <p style={{ margin: "2px 0" }}><b>{T.category}:</b> {listing.category || "N/A"}</p>
                   <p style={{ margin: "2px 0" }}><b>{T.quantity}:</b> {listing.quantity || "N/A"}</p>
                   <p style={{ margin: "2px 0" }}><b>{T.address}:</b> {listing.address || "N/A"}</p>
-                  {listing.weight_kg && listing.weight_kg > 0 && (
-                    <p style={{ margin: "2px 0" }}><b>⚖️ Weight:</b> {listing.weight_kg} kg</p>
+                  {weightLbs && weightLbs > 0 && (
+                    <p style={{ margin: "2px 0" }}><b>⚖️ Weight:</b> {weightLbs.toFixed(1)} lbs</p>
                   )}
                   {listing.estimated_value && listing.estimated_value > 0 && (
                     <p style={{ margin: "2px 0" }}><b>💰 Est. Value:</b> ${Number(listing.estimated_value).toFixed(2)}</p>
@@ -673,7 +687,7 @@ export default function BusinessDashboard() {
                 </div>
               )}
 
-              {/* PICKED_UP — name + code only, NO contact details */}
+              {/* PICKED_UP — name + code only */}
               {listing.status === "PICKED_UP" && activeClaim && (
                 <div style={{ background: "#f5f3ff", border: "1.5px solid #ddd6fe", borderRadius: "12px", padding: "16px 20px", marginTop: "16px" }}>
                   <p style={{ margin: "0 0 6px", fontWeight: 700, color: "#6d28d9", fontSize: "14px" }}>{T.picked_up_by}</p>
