@@ -8,8 +8,8 @@ const supabase = createClient(
 );
 
 export default function CustomerSignup() {
-  const [step, setStep]   = useState<"terms" | "form">("terms");
-  const [form, setForm]   = useState({
+  const [step, setStep] = useState<"terms" | "form">("terms");
+  const [form, setForm] = useState({
     firstName: "", lastName: "", email: "",
     phone: "", city: "", state: "",
     password: "", confirm: "",
@@ -40,9 +40,11 @@ export default function CustomerSignup() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (!form.firstName.trim()) { setError("Please enter your first name."); return; }
+    if (!form.phone.trim()) { setError("Phone number is required. Please include your country code (e.g. +1 718 555 0123)."); return; }
+    if (!form.phone.startsWith("+")) { setError("Please include your country code (e.g. +1 718 555 0123)."); return; }
     if (form.password !== form.confirm) { setError("Passwords do not match."); return; }
     if (form.password.length < 8) { setError("Password must be at least 8 characters."); return; }
-    if (!form.firstName.trim()) { setError("Please enter your first name."); return; }
     setSubmitting(true);
 
     const { data, error: authErr } = await supabase.auth.signUp({
@@ -59,7 +61,7 @@ export default function CustomerSignup() {
         first_name: form.firstName.trim(),
         last_name:  form.lastName.trim() || null,
         email:      form.email,
-        phone:      form.phone || null,
+        phone:      form.phone,
         city:       form.city  || null,
         state:      form.state || null,
         avatar_url: null,
@@ -71,15 +73,29 @@ export default function CustomerSignup() {
 
   if (done) return (
     <div style={{ minHeight: "100vh", background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", fontFamily: "sans-serif" }}>
-      <div style={{ background: "#fff", borderRadius: "20px", padding: "48px 40px", maxWidth: "480px", width: "100%", textAlign: "center", boxShadow: "0 8px 32px rgba(0,0,0,0.08)" }}>
-        <div style={{ fontSize: "64px", marginBottom: "16px" }}>✅</div>
-        <h1 style={{ margin: "0 0 12px", fontSize: "24px", fontWeight: 800, color: "#0a2e1a" }}>Account Created!</h1>
-        <p style={{ margin: "0 0 24px", fontSize: "15px", color: "#6b7280", lineHeight: 1.6 }}>
-          Check your email to confirm your account, then start claiming free food from local businesses near you!
+      <div style={{ background: "#fff", borderRadius: "20px", padding: "48px 40px", maxWidth: "500px", width: "100%", textAlign: "center", boxShadow: "0 8px 32px rgba(0,0,0,0.08)" }}>
+        <div style={{ fontSize: "64px", marginBottom: "16px" }}>📧</div>
+        <h1 style={{ margin: "0 0 12px", fontSize: "24px", fontWeight: 800, color: "#0a2e1a" }}>Check Your Email!</h1>
+        <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "12px", padding: "16px 20px", marginBottom: "20px", textAlign: "left" }}>
+          <p style={{ margin: "0 0 8px", fontSize: "14px", fontWeight: 700, color: "#1d4ed8" }}>What to do next:</p>
+          <ol style={{ margin: 0, paddingLeft: "18px", fontSize: "14px", color: "#1e3a5f", lineHeight: 2 }}>
+            <li>Open your email inbox</li>
+            <li>Find the email from GAWA Loop</li>
+            <li>Click the confirmation link</li>
+            <li>Come back here and sign in</li>
+          </ol>
+        </div>
+        <p style={{ margin: "0 0 24px", fontSize: "14px", color: "#6b7280" }}>
+          Did not receive it? Check your spam folder or{" "}
+          <a href="/customer/signup" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>try again</a>.
         </p>
         <div style={{ display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap" }}>
-          <a href="/browse" style={{ display: "inline-block", background: "#16a34a", color: "#fff", fontWeight: 700, padding: "13px 28px", borderRadius: "10px", textDecoration: "none", fontSize: "15px" }}>Browse Free Food</a>
-          <a href="/customer/profile" style={{ display: "inline-block", background: "#f3f4f6", color: "#374151", fontWeight: 700, padding: "13px 28px", borderRadius: "10px", textDecoration: "none", fontSize: "15px", border: "1px solid #e5e7eb" }}>Set Up Profile and Photo</a>
+          <a href="/customer/login" style={{ display: "inline-block", background: "#16a34a", color: "#fff", fontWeight: 700, padding: "13px 28px", borderRadius: "10px", textDecoration: "none", fontSize: "15px" }}>
+            Sign In
+          </a>
+          <a href="/browse" style={{ display: "inline-block", background: "#f3f4f6", color: "#374151", fontWeight: 700, padding: "13px 28px", borderRadius: "10px", textDecoration: "none", fontSize: "15px", border: "1px solid #e5e7eb" }}>
+            Browse Food
+          </a>
         </div>
       </div>
     </div>
@@ -174,9 +190,15 @@ export default function CustomerSignup() {
                   <label style={lbl}>Email *</label>
                   <input style={inp} type="email" required value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}/>
                 </div>
-                <div>
-                  <label style={lbl}>Phone</label>
-                  <input style={inp} type="tel" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="Optional"/>
+                <div style={{ gridColumn: "1/-1" }}>
+                  <label style={lbl}>Phone Number * <span style={{ fontWeight: 400, color: "#9ca3af" }}>(include country code)</span></label>
+                  <input style={{ ...inp, borderColor: form.phone && !form.phone.startsWith("+") ? "#f87171" : "#d1d5db" }}
+                    type="tel" required value={form.phone}
+                    onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                    placeholder="e.g. +1 718 555 0123"/>
+                  {form.phone && !form.phone.startsWith("+") && (
+                    <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#ef4444" }}>Must start with country code (e.g. +1 for USA)</p>
+                  )}
                 </div>
                 <div>
                   <label style={lbl}>City</label>
