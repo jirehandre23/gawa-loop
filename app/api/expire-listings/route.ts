@@ -7,50 +7,52 @@ const supabase = createClient(
 );
 
 export async function GET(req: NextRequest) {
-  // Protect the endpoint so only Vercel cron can call it
-  const authHeader = req.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const secret = req.headers.get("x-cron-secret") || req.nextUrl.searchParams.get("secret");
+  if (secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const now = new Date().toISOString();
 
-  // Find all RESERVED listings that have passed their expiry time
-  const { data: expiredListings, error: fetchError } = await supabase
+  // 1. RESERVED listings whose claim hold time expired → noshow, return to AVAILABLE
+  const { data: noShowListings } = await supabase
     .from("listings")
-    .select("id")
+    .select("id, claims(*)")
     .eq("status", "RESERVED")
-    .or(`listing_expires_at.lt.${now},expires_at.lt.${now}`);
+    .lt("reserved_until", now);
 
-  if (fetchError) {
-    console.error("expire-listings fetch error:", fetchError);
-    return NextResponse.json({ error: fetchError.message }, { status: 500 });
+  let noshowCount = 0;
+  if (noShowListings && noShowListings.length > 0) {
+    for (const listing of noShowListings) {
+      // Mark active claim as noshow
+      const activeClaim = (listing.claims as any[])?.find((c: any) => c.status === "active");
+      if (activeClaim) {
+        await supabase
+          .from("claims")
+          .update({ status: "noshow", noshow: true, noshow_at: now })
+          .eq("id", activeClaim.id);
+      }
+      // Return listing to AVAILABLE so it can be claimed again
+      await supabase
+        .from("listings")
+        .update({ status: "AVAILABLE", reserved_until: null, claim_code: null })
+        .eq("id", listing.id);
+      noshowCount++;
+    }
   }
 
-  if (!expiredListings || expiredListings.length === 0) {
-    return NextResponse.json({ expired: 0, message: "Nothing to expire" });
-  }
-
-  const ids = expiredListings.map((l: { id: string }) => l.id);
-
-  // Mark listings as EXPIRED
-  const { error: updateError } = await supabase
+  // 2. AVAILABLE listings whose overall expiry passed → EXPIRED
+  const { data: expiredListings, error: expireError } = await supabase
     .from("listings")
     .update({ status: "EXPIRED" })
-    .in("id", ids);
+    .eq("status", "AVAILABLE")
+    .lt("expires_at", now)
+    .select("id");
 
-  if (updateError) {
-    console.error("expire-listings update error:", updateError);
-    return NextResponse.json({ error: updateError.message }, { status: 500 });
-  }
-
-  // Cancel any active claims on those listings
-  await supabase
-    .from("claims")
-    .update({ status: "cancelled", cancelled_at: now })
-    .in("listing_id", ids)
-    .eq("status", "active");
-
-  console.log(`Expired ${ids.length} listings`);
-  return NextResponse.json({ expired: ids.length, listing_ids: ids });
+  return NextResponse.json({
+    success: true,
+    noshows_returned: noshowCount,
+    expired: expiredListings?.length ?? 0,
+    error: expireError?.message ?? null,
+  });
 }
