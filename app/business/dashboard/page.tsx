@@ -93,7 +93,7 @@ export default function BusinessDashboard() {
   async function uploadImage(file: File, bucket: string, folder: string): Promise<string | null> {
     setUploadingImg(true);
     const fd = new FormData();
-    fd.append("file",   file);
+    fd.append("file", file);
     fd.append("bucket", bucket);
     fd.append("folder", folder);
     const res  = await fetch("/api/upload-image", { method: "POST", body: fd });
@@ -112,7 +112,7 @@ export default function BusinessDashboard() {
 
     if (admin) {
       const { data } = await supabase.from("listings").select("business_name").order("business_name");
-      const unique = [...new Set((data || []).map((b: { business_name: string }) => b.business_name).filter(Boolean))];
+      const unique = [...new Set((data || []).map((b: any) => b.business_name).filter(Boolean))];
       setAllBizNames(unique as string[]);
     }
 
@@ -151,7 +151,11 @@ export default function BusinessDashboard() {
 
   async function fetchClaimerAvatar(claimId: string, email: string) {
     if (claimerAvatars[claimId] !== undefined) return;
-    const res  = await fetch("/api/claim-avatar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+    const res  = await fetch("/api/claim-avatar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
     const data = await res.json();
     setClaimerAvatars(prev => ({ ...prev, [claimId]: data.avatar_url || null }));
   }
@@ -161,7 +165,10 @@ export default function BusinessDashboard() {
   const now        = new Date();
   const thisMonth  = now.getMonth();
   const thisYear   = now.getFullYear();
-  const monthlyL   = listings.filter(l => { const d = new Date(l.created_at); return d.getMonth() === thisMonth && d.getFullYear() === thisYear; });
+  const monthlyL   = listings.filter(l => {
+    const d = new Date(l.created_at);
+    return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
+  });
   const yearlyL    = listings.filter(l => new Date(l.created_at).getFullYear() === thisYear);
   const mPickups   = monthlyL.filter(l => l.status === "PICKED_UP").length;
   const yPickups   = yearlyL.filter(l => l.status === "PICKED_UP").length;
@@ -169,7 +176,9 @@ export default function BusinessDashboard() {
   const yCancelled = yearlyL.filter(l => l.status === "CANCELLED").length;
   const mExpired   = monthlyL.filter(l => l.status === "EXPIRED").length;
   const yExpired   = yearlyL.filter(l => l.status === "EXPIRED").length;
-  const totalWeightLbs = listings.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.weight_kg || 0) * 2.205, 0);
+  const totalWeightLbs = listings
+    .filter(l => l.status === "PICKED_UP")
+    .reduce((s, l) => s + Number(l.weight_kg || 0) * 2.205, 0);
   const tree = treeMetric(totalWeightLbs);
   const T    = t[locale];
 
@@ -182,7 +191,7 @@ export default function BusinessDashboard() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!businessId) {
-      setLogoMsg("Error: business not loaded yet. Please wait and try again.");
+      setLogoMsg("Error: business not loaded. Please refresh and try again.");
       setTimeout(() => setLogoMsg(""), 4000);
       return;
     }
@@ -191,10 +200,9 @@ export default function BusinessDashboard() {
     if (url) {
       const { error } = await supabase.from("businesses").update({ logo_url: url }).eq("id", businessId);
       if (error) {
-        setLogoMsg("Saved to storage but DB update failed: " + error.message);
+        setLogoMsg("Upload ok but save failed: " + error.message);
       } else {
-        const newUrl = url.includes("?") ? url : url + "?t=" + Date.now();
-        setLogoUrl(newUrl);
+        setLogoUrl(url + "?t=" + Date.now());
         setLogoMsg("✅ Logo saved!");
       }
     } else {
@@ -206,15 +214,20 @@ export default function BusinessDashboard() {
 
   async function handlePost(e: React.FormEvent) {
     e.preventDefault();
-    if (!businessName) return;
+    if (!businessName || !businessId) return;
     setPosting(true); setPostMsg("");
 
-    const { data: bizData } = await supabase.from("businesses").select("logo_url").eq("id", businessId!).single();
+    const { data: bizData } = await supabase
+      .from("businesses").select("logo_url").eq("id", businessId).single();
     const currentLogoUrl = bizData?.logo_url || null;
 
     let imageUrl: string | null = null;
     if (listingFileRef.current?.files?.[0]) {
-      imageUrl = await uploadImage(listingFileRef.current.files[0], "listing-images", businessName.replace(/\s/g, "_"));
+      imageUrl = await uploadImage(
+        listingFileRef.current.files[0],
+        "listing-images",
+        businessName.replace(/\s/g, "_")
+      );
     }
 
     const expiresAt = new Date(Date.now() + Number(form.active_hours) * 3600000).toISOString();
@@ -249,46 +262,74 @@ export default function BusinessDashboard() {
   }
 
   async function handlePickedUp(id: string) {
-    const res  = await fetch("/api/mark-picked-up", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ listingId: id }) });
+    const res  = await fetch("/api/mark-picked-up", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ listingId: id }),
+    });
     const data = await res.json();
     if (data.success) setListings(prev => prev.map(l => l.id === id ? { ...l, status: "PICKED_UP" } : l));
   }
 
   async function handleCancelReservation(id: string) {
-    await supabase.from("listings").update({ status: "AVAILABLE", reserved_until: null, claim_code: null }).eq("id", id);
-    setListings(prev => prev.map(l => l.id === id ? { ...l, status: "AVAILABLE", reserved_until: null as unknown as string, claim_code: null as unknown as string } : l));
+    await supabase.from("listings")
+      .update({ status: "AVAILABLE", reserved_until: null, claim_code: null }).eq("id", id);
+    setListings(prev => prev.map(l =>
+      l.id === id ? { ...l, status: "AVAILABLE", reserved_until: null as any, claim_code: null as any } : l
+    ));
   }
 
   async function handleCancelListing(id: string) {
-    if (!confirm("Cancel this listing? Any customers will be notified by email.")) return;
-    const res  = await fetch("/api/cancel-listing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ listingId: id }) });
+    if (!confirm("Cancel this listing? Customers will be notified.")) return;
+    const res  = await fetch("/api/cancel-listing", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ listingId: id }),
+    });
     const data = await res.json();
     if (data.success) {
       setListings(prev => prev.map(l => l.id === id ? { ...l, status: "CANCELLED" } : l));
-      if (data.notified > 0) alert(`${data.notified} customer(s) notified by email.`);
+      if (data.notified > 0) alert(`${data.notified} customer(s) notified.`);
     }
   }
 
   function startEdit(listing: ListingRow) {
     setEditingId(listing.id);
     const lbs = listing.weight_kg ? (listing.weight_kg * 2.205).toFixed(1) : "";
-    setEditForm({ food_name: listing.food_name, category: listing.category, quantity: listing.quantity, allergy_note: listing.allergy_note || "", note: listing.note || "", estimated_value: String(listing.estimated_value || ""), weight_lbs: lbs });
+    setEditForm({
+      food_name: listing.food_name, category: listing.category,
+      quantity: listing.quantity, allergy_note: listing.allergy_note || "",
+      note: listing.note || "", estimated_value: String(listing.estimated_value || ""),
+      weight_lbs: lbs,
+    });
   }
 
   async function handleSaveEdit(id: string) {
     const weightKg = editForm.weight_lbs ? Number(editForm.weight_lbs) * LBS_TO_KG : null;
     await supabase.from("listings").update({
-      food_name: editForm.food_name, category: editForm.category, quantity: editForm.quantity,
-      allergy_note: editForm.allergy_note || null, note: editForm.note || null,
+      food_name: editForm.food_name, category: editForm.category,
+      quantity: editForm.quantity, allergy_note: editForm.allergy_note || null,
+      note: editForm.note || null,
       estimated_value: editForm.estimated_value ? Number(editForm.estimated_value) : null,
       weight_kg: weightKg,
     }).eq("id", id);
-    setListings(prev => prev.map(l => l.id === id ? { ...l, ...editForm, estimated_value: Number(editForm.estimated_value || 0), weight_kg: weightKg || 0 } : l));
+    setListings(prev => prev.map(l =>
+      l.id === id ? {
+        ...l, ...editForm,
+        estimated_value: Number(editForm.estimated_value || 0),
+        weight_kg: weightKg || 0,
+      } : l
+    ));
     setEditingId(null);
   }
 
-  const inp: React.CSSProperties = { width: "100%", padding: "10px 14px", borderRadius: "8px", border: "1px solid #d1d5db", fontSize: "14px", color: "#111827", boxSizing: "border-box", outline: "none", background: "#fff" };
-  const lbl: React.CSSProperties = { display: "block", fontSize: "13px", fontWeight: 600, color: "#374151", marginBottom: "4px" };
+  const inp: React.CSSProperties = {
+    width: "100%", padding: "10px 14px", borderRadius: "8px",
+    border: "1px solid #d1d5db", fontSize: "14px", color: "#111827",
+    boxSizing: "border-box", outline: "none", background: "#fff",
+  };
+  const lbl: React.CSSProperties = {
+    display: "block", fontSize: "13px", fontWeight: 600,
+    color: "#374151", marginBottom: "4px",
+  };
 
   function renderListingCard(listing: ListingRow) {
     const isTerminal  = TERMINAL.includes(listing.status);
@@ -301,9 +342,10 @@ export default function BusinessDashboard() {
     const claimerAvatar = activeClaim ? claimerAvatars[activeClaim.id] : undefined;
 
     return (
-      <div key={listing.id}
-        style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "24px", marginBottom: "16px", opacity: isTerminal ? 0.82 : 1 }}>
-
+      <div key={listing.id} style={{
+        background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px",
+        padding: "24px", marginBottom: "16px", opacity: isTerminal ? 0.82 : 1,
+      }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "14px", gap: "12px" }}>
           <div style={{ display: "flex", gap: "12px", alignItems: "flex-start", flex: 1 }}>
             {listing.image_url && (
@@ -338,22 +380,22 @@ export default function BusinessDashboard() {
           </div>
         ) : (
           <div style={{ fontSize: "14px", color: "#1f2937", lineHeight: 1.9 }}>
-            <p style={{ margin: "2px 0" }}><b>{T.category}:</b> {listing.category || "N/A"}</p>
-            <p style={{ margin: "2px 0" }}><b>{T.quantity}:</b> {listing.quantity || "N/A"}</p>
-            <p style={{ margin: "2px 0" }}><b>{T.address}:</b> {listing.address || "N/A"}</p>
+            <p style={{ margin: "2px 0" }}><b>Category:</b> {listing.category || "N/A"}</p>
+            <p style={{ margin: "2px 0" }}><b>Quantity:</b> {listing.quantity || "N/A"}</p>
+            <p style={{ margin: "2px 0" }}><b>Address:</b> {listing.address || "N/A"}</p>
             {weightLbs && weightLbs > 0 && <p style={{ margin: "2px 0" }}><b>⚖️ Weight:</b> {weightLbs.toFixed(1)} lbs</p>}
             {listing.estimated_value && listing.estimated_value > 0 && <p style={{ margin: "2px 0" }}><b>💰 Est. Value:</b> ${Number(listing.estimated_value).toFixed(2)}</p>}
             {listing.allergy_note && <p style={{ margin: "2px 0" }}><b>⚠️ Allergy:</b> {listing.allergy_note}</p>}
             {listing.note && <p style={{ margin: "2px 0" }}><b>📝 Note:</b> {listing.note}</p>}
-            <p style={{ margin: "2px 0" }}><b>{T.expires}:</b> {listing.expires_at ? new Date(listing.expires_at).toLocaleString() : "N/A"}</p>
-            <p style={{ margin: "2px 0" }}><b>{T.posted}:</b> {new Date(listing.created_at).toLocaleString()}</p>
+            <p style={{ margin: "2px 0" }}><b>Expires:</b> {listing.expires_at ? new Date(listing.expires_at).toLocaleString() : "N/A"}</p>
+            <p style={{ margin: "2px 0" }}><b>Posted:</b> {new Date(listing.created_at).toLocaleString()}</p>
           </div>
         )}
 
         {/* RESERVED — customer photo + details */}
         {isReserved && activeClaim && (
           <div style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: "12px", padding: "16px 20px", marginTop: "16px" }}>
-            <p style={{ margin: "0 0 12px", fontWeight: 700, color: "#1d4ed8", fontSize: "14px" }}>{T.reserved_customer}</p>
+            <p style={{ margin: "0 0 12px", fontWeight: 700, color: "#1d4ed8", fontSize: "14px" }}>Reserved by Customer</p>
             <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "12px" }}>
               {claimerAvatar
                 ? <img src={claimerAvatar} alt="Customer" style={{ width: "56px", height: "56px", borderRadius: "50%", objectFit: "cover", border: "2px solid #bfdbfe", flexShrink: 0 }}/>
@@ -372,7 +414,7 @@ export default function BusinessDashboard() {
         {/* PICKED_UP — name + code only, no photo */}
         {listing.status === "PICKED_UP" && activeClaim && (
           <div style={{ background: "#f5f3ff", border: "1.5px solid #ddd6fe", borderRadius: "12px", padding: "16px 20px", marginTop: "16px" }}>
-            <p style={{ margin: "0 0 6px", fontWeight: 700, color: "#6d28d9", fontSize: "14px" }}>{T.picked_up_by}</p>
+            <p style={{ margin: "0 0 6px", fontWeight: 700, color: "#6d28d9", fontSize: "14px" }}>Picked Up By</p>
             <p style={{ margin: "0 0 4px", fontSize: "15px", color: "#2e1065", fontWeight: 600 }}>
               {activeClaim.first_name} · Code: {activeClaim.confirmation_code}
             </p>
@@ -382,19 +424,18 @@ export default function BusinessDashboard() {
           </div>
         )}
 
-        {/* Action buttons */}
         {!isTerminal && !isEditing && (
           <div style={{ display: "flex", gap: "10px", marginTop: "20px", flexWrap: "wrap" }}>
             {isReserved && (
               <button onClick={() => handlePickedUp(listing.id)}
                 style={{ background: "#16a34a", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "14px" }}>
-                {T.dash_mark_picked}
+                ✅ Mark as Picked Up
               </button>
             )}
             {isReserved && (
               <button onClick={() => handleCancelReservation(listing.id)}
                 style={{ background: "#f59e0b", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "14px" }}>
-                {T.dash_cancel_res}
+                Cancel Reservation
               </button>
             )}
             {isAvailable && (
@@ -406,7 +447,7 @@ export default function BusinessDashboard() {
             {(isAvailable || isReserved) && (
               <button onClick={() => handleCancelListing(listing.id)}
                 style={{ background: "#ef4444", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "14px" }}>
-                {T.dash_cancel_listing}
+                Cancel Listing
               </button>
             )}
           </div>
@@ -415,7 +456,7 @@ export default function BusinessDashboard() {
         {isTerminal && (
           <p style={{ marginTop: "14px", fontSize: "13px", color: "#6b7280", fontStyle: "italic" }}>
             {listing.status === "PICKED_UP" && "✅ Successfully picked up."}
-            {listing.status === "EXPIRED"   && "⏰ This listing has expired."}
+            {listing.status === "EXPIRED"   && "⏰ This listing expired."}
             {listing.status === "CANCELLED" && "❌ This listing was cancelled."}
           </p>
         )}
@@ -433,25 +474,19 @@ export default function BusinessDashboard() {
     <div style={{ minHeight: "100vh", background: "#f9fafb", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", padding: "24px 16px" }}>
       <div style={{ maxWidth: "780px", margin: "0 auto" }}>
 
-        {/* ─── HEADER ─── */}
+        {/* HEADER */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "28px", flexWrap: "wrap", gap: "12px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <div style={{ position: "relative" }}>
               {businessLogoUrl
-                ? <img src={businessLogoUrl} alt="Business logo"
-                    style={{ width: "48px", height: "48px", borderRadius: "12px", objectFit: "cover", border: "2px solid #e5e7eb", cursor: "pointer" }}
-                    onClick={() => logoRef.current?.click()}/>
-                : <div onClick={() => logoRef.current?.click()}
-                    style={{ width: "48px", height: "48px", borderRadius: "12px", background: "#f0fdf4", border: "2px dashed #16a34a", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: "20px" }}>📷</div>
+                ? <img src={businessLogoUrl} alt="logo" style={{ width: "48px", height: "48px", borderRadius: "12px", objectFit: "cover", border: "2px solid #e5e7eb", cursor: "pointer" }} onClick={() => logoRef.current?.click()}/>
+                : <div onClick={() => logoRef.current?.click()} style={{ width: "48px", height: "48px", borderRadius: "12px", background: "#f0fdf4", border: "2px dashed #16a34a", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: "20px" }}>📷</div>
               }
               <input ref={logoRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleLogoUpload}/>
-              <div onClick={() => logoRef.current?.click()}
-                style={{ position: "absolute", bottom: "-3px", right: "-3px", background: "#16a34a", borderRadius: "50%", width: "16px", height: "16px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "9px", color: "#fff", cursor: "pointer" }}>
-                ✏️
-              </div>
+              <div onClick={() => logoRef.current?.click()} style={{ position: "absolute", bottom: "-3px", right: "-3px", background: "#16a34a", borderRadius: "50%", width: "16px", height: "16px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "9px", color: "#fff", cursor: "pointer" }}>✏️</div>
             </div>
             <div>
-              <h1 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>{T.dash_title}</h1>
+              <h1 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>Business Dashboard</h1>
               <p style={{ margin: 0, fontSize: "13px", color: "#6b7280" }}>
                 {isAdmin ? (adminView || "Select a business") : (businessName || "No business linked")}
                 {isAdmin && <span style={{ marginLeft: "8px", background: "#0a2e1a", color: "#4ade80", fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "6px" }}>🔑 ADMIN</span>}
@@ -461,13 +496,8 @@ export default function BusinessDashboard() {
           </div>
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
             <LanguageSwitcher/>
-            {/* Nav links to Home and Browse */}
-            <a href="/" style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "8px 14px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 600 }}>
-              🏠 Home
-            </a>
-            <a href="/browse" style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "8px 14px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 600 }}>
-              🍽️ Browse
-            </a>
+            <a href="/" style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "8px 14px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 600 }}>🏠 Home</a>
+            <a href="/browse" style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "8px 14px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 600 }}>🍽️ Browse</a>
             {isAdmin && allBizNames.length > 0 && (
               <select value={adminView || ""} onChange={e => setAdminView(e.target.value || null)}
                 style={{ padding: "8px 12px", borderRadius: "8px", border: "2px solid #0a2e1a", fontSize: "14px", background: "#f0fdf4", cursor: "pointer", fontWeight: 600, color: "#0a2e1a" }}>
@@ -477,16 +507,16 @@ export default function BusinessDashboard() {
             )}
             <button onClick={() => { setShowForm(true); setPostMsg(""); }}
               style={{ background: "#16a34a", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontSize: "14px", fontWeight: 700 }}>
-              {T.dash_new}
+              + New Listing
             </button>
             <button onClick={async () => { await supabase.auth.signOut(); window.location.href = "/business/login"; }}
               style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "10px 16px", borderRadius: "8px", cursor: "pointer", fontSize: "14px", fontWeight: 600 }}>
-              {T.dash_signout}
+              Sign Out
             </button>
           </div>
         </div>
 
-        {/* ─── TREE / IMPACT BANNER ─── */}
+        {/* TREE BANNER */}
         <div style={{ background: "linear-gradient(135deg,#0a2e1a,#166534)", borderRadius: "16px", padding: "20px 24px", marginBottom: "20px", display: "flex", alignItems: "center", gap: "16px" }}>
           <div style={{ fontSize: "48px", lineHeight: 1 }}>{tree.emoji}</div>
           <div>
@@ -494,17 +524,17 @@ export default function BusinessDashboard() {
             <p style={{ margin: "0 0 2px", fontSize: "20px", fontWeight: 800, color: "#fff" }}>{tree.label}</p>
             <p style={{ margin: 0, fontSize: "13px", color: "#a3c9b0" }}>
               {totalWeightLbs > 0
-                ? `${totalWeightLbs.toFixed(1)} lbs food donated · ~${(totalWeightLbs * 0.513).toFixed(1)} kg CO₂ saved`
+                ? `${totalWeightLbs.toFixed(1)} lbs donated · ~${(totalWeightLbs * 0.233).toFixed(1)} lbs CO₂ saved`
                 : "Start posting food to grow your impact"}
             </p>
           </div>
         </div>
 
-        {/* ─── NEW LISTING FORM ─── */}
+        {/* NEW LISTING FORM */}
         {showForm && (
           <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "28px", marginBottom: "24px", boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-              <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "#0a2e1a" }}>{T.dash_post_title}</h2>
+              <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "#0a2e1a" }}>Post New Food</h2>
               <button onClick={() => setShowForm(false)} style={{ background: "none", border: "none", fontSize: "22px", cursor: "pointer", color: "#9ca3af" }}>✕</button>
             </div>
             <form onSubmit={handlePost}>
@@ -512,25 +542,25 @@ export default function BusinessDashboard() {
                 <div style={{ gridColumn: "1/-1" }}><label style={lbl}>Business Name</label><input style={{ ...inp, background: "#f9fafb", color: "#6b7280" }} value={businessName || ""} disabled/></div>
                 <div style={{ gridColumn: "1/-1" }}><label style={lbl}>Pickup Address</label><input style={{ ...inp, background: "#f9fafb", color: "#6b7280" }} value={businessAddress || ""} disabled/></div>
                 <div style={{ gridColumn: "1/-1" }}>
-                  <label style={lbl}>{T.dash_food_name} *</label>
+                  <label style={lbl}>Food Name *</label>
                   <input style={inp} required value={form.food_name} onChange={e => setForm(f => ({ ...f, food_name: e.target.value }))} placeholder="e.g. Chicken sandwiches, rice and beans"/>
                 </div>
                 <div>
-                  <label style={lbl}>{T.dash_category} *</label>
+                  <label style={lbl}>Category *</label>
                   <select style={{ ...inp, cursor: "pointer" }} value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
                     <option>Food</option><option>Bakery</option><option>Beverages</option><option>Prepared Meals</option><option>Produce</option><option>Other</option>
                   </select>
                 </div>
                 <div>
-                  <label style={lbl}>{T.dash_quantity} *</label>
+                  <label style={lbl}>Quantity *</label>
                   <input style={inp} required value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} placeholder="e.g. 10 portions"/>
                 </div>
                 <div>
-                  <label style={lbl}>⚖️ Estimated Weight (lbs)</label>
+                  <label style={lbl}>⚖️ Weight (lbs)</label>
                   <input style={inp} type="number" min="0" step="0.1" value={form.weight_lbs} onChange={e => setForm(f => ({ ...f, weight_lbs: e.target.value }))} placeholder="e.g. 8"/>
                 </div>
                 <div>
-                  <label style={lbl}>💰 Estimated Value ($)</label>
+                  <label style={lbl}>💰 Est. Value ($)</label>
                   <input style={inp} type="number" min="0" step="0.01" value={form.estimated_value} onChange={e => setForm(f => ({ ...f, estimated_value: e.target.value }))} placeholder="e.g. 25"/>
                 </div>
                 <div style={{ gridColumn: "1/-1" }}>
@@ -543,61 +573,61 @@ export default function BusinessDashboard() {
                   {uploadingImg && <p style={{ margin: "6px 0 0", fontSize: "13px", color: "#16a34a", fontWeight: 600 }}>Uploading photo...</p>}
                 </div>
                 <div>
-                  <label style={lbl}>{T.dash_active_for}</label>
+                  <label style={lbl}>Active For</label>
                   <select style={{ ...inp, cursor: "pointer" }} value={form.active_hours} onChange={e => setForm(f => ({ ...f, active_hours: e.target.value }))}>
                     <option value="0.5">30 minutes</option><option value="1">1 hour</option><option value="2">2 hours</option><option value="4">4 hours</option><option value="8">8 hours</option>
                   </select>
                 </div>
                 <div>
-                  <label style={lbl}>{T.dash_hold}</label>
+                  <label style={lbl}>Claim Hold Time</label>
                   <select style={{ ...inp, cursor: "pointer" }} value={form.claim_hold} onChange={e => setForm(f => ({ ...f, claim_hold: e.target.value }))}>
                     <option value="10">10 minutes</option><option value="15">15 minutes</option><option value="20">20 minutes</option><option value="30">30 minutes</option><option value="45">45 minutes</option><option value="60">1 hour</option>
                   </select>
                 </div>
                 <div style={{ gridColumn: "1/-1" }}>
-                  <label style={lbl}>{T.dash_note}</label>
-                  <textarea style={{ ...inp, height: "70px", resize: "vertical" }} value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} placeholder="e.g. Pickup before closing. Ask for Maria at the front."/>
+                  <label style={lbl}>Note</label>
+                  <textarea style={{ ...inp, height: "70px", resize: "vertical" }} value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} placeholder="e.g. Ask for Maria at the front."/>
                 </div>
               </div>
               {postMsg && <p style={{ margin: "12px 0 0", fontSize: "14px", color: postMsg.includes("✅") ? "#16a34a" : "#ef4444", fontWeight: 600 }}>{postMsg}</p>}
               <button type="submit" disabled={posting || uploadingImg}
                 style={{ marginTop: "20px", background: (posting || uploadingImg) ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "12px 28px", borderRadius: "10px", cursor: (posting || uploadingImg) ? "not-allowed" : "pointer", fontSize: "15px", fontWeight: 700 }}>
-                {posting ? "Posting..." : uploadingImg ? "Uploading photo..." : T.dash_post_btn}
+                {posting ? "Posting..." : uploadingImg ? "Uploading..." : "Post Food"}
               </button>
             </form>
           </div>
         )}
 
-        {/* ─── IMPACT SUMMARY ─── */}
+        {/* IMPACT SUMMARY */}
         <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "24px 28px", marginBottom: "24px" }}>
-          <h2 style={{ margin: "0 0 16px", fontSize: "17px", fontWeight: 800, color: "#0a2e1a" }}>{T.dash_impact}</h2>
+          <h2 style={{ margin: "0 0 16px", fontSize: "17px", fontWeight: 800, color: "#0a2e1a" }}>Your Impact</h2>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
             {[
               {
-                label: `${T.dash_monthly} (${now.toLocaleString("default", { month: "long" })})`,
+                label: `This Month (${now.toLocaleString("default", { month: "long" })})`,
                 items: [
-                  { k: T.dash_posted,   v: monthlyL.length },
-                  { k: "✅ Picked up",  v: mPickups },
-                  { k: "❌ Cancelled",  v: mCancelled },
-                  { k: "⏰ Expired",    v: mExpired },
-                  { k: "CO₂ saved",     v: `~${(monthlyL.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.weight_kg || 0), 0) * 2.5).toFixed(1)} kg` },
+                  { k: "Listings Posted", v: monthlyL.length },
+                  { k: "✅ Picked Up",    v: mPickups },
+                  { k: "❌ Cancelled",    v: mCancelled },
+                  { k: "⏰ Expired",      v: mExpired },
+                  { k: "Food Saved",       v: `${monthlyL.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.weight_kg || 0) * 2.205, 0).toFixed(1)} lbs` },
                 ],
               },
               {
-                label: `${T.dash_yearly} (${thisYear})`,
+                label: `This Year (${thisYear})`,
                 items: [
-                  { k: T.dash_posted,   v: yearlyL.length },
-                  { k: "✅ Picked up",  v: yPickups },
-                  { k: "❌ Cancelled",  v: yCancelled },
-                  { k: "⏰ Expired",    v: yExpired },
-                  { k: "Total weight",  v: `${totalWeightLbs.toFixed(1)} lbs` },
+                  { k: "Listings Posted", v: yearlyL.length },
+                  { k: "✅ Picked Up",    v: yPickups },
+                  { k: "❌ Cancelled",    v: yCancelled },
+                  { k: "⏰ Expired",      v: yExpired },
+                  { k: "Total Donated",    v: `${totalWeightLbs.toFixed(1)} lbs` },
                 ],
               },
             ].map(section => (
               <div key={section.label} style={{ background: "#f9fafb", borderRadius: "12px", padding: "16px 20px", border: "1px solid #e5e7eb" }}>
                 <p style={{ margin: "0 0 12px", fontSize: "12px", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.8px" }}>{section.label}</p>
                 {section.items.map(item => (
-                  <div key={String(item.k)} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid #f0f0f0" }}>
+                  <div key={item.k} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid #f0f0f0" }}>
                     <span style={{ fontSize: "13px", color: "#374151" }}>{item.k}</span>
                     <span style={{ fontSize: "14px", fontWeight: 700, color: "#0a2e1a" }}>{item.v}</span>
                   </div>
@@ -607,7 +637,7 @@ export default function BusinessDashboard() {
           </div>
         </div>
 
-        {/* ─── ACTIVE / HISTORY TABS ─── */}
+        {/* ACTIVE / HISTORY TABS */}
         <div style={{ display: "flex", gap: "4px", background: "#fff", borderRadius: "12px", padding: "4px", border: "1px solid #e5e7eb", marginBottom: "20px" }}>
           {[
             { key: "active",  label: `📋 Active Listings (${activeListings.length})` },
@@ -620,23 +650,23 @@ export default function BusinessDashboard() {
           ))}
         </div>
 
-        {/* ─── ACTIVE LISTINGS TAB ─── */}
+        {/* ACTIVE TAB */}
         {activeTab === "active" && (
           <>
             {activeListings.length === 0 ? (
               <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "12px", padding: "40px", textAlign: "center" }}>
                 <p style={{ color: "#6b7280", marginBottom: "16px" }}>
-                  {isAdmin && !adminView ? "Select a business above to view listings." : "No active listings."}
+                  {isAdmin && !adminView ? "Select a business above." : "No active listings right now."}
                 </p>
                 {(!isAdmin || adminView) && (
-                  <button onClick={() => setShowForm(true)} style={{ background: "#16a34a", color: "#fff", border: "none", padding: "12px 24px", borderRadius: "8px", cursor: "pointer", fontWeight: 600 }}>{T.dash_new}</button>
+                  <button onClick={() => setShowForm(true)} style={{ background: "#16a34a", color: "#fff", border: "none", padding: "12px 24px", borderRadius: "8px", cursor: "pointer", fontWeight: 600 }}>+ New Listing</button>
                 )}
               </div>
             ) : activeListings.map(l => renderListingCard(l))}
           </>
         )}
 
-        {/* ─── HISTORY TAB ─── */}
+        {/* HISTORY TAB */}
         {activeTab === "history" && (
           <>
             {historyListings.length === 0 ? (
@@ -670,4 +700,3 @@ export default function BusinessDashboard() {
     </div>
   );
 }
-
