@@ -10,7 +10,7 @@ const supabase = createClient(
 );
 
 const ADMIN_EMAIL = "admin@gawaloop.com";
-const TERMINAL    = ["PICKED_UP", "EXPIRED", "CANCELLED"];
+const TERMINAL    = ["PICKED_UP", "EXPIRED", "CANCELLED", "NOSHOW"];
 
 const STATUS_COLOR: Record<string, { bg: string; text: string }> = {
   AVAILABLE: { bg: "#16a34a", text: "#fff" },
@@ -18,18 +18,20 @@ const STATUS_COLOR: Record<string, { bg: string; text: string }> = {
   PICKED_UP: { bg: "#7c3aed", text: "#fff" },
   EXPIRED:   { bg: "#9ca3af", text: "#fff" },
   CANCELLED: { bg: "#ef4444", text: "#fff" },
+  NOSHOW:    { bg: "#f59e0b", text: "#fff" },
 };
 
 type ClaimRow = {
   id: string; first_name: string; email: string; phone: string;
   eta_minutes: number; confirmation_code: string; reserved_until: string;
-  status: string; customer_user_id?: string;
+  status: string; noshow: boolean; customer_user_id?: string;
 };
 type ListingRow = {
   id: string; food_name: string; category: string; quantity: string;
   address: string; allergy_note: string; estimated_value: number; note: string;
   status: string; expires_at: string; created_at: string; reserved_until: string;
   claim_code: string; image_url?: string; weight_kg?: number;
+  business_logo_url?: string;
   claims?: ClaimRow[];
 };
 
@@ -40,14 +42,14 @@ const EMPTY_FORM = {
 };
 const LBS_TO_KG = 0.453592;
 
-function treeMetric(lbs: number): { emoji: string; label: string } {
-  if (lbs <= 0)    return { emoji: "🌱", label: "Plant a seed — start donating!" };
-  if (lbs < 11)    return { emoji: "🌱", label: "Seedling saved" };
-  if (lbs < 33)    return { emoji: "🪴", label: "Small plant" };
-  if (lbs < 88)    return { emoji: "🌿", label: "Young tree" };
-  if (lbs < 220)   return { emoji: "🌳", label: "Full tree" };
-  if (lbs < 551)   return { emoji: "🌳🌳", label: "2 trees" };
-  if (lbs < 1102)  return { emoji: "🌲🌲🌲", label: "Small forest" };
+function treeMetric(lbs: number) {
+  if (lbs <= 0)   return { emoji: "🌱", label: "Plant a seed — start donating!" };
+  if (lbs < 11)   return { emoji: "🌱", label: "Seedling saved" };
+  if (lbs < 33)   return { emoji: "🪴", label: "Small plant" };
+  if (lbs < 88)   return { emoji: "🌿", label: "Young tree" };
+  if (lbs < 220)  return { emoji: "🌳", label: "Full tree" };
+  if (lbs < 551)  return { emoji: "🌳🌳", label: "2 trees" };
+  if (lbs < 1102) return { emoji: "🌲🌲🌲", label: "Small forest" };
   return { emoji: "🌲🌲🌲🌲🌲", label: "Forest preserved!" };
 }
 
@@ -93,9 +95,7 @@ export default function BusinessDashboard() {
   async function uploadImage(file: File, bucket: string, folder: string): Promise<string | null> {
     setUploadingImg(true);
     const fd = new FormData();
-    fd.append("file", file);
-    fd.append("bucket", bucket);
-    fd.append("folder", folder);
+    fd.append("file", file); fd.append("bucket", bucket); fd.append("folder", folder);
     const res  = await fetch("/api/upload-image", { method: "POST", body: fd });
     const data = await res.json();
     setUploadingImg(false);
@@ -152,8 +152,7 @@ export default function BusinessDashboard() {
   async function fetchClaimerAvatar(claimId: string, email: string) {
     if (claimerAvatars[claimId] !== undefined) return;
     const res  = await fetch("/api/claim-avatar", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email }),
     });
     const data = await res.json();
@@ -170,12 +169,23 @@ export default function BusinessDashboard() {
     return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
   });
   const yearlyL    = listings.filter(l => new Date(l.created_at).getFullYear() === thisYear);
+
+  // Impact stats — all statuses
   const mPickups   = monthlyL.filter(l => l.status === "PICKED_UP").length;
   const yPickups   = yearlyL.filter(l => l.status === "PICKED_UP").length;
   const mCancelled = monthlyL.filter(l => l.status === "CANCELLED").length;
   const yCancelled = yearlyL.filter(l => l.status === "CANCELLED").length;
   const mExpired   = monthlyL.filter(l => l.status === "EXPIRED").length;
   const yExpired   = yearlyL.filter(l => l.status === "EXPIRED").length;
+  const mNoshow    = monthlyL.filter(l => {
+    const noshowClaim = l.claims?.find(c => c.noshow === true);
+    return !!noshowClaim;
+  }).length;
+  const yNoshow    = yearlyL.filter(l => {
+    const noshowClaim = l.claims?.find(c => c.noshow === true);
+    return !!noshowClaim;
+  }).length;
+
   const totalWeightLbs = listings
     .filter(l => l.status === "PICKED_UP")
     .reduce((s, l) => s + Number(l.weight_kg || 0) * 2.205, 0);
@@ -199,12 +209,8 @@ export default function BusinessDashboard() {
     const url = await uploadImage(file, "business-logos", businessId);
     if (url) {
       const { error } = await supabase.from("businesses").update({ logo_url: url }).eq("id", businessId);
-      if (error) {
-        setLogoMsg("Upload ok but save failed: " + error.message);
-      } else {
-        setLogoUrl(url + "?t=" + Date.now());
-        setLogoMsg("✅ Logo saved!");
-      }
+      if (error) setLogoMsg("Upload ok but save failed: " + error.message);
+      else { setLogoUrl(url + "?t=" + Date.now()); setLogoMsg("✅ Logo saved!"); }
     } else {
       setLogoMsg("Upload failed. Please try again.");
     }
@@ -217,17 +223,12 @@ export default function BusinessDashboard() {
     if (!businessName || !businessId) return;
     setPosting(true); setPostMsg("");
 
-    const { data: bizData } = await supabase
-      .from("businesses").select("logo_url").eq("id", businessId).single();
+    const { data: bizData } = await supabase.from("businesses").select("logo_url").eq("id", businessId).single();
     const currentLogoUrl = bizData?.logo_url || null;
 
     let imageUrl: string | null = null;
     if (listingFileRef.current?.files?.[0]) {
-      imageUrl = await uploadImage(
-        listingFileRef.current.files[0],
-        "listing-images",
-        businessName.replace(/\s/g, "_")
-      );
+      imageUrl = await uploadImage(listingFileRef.current.files[0], "listing-images", businessName.replace(/\s/g, "_"));
     }
 
     const expiresAt = new Date(Date.now() + Number(form.active_hours) * 3600000).toISOString();
@@ -250,7 +251,7 @@ export default function BusinessDashboard() {
       business_logo_url:  currentLogoUrl,
     });
 
-    if (error) { setPostMsg("Error posting. Please try again."); }
+    if (error) setPostMsg("Error posting. Please try again.");
     else {
       setPostMsg("✅ Food posted successfully!");
       setForm(EMPTY_FORM);
@@ -312,11 +313,7 @@ export default function BusinessDashboard() {
       weight_kg: weightKg,
     }).eq("id", id);
     setListings(prev => prev.map(l =>
-      l.id === id ? {
-        ...l, ...editForm,
-        estimated_value: Number(editForm.estimated_value || 0),
-        weight_kg: weightKg || 0,
-      } : l
+      l.id === id ? { ...l, ...editForm, estimated_value: Number(editForm.estimated_value || 0), weight_kg: weightKg || 0 } : l
     ));
     setEditingId(null);
   }
@@ -327,8 +324,7 @@ export default function BusinessDashboard() {
     boxSizing: "border-box", outline: "none", background: "#fff",
   };
   const lbl: React.CSSProperties = {
-    display: "block", fontSize: "13px", fontWeight: 600,
-    color: "#374151", marginBottom: "4px",
+    display: "block", fontSize: "13px", fontWeight: 600, color: "#374151", marginBottom: "4px",
   };
 
   function renderListingCard(listing: ListingRow) {
@@ -337,6 +333,7 @@ export default function BusinessDashboard() {
     const isAvailable = listing.status === "AVAILABLE";
     const sc          = STATUS_COLOR[listing.status] || { bg: "#6b7280", text: "#fff" };
     const activeClaim = listing.claims?.find(c => c.status === "active");
+    const noshowClaim = listing.claims?.find(c => c.noshow === true);
     const isEditing   = editingId === listing.id;
     const weightLbs   = listing.weight_kg ? (listing.weight_kg * 2.205) : null;
     const claimerAvatar = activeClaim ? claimerAvatars[activeClaim.id] : undefined;
@@ -344,7 +341,7 @@ export default function BusinessDashboard() {
     return (
       <div key={listing.id} style={{
         background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px",
-        padding: "24px", marginBottom: "16px", opacity: isTerminal ? 0.82 : 1,
+        padding: "24px", marginBottom: "16px", opacity: isTerminal ? 0.85 : 1,
       }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "14px", gap: "12px" }}>
           <div style={{ display: "flex", gap: "12px", alignItems: "flex-start", flex: 1 }}>
@@ -357,7 +354,7 @@ export default function BusinessDashboard() {
             </h3>
           </div>
           <span style={{ background: sc.bg, color: sc.text, fontSize: "12px", fontWeight: 700, padding: "5px 14px", borderRadius: "20px", flexShrink: 0 }}>
-            {listing.status}
+            {listing.status === "NOSHOW" ? "NO-SHOW" : listing.status}
           </span>
         </div>
 
@@ -415,11 +412,17 @@ export default function BusinessDashboard() {
         {listing.status === "PICKED_UP" && activeClaim && (
           <div style={{ background: "#f5f3ff", border: "1.5px solid #ddd6fe", borderRadius: "12px", padding: "16px 20px", marginTop: "16px" }}>
             <p style={{ margin: "0 0 6px", fontWeight: 700, color: "#6d28d9", fontSize: "14px" }}>Picked Up By</p>
-            <p style={{ margin: "0 0 4px", fontSize: "15px", color: "#2e1065", fontWeight: 600 }}>
-              {activeClaim.first_name} · Code: {activeClaim.confirmation_code}
-            </p>
-            <p style={{ margin: 0, fontSize: "12px", color: "#9ca3af", fontStyle: "italic" }}>
-              🔒 Contact details and photo hidden after pickup.
+            <p style={{ margin: "0 0 4px", fontSize: "15px", color: "#2e1065", fontWeight: 600 }}>{activeClaim.first_name} · Code: {activeClaim.confirmation_code}</p>
+            <p style={{ margin: 0, fontSize: "12px", color: "#9ca3af", fontStyle: "italic" }}>🔒 Contact details hidden after pickup.</p>
+          </div>
+        )}
+
+        {/* NO-SHOW */}
+        {(listing.status === "NOSHOW" || noshowClaim) && (
+          <div style={{ background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: "12px", padding: "14px 20px", marginTop: "16px" }}>
+            <p style={{ margin: "0 0 4px", fontWeight: 700, color: "#92400e", fontSize: "14px" }}>⏰ No-Show</p>
+            <p style={{ margin: 0, fontSize: "13px", color: "#78350f" }}>
+              {noshowClaim ? `${noshowClaim.first_name} (${noshowClaim.email}) did not arrive within the claim window.` : "Customer did not arrive within the claim window."}
             </p>
           </div>
         )}
@@ -456,8 +459,9 @@ export default function BusinessDashboard() {
         {isTerminal && (
           <p style={{ marginTop: "14px", fontSize: "13px", color: "#6b7280", fontStyle: "italic" }}>
             {listing.status === "PICKED_UP" && "✅ Successfully picked up."}
-            {listing.status === "EXPIRED"   && "⏰ This listing expired."}
+            {listing.status === "EXPIRED"   && "⏰ This listing expired without being claimed."}
             {listing.status === "CANCELLED" && "❌ This listing was cancelled."}
+            {(listing.status === "NOSHOW" || noshowClaim) && "👻 Customer did not show up — listing was returned to available."}
           </p>
         )}
       </div>
@@ -543,7 +547,7 @@ export default function BusinessDashboard() {
                 <div style={{ gridColumn: "1/-1" }}><label style={lbl}>Pickup Address</label><input style={{ ...inp, background: "#f9fafb", color: "#6b7280" }} value={businessAddress || ""} disabled/></div>
                 <div style={{ gridColumn: "1/-1" }}>
                   <label style={lbl}>Food Name *</label>
-                  <input style={inp} required value={form.food_name} onChange={e => setForm(f => ({ ...f, food_name: e.target.value }))} placeholder="e.g. Chicken sandwiches, rice and beans"/>
+                  <input style={inp} required value={form.food_name} onChange={e => setForm(f => ({ ...f, food_name: e.target.value }))} placeholder="e.g. Chicken sandwiches"/>
                 </div>
                 <div>
                   <label style={lbl}>Category *</label>
@@ -551,22 +555,10 @@ export default function BusinessDashboard() {
                     <option>Food</option><option>Bakery</option><option>Beverages</option><option>Prepared Meals</option><option>Produce</option><option>Other</option>
                   </select>
                 </div>
-                <div>
-                  <label style={lbl}>Quantity *</label>
-                  <input style={inp} required value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} placeholder="e.g. 10 portions"/>
-                </div>
-                <div>
-                  <label style={lbl}>⚖️ Weight (lbs)</label>
-                  <input style={inp} type="number" min="0" step="0.1" value={form.weight_lbs} onChange={e => setForm(f => ({ ...f, weight_lbs: e.target.value }))} placeholder="e.g. 8"/>
-                </div>
-                <div>
-                  <label style={lbl}>💰 Est. Value ($)</label>
-                  <input style={inp} type="number" min="0" step="0.01" value={form.estimated_value} onChange={e => setForm(f => ({ ...f, estimated_value: e.target.value }))} placeholder="e.g. 25"/>
-                </div>
-                <div style={{ gridColumn: "1/-1" }}>
-                  <label style={lbl}>Allergy / Dietary Info (optional)</label>
-                  <input style={inp} value={form.allergy_note} onChange={e => setForm(f => ({ ...f, allergy_note: e.target.value }))} placeholder="e.g. Contains nuts, halal, vegetarian"/>
-                </div>
+                <div><label style={lbl}>Quantity *</label><input style={inp} required value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} placeholder="e.g. 10 portions"/></div>
+                <div><label style={lbl}>⚖️ Weight (lbs)</label><input style={inp} type="number" min="0" step="0.1" value={form.weight_lbs} onChange={e => setForm(f => ({ ...f, weight_lbs: e.target.value }))} placeholder="e.g. 8"/></div>
+                <div><label style={lbl}>💰 Est. Value ($)</label><input style={inp} type="number" min="0" step="0.01" value={form.estimated_value} onChange={e => setForm(f => ({ ...f, estimated_value: e.target.value }))} placeholder="e.g. 25"/></div>
+                <div style={{ gridColumn: "1/-1" }}><label style={lbl}>Allergy / Dietary Info</label><input style={inp} value={form.allergy_note} onChange={e => setForm(f => ({ ...f, allergy_note: e.target.value }))} placeholder="e.g. Contains nuts, halal"/></div>
                 <div style={{ gridColumn: "1/-1" }}>
                   <label style={lbl}>📷 Food Photo (optional)</label>
                   <input ref={listingFileRef} type="file" accept="image/*" capture="environment" style={{ fontSize: "13px", color: "#374151", width: "100%" }}/>
@@ -584,10 +576,7 @@ export default function BusinessDashboard() {
                     <option value="10">10 minutes</option><option value="15">15 minutes</option><option value="20">20 minutes</option><option value="30">30 minutes</option><option value="45">45 minutes</option><option value="60">1 hour</option>
                   </select>
                 </div>
-                <div style={{ gridColumn: "1/-1" }}>
-                  <label style={lbl}>Note</label>
-                  <textarea style={{ ...inp, height: "70px", resize: "vertical" }} value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} placeholder="e.g. Ask for Maria at the front."/>
-                </div>
+                <div style={{ gridColumn: "1/-1" }}><label style={lbl}>Note</label><textarea style={{ ...inp, height: "70px", resize: "vertical" }} value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} placeholder="e.g. Ask for Maria at the front."/></div>
               </div>
               {postMsg && <p style={{ margin: "12px 0 0", fontSize: "14px", color: postMsg.includes("✅") ? "#16a34a" : "#ef4444", fontWeight: 600 }}>{postMsg}</p>}
               <button type="submit" disabled={posting || uploadingImg}
@@ -606,21 +595,23 @@ export default function BusinessDashboard() {
               {
                 label: `This Month (${now.toLocaleString("default", { month: "long" })})`,
                 items: [
-                  { k: "Listings Posted", v: monthlyL.length },
-                  { k: "✅ Picked Up",    v: mPickups },
-                  { k: "❌ Cancelled",    v: mCancelled },
-                  { k: "⏰ Expired",      v: mExpired },
-                  { k: "Food Saved",       v: `${monthlyL.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.weight_kg || 0) * 2.205, 0).toFixed(1)} lbs` },
+                  { k: "Listings Posted",   v: monthlyL.length },
+                  { k: "✅ Picked Up",      v: mPickups },
+                  { k: "❌ Cancelled",      v: mCancelled },
+                  { k: "⏰ Expired",        v: mExpired },
+                  { k: "👻 No-Shows",       v: mNoshow },
+                  { k: "Food Saved",         v: `${monthlyL.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.weight_kg || 0) * 2.205, 0).toFixed(1)} lbs` },
                 ],
               },
               {
                 label: `This Year (${thisYear})`,
                 items: [
-                  { k: "Listings Posted", v: yearlyL.length },
-                  { k: "✅ Picked Up",    v: yPickups },
-                  { k: "❌ Cancelled",    v: yCancelled },
-                  { k: "⏰ Expired",      v: yExpired },
-                  { k: "Total Donated",    v: `${totalWeightLbs.toFixed(1)} lbs` },
+                  { k: "Listings Posted",   v: yearlyL.length },
+                  { k: "✅ Picked Up",      v: yPickups },
+                  { k: "❌ Cancelled",      v: yCancelled },
+                  { k: "⏰ Expired",        v: yExpired },
+                  { k: "👻 No-Shows",       v: yNoshow },
+                  { k: "Total Donated",      v: `${totalWeightLbs.toFixed(1)} lbs` },
                 ],
               },
             ].map(section => (
@@ -637,11 +628,11 @@ export default function BusinessDashboard() {
           </div>
         </div>
 
-        {/* ACTIVE / HISTORY TABS */}
+        {/* TABS */}
         <div style={{ display: "flex", gap: "4px", background: "#fff", borderRadius: "12px", padding: "4px", border: "1px solid #e5e7eb", marginBottom: "20px" }}>
           {[
             { key: "active",  label: `📋 Active Listings (${activeListings.length})` },
-            { key: "history", label: `📁 Order History (${historyListings.length})` },
+            { key: "history", label: `📁 Past Orders (${historyListings.length})` },
           ].map(tab => (
             <button key={tab.key} onClick={() => setActiveTab(tab.key as "active" | "history")}
               style={{ flex: 1, padding: "10px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "14px", fontWeight: 700, background: activeTab === tab.key ? "#0a2e1a" : "transparent", color: activeTab === tab.key ? "#fff" : "#374151" }}>
@@ -655,29 +646,23 @@ export default function BusinessDashboard() {
           <>
             {activeListings.length === 0 ? (
               <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "12px", padding: "40px", textAlign: "center" }}>
-                <p style={{ color: "#6b7280", marginBottom: "16px" }}>
-                  {isAdmin && !adminView ? "Select a business above." : "No active listings right now."}
-                </p>
-                {(!isAdmin || adminView) && (
-                  <button onClick={() => setShowForm(true)} style={{ background: "#16a34a", color: "#fff", border: "none", padding: "12px 24px", borderRadius: "8px", cursor: "pointer", fontWeight: 600 }}>+ New Listing</button>
-                )}
+                <p style={{ color: "#6b7280", marginBottom: "16px" }}>{isAdmin && !adminView ? "Select a business above." : "No active listings right now."}</p>
+                {(!isAdmin || adminView) && <button onClick={() => setShowForm(true)} style={{ background: "#16a34a", color: "#fff", border: "none", padding: "12px 24px", borderRadius: "8px", cursor: "pointer", fontWeight: 600 }}>+ New Listing</button>}
               </div>
             ) : activeListings.map(l => renderListingCard(l))}
           </>
         )}
 
-        {/* HISTORY TAB */}
+        {/* PAST ORDERS TAB */}
         {activeTab === "history" && (
           <>
             {historyListings.length === 0 ? (
               <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "12px", padding: "40px", textAlign: "center" }}>
-                <p style={{ color: "#6b7280" }}>No completed orders yet.</p>
+                <p style={{ color: "#6b7280" }}>No past orders yet.</p>
               </div>
             ) : historyYears.map(year => (
               <div key={year} style={{ marginBottom: "28px" }}>
-                <h3 style={{ margin: "0 0 16px", fontSize: "20px", fontWeight: 900, color: "#0a2e1a", borderBottom: "2px solid #e5e7eb", paddingBottom: "8px" }}>
-                  📅 {year}
-                </h3>
+                <h3 style={{ margin: "0 0 16px", fontSize: "20px", fontWeight: 900, color: "#0a2e1a", borderBottom: "2px solid #e5e7eb", paddingBottom: "8px" }}>📅 {year}</h3>
                 {Object.keys(historyGroups[year])
                   .sort((a, b) => new Date(`${b} 1, ${year}`).getMonth() - new Date(`${a} 1, ${year}`).getMonth())
                   .map(month => (
