@@ -34,7 +34,7 @@ export default function BusinessLogin() {
 
     if (authError) { setError(T.login_error); setLoading(false); return; }
 
-    // SECURITY: check this email exists in the businesses table
+    // SECURITY: verify this email belongs to a business account
     const { data: biz } = await supabase
       .from("businesses")
       .select("id, status")
@@ -43,7 +43,7 @@ export default function BusinessLogin() {
 
     if (!biz && data.user?.email !== ADMIN_EMAIL) {
       await supabase.auth.signOut();
-      setError("This email is not registered as a business account. Are you a customer? Use the customer login instead.");
+      setError("This email is not registered as a business account. If you are a customer, please use the customer login instead.");
       setLoading(false);
       return;
     }
@@ -82,7 +82,10 @@ export default function BusinessLogin() {
       <div style={{ position: "fixed", top: "16px", right: "16px" }}><LanguageSwitcher /></div>
       <div style={{ width: "100%", maxWidth: "400px" }}>
         <div style={{ textAlign: "center", marginBottom: "28px" }}>
-          <img src="/gawa-logo-green.png" alt="GAWA Loop" style={{ width: "52px", height: "52px", objectFit: "contain", marginBottom: "12px" }} />
+          {/* Logo links back to home */}
+          <a href="/" style={{ display: "inline-block", marginBottom: "12px" }}>
+            <img src="/gawa-logo-green.png" alt="GAWA Loop" style={{ width: "52px", height: "52px", objectFit: "contain", cursor: "pointer" }} />
+          </a>
           <h1 style={{ margin: "0 0 4px", fontSize: "26px", fontWeight: 800, color: "#0a2e1a" }}>{T.login_title}</h1>
           <p style={{ margin: 0, fontSize: "14px", color: "#4b5563" }}>{T.login_subtitle}</p>
         </div>
@@ -92,7 +95,10 @@ export default function BusinessLogin() {
               <div style={{ fontSize: "44px", marginBottom: "12px" }}>📧</div>
               <h2 style={{ margin: "0 0 8px", fontSize: "18px", fontWeight: 800, color: "#0a2e1a" }}>{T.login_reset_sent}</h2>
               <p style={{ margin: "0 0 20px", fontSize: "14px", color: "#374151", lineHeight: "1.6" }}>{T.login_reset_msg} <b>{email}</b></p>
-              <button onClick={() => { setResetSent(false); setError(""); }} style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "10px 20px", borderRadius: "8px", cursor: "pointer", fontSize: "14px", fontWeight: 600 }}>{T.login_back}</button>
+              <button onClick={() => { setResetSent(false); setError(""); }}
+                style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "10px 20px", borderRadius: "8px", cursor: "pointer", fontSize: "14px", fontWeight: 600 }}>
+                {T.login_back}
+              </button>
             </div>
           ) : (
             <form onSubmit={handleLogin}>
@@ -123,7 +129,8 @@ export default function BusinessLogin() {
           )}
         </div>
         <p style={{ textAlign: "center", marginTop: "20px", fontSize: "13px", color: "#6b7280" }}>
-          {T.login_help}{" "}<a href="mailto:admin@gawaloop.com" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>admin@gawaloop.com</a>
+          {T.login_help}{" "}
+          <a href="mailto:admin@gawaloop.com" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>admin@gawaloop.com</a>
         </p>
       </div>
     </div>
