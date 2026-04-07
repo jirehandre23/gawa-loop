@@ -25,6 +25,7 @@ export default function BusinessSignup() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (!form.phone.trim()) { setError("Phone number is required."); return; }
     if (form.password !== form.confirmPassword) { setError("Passwords do not match."); return; }
     if (form.password.length < 8) { setError("Password must be at least 8 characters."); return; }
     setSubmitting(true);
@@ -199,8 +200,14 @@ export default function BusinessSignup() {
                   <input style={inp} type="email" required value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}/>
                 </div>
                 <div>
-                  <label style={lbl}>{T.signup_phone}</label>
-                  <input style={inp} type="tel" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}/>
+                  <label style={lbl}>📱 Phone Number *</label>
+                  <input style={{ ...inp, border: !form.phone.trim() ? "1px solid #fca5a5" : "1px solid #d1d5db" }}
+                    type="tel" required value={form.phone}
+                    onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                    placeholder="e.g. +1 718 555 0123"/>
+                  {!form.phone.trim() && (
+                    <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#ef4444" }}>Phone number is required</p>
+                  )}
                 </div>
                 <div style={{ gridColumn: "1/-1" }}>
                   <label style={lbl}>{T.signup_address} *</label>
@@ -230,7 +237,7 @@ export default function BusinessSignup() {
 
               <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "10px", padding: "12px 14px", marginTop: "20px", marginBottom: "20px" }}>
                 <p style={{ margin: 0, fontSize: "13px", color: "#92400e" }}>
-                  ⏳ <b>Manual review:</b> All business and NGO accounts are manually reviewed before activation. You'll receive an email within 24–48 hours.
+                  ⏳ <b>Manual review:</b> All accounts are manually reviewed before activation. You'll receive an email within 24–48 hours.
                 </p>
               </div>
 
@@ -256,3 +263,4 @@ export default function BusinessSignup() {
     </div>
   );
 }
+
