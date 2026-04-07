@@ -51,7 +51,6 @@ function treeMetric(lbs: number): { emoji: string; label: string } {
   return { emoji: "🌲🌲🌲🌲🌲", label: "Forest preserved!" };
 }
 
-// Groups listings by year then month label
 function groupByYearMonth(listings: ListingRow[]) {
   const groups: Record<string, Record<string, ListingRow[]>> = {};
   for (const l of listings) {
@@ -140,7 +139,6 @@ export default function BusinessDashboard() {
         .order("created_at", { ascending: false });
       setListings(data || []);
 
-      // Pre-fetch avatars for all active reserved claims
       const reservedClaims = (data || [])
         .filter((l: ListingRow) => l.status === "RESERVED")
         .flatMap((l: ListingRow) => l.claims?.filter(c => c.status === "active") || []);
@@ -171,14 +169,10 @@ export default function BusinessDashboard() {
   const yCancelled = yearlyL.filter(l => l.status === "CANCELLED").length;
   const mExpired   = monthlyL.filter(l => l.status === "EXPIRED").length;
   const yExpired   = yearlyL.filter(l => l.status === "EXPIRED").length;
-  // No-shows: claims with noshow=true
-  const allClaims  = listings.flatMap(l => l.claims || []);
-  const mNoshow    = monthlyL.flatMap(l => l.claims || []).filter(c => c.status === "cancelled").length; // proxy
   const totalWeightLbs = listings.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.weight_kg || 0) * 2.205, 0);
   const tree = treeMetric(totalWeightLbs);
   const T    = t[locale];
 
-  // Split listings for tabs
   const activeListings  = listings.filter(l => !TERMINAL.includes(l.status));
   const historyListings = listings.filter(l => TERMINAL.includes(l.status));
   const historyGroups   = groupByYearMonth(historyListings);
@@ -187,17 +181,27 @@ export default function BusinessDashboard() {
   async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!businessId) { setLogoMsg("Error: business ID not loaded. Please refresh."); return; }
+    if (!businessId) {
+      setLogoMsg("Error: business not loaded yet. Please wait and try again.");
+      setTimeout(() => setLogoMsg(""), 4000);
+      return;
+    }
     setLogoMsg("Uploading...");
     const url = await uploadImage(file, "business-logos", businessId);
     if (url) {
       const { error } = await supabase.from("businesses").update({ logo_url: url }).eq("id", businessId);
-      if (error) { setLogoMsg("Upload succeeded but save failed: " + error.message); }
-      else { setLogoUrl(url + "?t=" + Date.now()); setLogoMsg("✅ Logo saved!"); }
+      if (error) {
+        setLogoMsg("Saved to storage but DB update failed: " + error.message);
+      } else {
+        const newUrl = url.includes("?") ? url : url + "?t=" + Date.now();
+        setLogoUrl(newUrl);
+        setLogoMsg("✅ Logo saved!");
+      }
     } else {
       setLogoMsg("Upload failed. Please try again.");
     }
-    setTimeout(() => setLogoMsg(""), 4000);
+    setTimeout(() => setLogoMsg(""), 5000);
+    if (e.target) e.target.value = "";
   }
 
   async function handlePost(e: React.FormEvent) {
@@ -205,7 +209,6 @@ export default function BusinessDashboard() {
     if (!businessName) return;
     setPosting(true); setPostMsg("");
 
-    // Get current logo_url at post time to embed in listing
     const { data: bizData } = await supabase.from("businesses").select("logo_url").eq("id", businessId!).single();
     const currentLogoUrl = bizData?.logo_url || null;
 
@@ -456,8 +459,15 @@ export default function BusinessDashboard() {
               {logoMsg && <p style={{ margin: "2px 0 0", fontSize: "12px", color: logoMsg.includes("✅") ? "#16a34a" : "#ef4444", fontWeight: 600 }}>{logoMsg}</p>}
             </div>
           </div>
-          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
             <LanguageSwitcher/>
+            {/* Nav links to Home and Browse */}
+            <a href="/" style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "8px 14px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 600 }}>
+              🏠 Home
+            </a>
+            <a href="/browse" style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "8px 14px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 600 }}>
+              🍽️ Browse
+            </a>
             {isAdmin && allBizNames.length > 0 && (
               <select value={adminView || ""} onChange={e => setAdminView(e.target.value || null)}
                 style={{ padding: "8px 12px", borderRadius: "8px", border: "2px solid #0a2e1a", fontSize: "14px", background: "#f0fdf4", cursor: "pointer", fontWeight: 600, color: "#0a2e1a" }}>
