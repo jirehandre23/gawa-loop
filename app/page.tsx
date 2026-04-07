@@ -123,10 +123,13 @@ export default function HomePage() {
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
-        "@context": "https://schema.org", "@type": "WebApplication", "name": "GAWA Loop",
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "GAWA Loop",
         "url": "https://gawaloop.com",
         "description": "Free food app connecting local restaurants and stores with people in the community — sharing surplus food before it goes to waste.",
-        "applicationCategory": "FoodApplication", "operatingSystem": "Any",
+        "applicationCategory": "FoodApplication",
+        "operatingSystem": "Any",
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
         "address": { "@type": "PostalAddress", "addressLocality": "Brooklyn", "addressRegion": "NY", "addressCountry": "US" }
       })}} />
@@ -175,7 +178,8 @@ export default function HomePage() {
 
         {/* VIDEO HERO */}
         <section style={{ position:"relative", width:"100%", height:"480px", overflow:"hidden" }}>
-          <video autoPlay muted loop playsInline style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }}>
+          <video autoPlay muted loop playsInline
+            style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }}>
             <source src="/hero-video.mp4" type="video/mp4"/>
           </video>
           <div style={{ position:"absolute", inset:0, background:"linear-gradient(to bottom, rgba(10,46,26,0.55), rgba(10,46,26,0.82))", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", textAlign:"center", padding:"32px" }}>
@@ -191,10 +195,18 @@ export default function HomePage() {
                 {locale==="ar"?"لا هدر.":locale==="fr"?"zéro gaspillage.":locale==="es"?"cero desperdicio.":locale==="pt"?"zero desperdício.":"zero waste."}
               </span>
             </h1>
-            <p style={{ margin:"0 0 32px", fontSize:"18px", color:"rgba(255,255,255,0.9)", maxWidth:"560px", lineHeight:1.6 }}>{T.hero_subtitle}</p>
+            <p style={{ margin:"0 0 32px", fontSize:"18px", color:"rgba(255,255,255,0.9)", maxWidth:"560px", lineHeight:1.6 }}>
+              {T.hero_subtitle}
+            </p>
             <div style={{ display:"flex", gap:"14px", flexWrap:"wrap", justifyContent:"center" }}>
-              <Link href="/browse" style={{ background:"#16a34a", color:"#fff", fontWeight:700, fontSize:"16px", padding:"14px 36px", borderRadius:"12px", textDecoration:"none", boxShadow:"0 4px 20px rgba(22,163,74,0.5)" }}>{T.hero_cta}</Link>
-              <Link href="/business/signup" style={{ background:"rgba(255,255,255,0.15)", color:"#fff", fontWeight:700, fontSize:"16px", padding:"14px 36px", borderRadius:"12px", textDecoration:"none", border:"2px solid rgba(255,255,255,0.4)" }}>{T.forBusiness}</Link>
+              <Link href="/browse"
+                style={{ background:"#16a34a", color:"#fff", fontWeight:700, fontSize:"16px", padding:"14px 36px", borderRadius:"12px", textDecoration:"none", boxShadow:"0 4px 20px rgba(22,163,74,0.5)" }}>
+                {T.hero_cta}
+              </Link>
+              <Link href="/business/signup"
+                style={{ background:"rgba(255,255,255,0.15)", color:"#fff", fontWeight:700, fontSize:"16px", padding:"14px 36px", borderRadius:"12px", textDecoration:"none", border:"2px solid rgba(255,255,255,0.4)" }}>
+                {T.forBusiness}
+              </Link>
             </div>
           </div>
           <style>{`@keyframes pulse { 0%,100%{opacity:1;}50%{opacity:0.4;} }`}</style>
@@ -219,13 +231,27 @@ export default function HomePage() {
         {/* PHOTO GRID */}
         <section style={{ padding:0 }}>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gridTemplateRows:"220px 220px", gap:"3px" }}>
-            <div style={{ gridColumn:"1/3", overflow:"hidden" }}><img src="/hero-community.jpg" alt="Community sharing food" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/></div>
-            <div style={{ overflow:"hidden" }}><img src="/hero-kitchen.jpg" alt="Restaurant kitchen" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/></div>
-            <div style={{ overflow:"hidden" }}><img src="/hero-chefs.jpg" alt="Chefs preparing food" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/></div>
-            <div style={{ overflow:"hidden" }}><img src="/hero-restaurant.jpg" alt="Restaurant" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/></div>
-            <div style={{ overflow:"hidden" }}><img src="/hero-buffet.jpg" alt="Food buffet" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/></div>
-            <div style={{ overflow:"hidden" }}><img src="/hero-phone.jpg" alt="Using the app on phone" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/></div>
-            <div style={{ overflow:"hidden" }}><img src="/hero-market.jpg" alt="Fresh produce market" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/></div>
+            <div style={{ gridColumn:"1/3", overflow:"hidden" }}>
+              <img src="/hero-community.jpg" alt="Community sharing food" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/>
+            </div>
+            <div style={{ overflow:"hidden" }}>
+              <img src="/hero-kitchen.jpg" alt="Restaurant kitchen" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/>
+            </div>
+            <div style={{ overflow:"hidden" }}>
+              <img src="/hero-chefs.jpg" alt="Chefs preparing food" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/>
+            </div>
+            <div style={{ overflow:"hidden" }}>
+              <img src="/hero-restaurant.jpg" alt="Restaurant" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/>
+            </div>
+            <div style={{ overflow:"hidden" }}>
+              <img src="/hero-buffet.jpg" alt="Food buffet" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/>
+            </div>
+            <div style={{ overflow:"hidden" }}>
+              <img src="/hero-phone.jpg" alt="Using the app on phone" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/>
+            </div>
+            <div style={{ overflow:"hidden" }}>
+              <img src="/hero-market.jpg" alt="Fresh produce market" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/>
+            </div>
           </div>
         </section>
 
@@ -256,7 +282,9 @@ export default function HomePage() {
             ))}
           </div>
           <div className="mt-12 text-center">
-            <Link href="/browse" className="inline-block rounded-xl bg-green-500 px-8 py-4 font-bold text-white shadow-lg shadow-green-100 hover:bg-green-600 transition">{T.hero_cta}</Link>
+            <Link href="/browse" className="inline-block rounded-xl bg-green-500 px-8 py-4 font-bold text-white shadow-lg shadow-green-100 hover:bg-green-600 transition">
+              {T.hero_cta}
+            </Link>
           </div>
         </section>
 
@@ -274,12 +302,20 @@ export default function HomePage() {
             </p>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"20px" }}>
               <div style={{ background:"rgba(255,255,255,0.08)", borderRadius:"20px", padding:"36px 24px" }}>
-                <p style={{ margin:"0 0 8px", fontSize:"56px", fontWeight:900, color:"#4ade80", lineHeight:1 }}>{statsLoaded ? liveStats.total_pickups.toLocaleString() : "—"}</p>
-                <p style={{ margin:0, fontSize:"16px", color:"#a3c9b0", fontWeight:600 }}>🤲 {locale==="ar"?"وجبات مجانية محجوزة":locale==="fr"?"Repas offerts":locale==="es"?"Comidas reclamadas":locale==="pt"?"Refeições resgatadas":"Free meals claimed"}</p>
+                <p style={{ margin:"0 0 8px", fontSize:"56px", fontWeight:900, color:"#4ade80", lineHeight:1 }}>
+                  {statsLoaded ? liveStats.total_pickups.toLocaleString() : "—"}
+                </p>
+                <p style={{ margin:0, fontSize:"16px", color:"#a3c9b0", fontWeight:600 }}>
+                  🤲 {locale==="ar"?"وجبات مجانية محجوزة":locale==="fr"?"Repas offerts":locale==="es"?"Comidas reclamadas":locale==="pt"?"Refeições resgatadas":"Free meals claimed"}
+                </p>
               </div>
               <div style={{ background:"rgba(255,255,255,0.08)", borderRadius:"20px", padding:"36px 24px" }}>
-                <p style={{ margin:"0 0 8px", fontSize:"56px", fontWeight:900, color:"#4ade80", lineHeight:1 }}>{statsLoaded ? liveStats.co2_saved_kg.toLocaleString() : "—"}</p>
-                <p style={{ margin:0, fontSize:"16px", color:"#a3c9b0", fontWeight:600 }}>🌱 {locale==="ar"?"كغ CO₂ تم توفيرها":locale==="fr"?"kg de CO₂ économisés":locale==="es"?"kg CO₂ ahorrados":locale==="pt"?"kg CO₂ salvos":"kg CO₂ saved"}</p>
+                <p style={{ margin:"0 0 8px", fontSize:"56px", fontWeight:900, color:"#4ade80", lineHeight:1 }}>
+                  {statsLoaded ? liveStats.co2_saved_kg.toLocaleString() : "—"}
+                </p>
+                <p style={{ margin:0, fontSize:"16px", color:"#a3c9b0", fontWeight:600 }}>
+                  🌱 {locale==="ar"?"كغ CO₂ تم توفيرها":locale==="fr"?"kg de CO₂ économisés":locale==="es"?"kg CO₂ ahorrados":locale==="pt"?"kg CO₂ salvos":"kg CO₂ saved"}
+                </p>
               </div>
             </div>
           </div>
@@ -433,7 +469,7 @@ export default function HomePage() {
                     <input style={inp} type="password" required value={signinPassword} onChange={e => setSigninPassword(e.target.value)} placeholder="••••••••" minLength={6} />
                   </div>
                   <button type="submit" disabled={signinLoading}
-                    style={{ width:"100%", background: signinLoading?"#9ca3af":"#16a34a", color:"#fff", border:"none", padding:"13px", borderRadius:"10px", cursor: signinLoading?"not-allowed":"pointer", fontSize:"15px", fontWeight:700, marginBottom:"16px" }}>
+                    style={{ width:"100%", background:signinLoading?"#9ca3af":"#16a34a", color:"#fff", border:"none", padding:"13px", borderRadius:"10px", cursor:signinLoading?"not-allowed":"pointer", fontSize:"15px", fontWeight:700, marginBottom:"16px" }}>
                     {signinLoading ? "..." : signinMode === "signin"
                       ? (locale==="ar"?"دخول":locale==="fr"?"Se connecter":locale==="es"?"Iniciar sesión":locale==="pt"?"Entrar":"Sign In")
                       : (locale==="ar"?"إنشاء حساب":locale==="fr"?"Créer le compte":locale==="es"?"Crear cuenta":locale==="pt"?"Criar conta":"Create Account")}
@@ -512,7 +548,7 @@ export default function HomePage() {
                       placeholder={locale==="ar"?"اكتب رسالتك هنا...":locale==="fr"?"Votre message...":locale==="es"?"Tu mensaje...":locale==="pt"?"Sua mensagem...":"Tell us what's on your mind..."} />
                   </div>
                   <button type="submit" disabled={contactSending}
-                    style={{ width:"100%", background: contactSending?"#9ca3af":"#0a2e1a", color:"#fff", border:"none", padding:"13px", borderRadius:"10px", cursor: contactSending?"not-allowed":"pointer", fontSize:"15px", fontWeight:700 }}>
+                    style={{ width:"100%", background:contactSending?"#9ca3af":"#0a2e1a", color:"#fff", border:"none", padding:"13px", borderRadius:"10px", cursor:contactSending?"not-allowed":"pointer", fontSize:"15px", fontWeight:700 }}>
                     {contactSending ? "..." : (locale==="ar"?"إرسال الرسالة":locale==="fr"?"Envoyer le message":locale==="es"?"Enviar mensaje":locale==="pt"?"Enviar mensagem":"Send Message")}
                   </button>
                   <p style={{ textAlign:"center", marginTop:"14px", fontSize:"12px", color:"#9ca3af" }}>
@@ -558,9 +594,7 @@ export default function HomePage() {
                 <Link href="/browse" className="hover:text-green-600 transition">{T.browse}</Link>
                 <Link href="/business/signup" className="hover:text-green-600 transition">{T.forBusiness}</Link>
                 <Link href="/business/login" className="hover:text-green-600 transition">{T.login}</Link>
-                <Link href="/customer/signup" className="hover:text-green-600 transition">
-                  {locale==="ar"?"انضم كعميل":locale==="fr"?"Rejoindre":locale==="es"?"Únete":locale==="pt"?"Junte-se":"Join as Customer"}
-                </Link>
+                <Link href="/customer/signup" className="hover:text-green-600 transition">Join as Customer</Link>
                 <a href="mailto:admin@gawaloop.com" className="hover:text-green-600 transition">
                   {locale==="ar"?"اتصل بنا":locale==="fr"?"Contact":locale==="es"?"Contacto":locale==="pt"?"Contato":"Contact Us"}
                 </a>
