@@ -70,18 +70,24 @@ export default function CustomerProfile() {
     load();
   }, []);
 
-  async function loadOrders() {
-    if (!userId) return;
+  async function loadOrders(uid?: string) {
+    const id = uid || userId;
+    if (!id) return;
     setOrdersLoading(true);
     const res = await fetch("/api/customer-orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({ userId: id }),
     });
     const data = await res.json();
     setOrders(data.orders || []);
     setOrdersLoading(false);
   }
+
+  // Load orders on mount too so we can show active reservations
+  useEffect(() => {
+    if (userId) loadOrders(userId);
+  }, [userId]);
 
   useEffect(() => {
     if (activeTab === "orders" && userId) loadOrders();
@@ -148,6 +154,10 @@ export default function CustomerProfile() {
     </div>
   );
 
+  // Active reservations — show prominently at top
+  const activeOrders = orders.filter(o => !o.noshow && o.status === "active");
+  const pastOrders   = orders.filter(o => o.noshow || o.status !== "active");
+
   return (
     <div style={{ minHeight: "100vh", background: "#f9fafb", padding: "24px 16px", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
       <div style={{ maxWidth: "560px", margin: "0 auto" }}>
@@ -163,6 +173,63 @@ export default function CustomerProfile() {
             Sign Out
           </button>
         </div>
+
+        {/* ── ACTIVE RESERVATIONS — prominent top section ── */}
+        {activeOrders.length > 0 && (
+          <div style={{ marginBottom: "20px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+              <span style={{ fontSize: "18px" }}>🎟️</span>
+              <h2 style={{ margin: 0, fontSize: "16px", fontWeight: 800, color: "#0a2e1a" }}>Your Active Reservation{activeOrders.length > 1 ? "s" : ""}</h2>
+              <span style={{ background: "#16a34a", color: "#fff", fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "20px" }}>{activeOrders.length}</span>
+            </div>
+            {activeOrders.map(order => {
+              const listing = order.listings;
+              const copied = copiedId === order.id;
+              return (
+                <div key={order.id} style={{ background: "#fff", border: "2px solid #16a34a", borderRadius: "16px", overflow: "hidden", marginBottom: "12px", boxShadow: "0 4px 16px rgba(22,163,74,0.15)" }}>
+                  {/* Big green pickup code at top */}
+                  <div style={{ background: "#f0fdf4", padding: "20px", textAlign: "center", borderBottom: "1px solid #bbf7d0" }}>
+                    <p style={{ margin: "0 0 4px", fontSize: "11px", fontWeight: 700, color: "#15803d", textTransform: "uppercase", letterSpacing: "0.1em" }}>🎟️ Your Pickup Code</p>
+                    <p style={{ margin: "0 0 8px", fontSize: "48px", fontWeight: 900, color: "#16a34a", letterSpacing: "8px", lineHeight: 1, fontFamily: "monospace" }}>
+                      {order.confirmation_code}
+                    </p>
+                    <button
+                      onClick={() => copyCode(order.confirmation_code, order.id)}
+                      style={{ background: copied ? "#16a34a" : "#fff", color: copied ? "#fff" : "#374151", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "7px 18px", cursor: "pointer", fontSize: "13px", fontWeight: 700, transition: "all 0.2s" }}>
+                      {copied ? "✅ Copied!" : "Copy Code"}
+                    </button>
+                  </div>
+                  {/* Restaurant details */}
+                  <div style={{ padding: "16px 20px" }}>
+                    {listing?.image_url && (
+                      <img src={listing.image_url} alt={listing.food_name} style={{ width: "100%", height: "120px", objectFit: "cover", borderRadius: "10px", marginBottom: "12px" }}/>
+                    )}
+                    <h3 style={{ margin: "0 0 4px", fontSize: "17px", fontWeight: 800, color: "#0a2e1a" }}>{listing?.food_name || "Food"}</h3>
+                    <p style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: 600, color: "#374151" }}>🏪 {listing?.business_name}</p>
+                    <p style={{ margin: "0 0 12px", fontSize: "13px", color: "#6b7280" }}>📍 {listing?.address}</p>
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(listing?.address || "")}`} target="_blank" rel="noopener noreferrer"
+                        style={{ fontSize: "12px", fontWeight: 600, color: "#374151", background: "#f9fafb", border: "1px solid #e5e7eb", padding: "6px 12px", borderRadius: "8px", textDecoration: "none" }}>
+                        🗺️ Google Maps
+                      </a>
+                      <a href={`https://maps.apple.com/?q=${encodeURIComponent(listing?.address || "")}`} target="_blank" rel="noopener noreferrer"
+                        style={{ fontSize: "12px", fontWeight: 600, color: "#374151", background: "#f9fafb", border: "1px solid #e5e7eb", padding: "6px 12px", borderRadius: "8px", textDecoration: "none" }}>
+                        🍎 Apple Maps
+                      </a>
+                      <a href={`https://waze.com/ul?q=${encodeURIComponent(listing?.address || "")}`} target="_blank" rel="noopener noreferrer"
+                        style={{ fontSize: "12px", fontWeight: 600, color: "#374151", background: "#f9fafb", border: "1px solid #e5e7eb", padding: "6px 12px", borderRadius: "8px", textDecoration: "none" }}>
+                        🔵 Waze
+                      </a>
+                    </div>
+                    <p style={{ margin: "12px 0 0", fontSize: "12px", color: "#9ca3af" }}>
+                      Reserved {new Date(order.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Avatar */}
         <div style={{ background: "#fff", borderRadius: "16px", padding: "24px", marginBottom: "16px", border: "1px solid #e5e7eb", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
@@ -262,7 +329,7 @@ export default function CustomerProfile() {
         {activeTab === "orders" && (
           <div>
             {ordersLoading && <p style={{ textAlign: "center", color: "#6b7280", padding: "40px 0" }}>Loading your orders...</p>}
-            {!ordersLoading && orders.length === 0 && (
+            {!ordersLoading && pastOrders.length === 0 && activeOrders.length === 0 && (
               <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "48px 24px", textAlign: "center" }}>
                 <p style={{ fontSize: "48px", margin: "0 0 12px" }}>🍽️</p>
                 <h3 style={{ margin: "0 0 8px", fontSize: "18px", fontWeight: 800, color: "#0a2e1a" }}>No orders yet</h3>
@@ -270,14 +337,12 @@ export default function CustomerProfile() {
                 <a href="/browse" style={{ display: "inline-block", background: "#16a34a", color: "#fff", fontWeight: 700, padding: "12px 28px", borderRadius: "10px", textDecoration: "none", fontSize: "14px" }}>Browse Food</a>
               </div>
             )}
-            {!ordersLoading && orders.map(order => {
+            {!ordersLoading && pastOrders.map(order => {
               const listing = order.listings;
               const st = STATUS_STYLE[order.noshow ? "noshow" : order.status] || STATUS_STYLE.active;
-              const isActive = !order.noshow && order.status === "active";
               const copied = copiedId === order.id;
               return (
                 <div key={order.id} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "14px", marginBottom: "12px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)", overflow: "hidden" }}>
-                  {/* Order info row */}
                   <div style={{ padding: "18px 20px", display: "flex", gap: "14px", alignItems: "flex-start" }}>
                     {listing?.image_url ? (
                       <img src={listing.image_url} alt={listing.food_name} style={{ width: "60px", height: "60px", borderRadius: "10px", objectFit: "cover", flexShrink: 0 }}/>
@@ -296,44 +361,17 @@ export default function CustomerProfile() {
                       </p>
                     </div>
                   </div>
-
-                  {/* Pickup code banner — only shown when code exists */}
                   {order.confirmation_code && (
-                    <div style={{
-                      margin: "0 16px 16px",
-                      background: isActive ? "#f0fdf4" : "#f9fafb",
-                      border: `1.5px ${isActive ? "solid" : "dashed"} ${isActive ? "#16a34a" : "#d1d5db"}`,
-                      borderRadius: "10px",
-                      padding: "12px 16px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: "12px",
-                    }}>
+                    <div style={{ margin: "0 16px 16px", background: "#f9fafb", border: "1.5px dashed #d1d5db", borderRadius: "10px", padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
                       <div>
-                        <p style={{ margin: "0 0 2px", fontSize: "11px", fontWeight: 700, color: isActive ? "#15803d" : "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                          {isActive ? "🎟️ Pickup Code" : "🎟️ Code"}
-                        </p>
-                        <p style={{ margin: 0, fontSize: "22px", fontWeight: 900, letterSpacing: "0.12em", color: isActive ? "#0a2e1a" : "#9ca3af", fontFamily: "monospace" }}>
+                        <p style={{ margin: "0 0 2px", fontSize: "11px", fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em" }}>🎟️ Code</p>
+                        <p style={{ margin: 0, fontSize: "20px", fontWeight: 900, letterSpacing: "0.1em", color: "#9ca3af", fontFamily: "monospace" }}>
                           {order.confirmation_code}
                         </p>
                       </div>
-                      <button
-                        onClick={() => copyCode(order.confirmation_code, order.id)}
-                        style={{
-                          background: copied ? "#16a34a" : "#fff",
-                          color: copied ? "#fff" : "#374151",
-                          border: "1px solid #e5e7eb",
-                          borderRadius: "8px",
-                          padding: "8px 14px",
-                          cursor: "pointer",
-                          fontSize: "12px",
-                          fontWeight: 700,
-                          flexShrink: 0,
-                          transition: "all 0.2s",
-                        }}
-                      >
-                        {copied ? "✅ Copied!" : "Copy"}
+                      <button onClick={() => copyCode(order.confirmation_code, order.id)}
+                        style={{ background: copied ? "#16a34a" : "#fff", color: copied ? "#fff" : "#374151", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "6px 12px", cursor: "pointer", fontSize: "12px", fontWeight: 700 }}>
+                        {copied ? "✅" : "Copy"}
                       </button>
                     </div>
                   )}
