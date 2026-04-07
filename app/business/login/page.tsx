@@ -12,12 +12,12 @@ const supabase = createClient(
 const ADMIN_EMAIL = "admin@gawaloop.com";
 
 export default function BusinessLogin() {
-  const [locale, setLocale]             = useState<Locale>("en");
-  const [email, setEmail]               = useState("");
-  const [password, setPassword]         = useState("");
-  const [loading, setLoading]           = useState(false);
-  const [error, setError]               = useState("");
-  const [resetSent, setResetSent]       = useState(false);
+  const [locale, setLocale]         = useState<Locale>("en");
+  const [email, setEmail]           = useState("");
+  const [password, setPassword]     = useState("");
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState("");
+  const [resetSent, setResetSent]   = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
 
   useEffect(() => { setLocale(detectLocale()); }, []);
@@ -41,7 +41,7 @@ export default function BusinessLogin() {
       return;
     }
 
-    // Security: verify this email belongs to a business account
+    // Security check: verify this email belongs to a business account
     const { data: biz } = await supabase
       .from("businesses")
       .select("id, status")
@@ -49,12 +49,14 @@ export default function BusinessLogin() {
       .single();
 
     if (!biz) {
+      // Not a business account — sign them out and show error
       await supabase.auth.signOut();
-      setError("This email is not registered as a business account. If you are a customer, please use the customer login instead.");
+      setError("This email is not registered as a business account. If you are a customer, please use the customer login.");
       setLoading(false);
       return;
     }
 
+    // Admin bypasses status check
     if (data.user?.email === ADMIN_EMAIL) {
       window.location.href = "/admin/business-lookup";
       return;
@@ -67,7 +69,7 @@ export default function BusinessLogin() {
 
     if (biz.status === "rejected") {
       await supabase.auth.signOut();
-      setError("Your account application was not approved. Please contact admin@gawaloop.com.");
+      setError("Your business account application was not approved. Contact admin@gawaloop.com for more information.");
       setLoading(false);
       return;
     }
@@ -139,18 +141,4 @@ export default function BusinessLogin() {
                 </button>
               </div>
               <button type="submit" disabled={loading}
-                style={{ width: "100%", background: loading ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "13px", borderRadius: "10px", cursor: loading ? "not-allowed" : "pointer", fontSize: "15px", fontWeight: 700 }}>
-                {loading ? T.login_loading : T.login_btn}
-              </button>
-            </form>
-          )}
-        </div>
-        <p style={{ textAlign: "center", marginTop: "20px", fontSize: "13px", color: "#6b7280" }}>
-          {T.login_help}{" "}
-          <a href="mailto:admin@gawaloop.com" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>admin@gawaloop.com</a>
-        </p>
-      </div>
-    </div>
-  );
-}
-
+                style={{ width: "100%", background: loading ? "#9
