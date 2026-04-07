@@ -2,7 +2,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
 import { detectLocale, t, Locale, setLocale as saveLocale, FLAG, LANG_NAME } from "@/lib/i18n";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 const LOCALES: Locale[] = ["en", "fr", "es", "pt", "ar"];
 
@@ -12,6 +18,22 @@ export default function HomePage() {
   const [openFaq, setOpenFaq]         = useState<number | null>(null);
   const [liveStats, setLiveStats]     = useState({ total_pickups: 0, co2_saved_kg: 0 });
   const [statsLoaded, setStatsLoaded] = useState(false);
+  const [user, setUser]               = useState<any>(null);
+
+  // Customer sign-in state
+  const [signinEmail, setSigninEmail]       = useState("");
+  const [signinPassword, setSigninPassword] = useState("");
+  const [signinLoading, setSigninLoading]   = useState(false);
+  const [signinError, setSigninError]       = useState("");
+  const [signinMode, setSigninMode]         = useState<"signin" | "signup">("signin");
+
+  // Contact form state
+  const [contactName, setContactName]       = useState("");
+  const [contactEmail, setContactEmail]     = useState("");
+  const [contactMsg, setContactMsg]         = useState("");
+  const [contactSending, setContactSending] = useState(false);
+  const [contactDone, setContactDone]       = useState(false);
+  const [contactError, setContactError]     = useState("");
 
   useEffect(() => { setLocaleState(detectLocale()); }, []);
 
@@ -22,6 +44,10 @@ export default function HomePage() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
+  }, []);
+
   const T     = t[locale];
   const isRTL = locale === "ar";
 
@@ -29,6 +55,40 @@ export default function HomePage() {
     saveLocale(loc);
     setLocaleState(loc);
     setLangOpen(false);
+  }
+
+  async function handleCustomerAuth(e: React.FormEvent) {
+    e.preventDefault();
+    setSigninLoading(true); setSigninError("");
+    if (signinMode === "signin") {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: signinEmail.trim().toLowerCase(), password: signinPassword,
+      });
+      if (error) { setSigninError(locale==="fr"?"Email ou mot de passe invalide.":locale==="es"?"Email o contraseña inválidos.":locale==="pt"?"Email ou senha inválidos.":locale==="ar"?"بريد إلكتروني أو كلمة مرور غير صحيحة.":"Invalid email or password."); setSigninLoading(false); return; }
+      const { data: biz } = await supabase.from("businesses").select("id").eq("email", signinEmail.trim().toLowerCase()).single();
+      if (biz) { window.location.href = "/business/dashboard"; return; }
+      window.location.href = "/customer/profile";
+    } else {
+      const { error } = await supabase.auth.signUp({
+        email: signinEmail.trim().toLowerCase(), password: signinPassword,
+        options: { emailRedirectTo: "https://gawaloop.com/customer/profile" },
+      });
+      if (error) { setSigninError(error.message); setSigninLoading(false); return; }
+      window.location.href = "/customer/profile";
+    }
+  }
+
+  async function handleContact(e: React.FormEvent) {
+    e.preventDefault();
+    setContactSending(true); setContactError("");
+    const res = await fetch("/api/contact", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: contactName, email: contactEmail, message: contactMsg }),
+    });
+    const data = await res.json();
+    if (data.success) { setContactDone(true); setContactName(""); setContactEmail(""); setContactMsg(""); }
+    else { setContactError("Failed to send. Email us at admin@gawaloop.com"); }
+    setContactSending(false);
   }
 
   const faqs = [
@@ -54,16 +114,19 @@ export default function HomePage() {
     },
   ];
 
+  const inp: React.CSSProperties = {
+    width: "100%", padding: "11px 14px", borderRadius: "10px",
+    border: "1px solid #d1d5db", fontSize: "14px", color: "#111827",
+    background: "#fff", outline: "none", boxSizing: "border-box",
+  };
+
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
-        "@context": "https://schema.org",
-        "@type": "WebApplication",
-        "name": "GAWA Loop",
+        "@context": "https://schema.org", "@type": "WebApplication", "name": "GAWA Loop",
         "url": "https://gawaloop.com",
         "description": "Free food app connecting local restaurants and stores with people in the community — sharing surplus food before it goes to waste.",
-        "applicationCategory": "FoodApplication",
-        "operatingSystem": "Any",
+        "applicationCategory": "FoodApplication", "operatingSystem": "Any",
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
         "address": { "@type": "PostalAddress", "addressLocality": "Brooklyn", "addressRegion": "NY", "addressCountry": "US" }
       })}} />
@@ -83,7 +146,13 @@ export default function HomePage() {
             <div className="flex items-center gap-3">
               <Link href="/browse" className="hidden text-sm font-medium text-slate-600 hover:text-green-600 sm:block transition">{T.browse}</Link>
               <Link href="/business/login" className="hidden text-sm font-medium text-slate-600 hover:text-green-600 sm:block transition">{T.login}</Link>
-              <Link href="/business/signup" className="rounded-lg bg-green-500 px-4 py-2 text-sm font-semibold text-white hover:bg-green-600 transition">{T.hero_cta2}</Link>
+              {user ? (
+                <Link href="/customer/profile" className="rounded-lg bg-green-500 px-4 py-2 text-sm font-semibold text-white hover:bg-green-600 transition">
+                  {locale==="fr"?"Mon Compte":locale==="es"?"Mi Cuenta":locale==="pt"?"Minha Conta":locale==="ar"?"حسابي":"My Account"}
+                </Link>
+              ) : (
+                <Link href="/business/signup" className="rounded-lg bg-green-500 px-4 py-2 text-sm font-semibold text-white hover:bg-green-600 transition">{T.hero_cta2}</Link>
+              )}
               <div style={{ position:"relative" }}>
                 <button onClick={() => setLangOpen(o => !o)}
                   style={{ background:"transparent", border:"1px solid #e5e7eb", borderRadius:"8px", padding:"6px 10px", cursor:"pointer", fontSize:"13px", fontWeight:600, display:"flex", alignItems:"center", gap:"4px", color:"#374151" }}>
@@ -106,8 +175,7 @@ export default function HomePage() {
 
         {/* VIDEO HERO */}
         <section style={{ position:"relative", width:"100%", height:"480px", overflow:"hidden" }}>
-          <video autoPlay muted loop playsInline
-            style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }}>
+          <video autoPlay muted loop playsInline style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }}>
             <source src="/hero-video.mp4" type="video/mp4"/>
           </video>
           <div style={{ position:"absolute", inset:0, background:"linear-gradient(to bottom, rgba(10,46,26,0.55), rgba(10,46,26,0.82))", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", textAlign:"center", padding:"32px" }}>
@@ -123,24 +191,16 @@ export default function HomePage() {
                 {locale==="ar"?"لا هدر.":locale==="fr"?"zéro gaspillage.":locale==="es"?"cero desperdicio.":locale==="pt"?"zero desperdício.":"zero waste."}
               </span>
             </h1>
-            <p style={{ margin:"0 0 32px", fontSize:"18px", color:"rgba(255,255,255,0.9)", maxWidth:"560px", lineHeight:1.6 }}>
-              {T.hero_subtitle}
-            </p>
+            <p style={{ margin:"0 0 32px", fontSize:"18px", color:"rgba(255,255,255,0.9)", maxWidth:"560px", lineHeight:1.6 }}>{T.hero_subtitle}</p>
             <div style={{ display:"flex", gap:"14px", flexWrap:"wrap", justifyContent:"center" }}>
-              <Link href="/browse"
-                style={{ background:"#16a34a", color:"#fff", fontWeight:700, fontSize:"16px", padding:"14px 36px", borderRadius:"12px", textDecoration:"none", boxShadow:"0 4px 20px rgba(22,163,74,0.5)" }}>
-                {T.hero_cta}
-              </Link>
-              <Link href="/business/signup"
-                style={{ background:"rgba(255,255,255,0.15)", color:"#fff", fontWeight:700, fontSize:"16px", padding:"14px 36px", borderRadius:"12px", textDecoration:"none", border:"2px solid rgba(255,255,255,0.4)" }}>
-                {T.forBusiness}
-              </Link>
+              <Link href="/browse" style={{ background:"#16a34a", color:"#fff", fontWeight:700, fontSize:"16px", padding:"14px 36px", borderRadius:"12px", textDecoration:"none", boxShadow:"0 4px 20px rgba(22,163,74,0.5)" }}>{T.hero_cta}</Link>
+              <Link href="/business/signup" style={{ background:"rgba(255,255,255,0.15)", color:"#fff", fontWeight:700, fontSize:"16px", padding:"14px 36px", borderRadius:"12px", textDecoration:"none", border:"2px solid rgba(255,255,255,0.4)" }}>{T.forBusiness}</Link>
             </div>
           </div>
           <style>{`@keyframes pulse { 0%,100%{opacity:1;}50%{opacity:0.4;} }`}</style>
         </section>
 
-        {/* TRUST BAR — 3 items only, "5 languages" removed */}
+        {/* TRUST BAR */}
         <section style={{ borderBottom:"1px solid #e5e7eb", background:"#fff" }}>
           <div style={{ maxWidth:"900px", margin:"0 auto", padding:"18px 24px", display:"flex", flexWrap:"wrap", justifyContent:"center", gap:"32px" }}>
             {[
@@ -159,27 +219,13 @@ export default function HomePage() {
         {/* PHOTO GRID */}
         <section style={{ padding:0 }}>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gridTemplateRows:"220px 220px", gap:"3px" }}>
-            <div style={{ gridColumn:"1/3", overflow:"hidden" }}>
-              <img src="/hero-community.jpg" alt="Community sharing food" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/>
-            </div>
-            <div style={{ overflow:"hidden" }}>
-              <img src="/hero-kitchen.jpg" alt="Restaurant kitchen" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/>
-            </div>
-            <div style={{ overflow:"hidden" }}>
-              <img src="/hero-chefs.jpg" alt="Chefs preparing food" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/>
-            </div>
-            <div style={{ overflow:"hidden" }}>
-              <img src="/hero-restaurant.jpg" alt="Restaurant" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/>
-            </div>
-            <div style={{ overflow:"hidden" }}>
-              <img src="/hero-buffet.jpg" alt="Food buffet" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/>
-            </div>
-            <div style={{ overflow:"hidden" }}>
-              <img src="/hero-phone.jpg" alt="Using the app on phone" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/>
-            </div>
-            <div style={{ overflow:"hidden" }}>
-              <img src="/hero-market.jpg" alt="Fresh produce market" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/>
-            </div>
+            <div style={{ gridColumn:"1/3", overflow:"hidden" }}><img src="/hero-community.jpg" alt="Community sharing food" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/></div>
+            <div style={{ overflow:"hidden" }}><img src="/hero-kitchen.jpg" alt="Restaurant kitchen" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/></div>
+            <div style={{ overflow:"hidden" }}><img src="/hero-chefs.jpg" alt="Chefs preparing food" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/></div>
+            <div style={{ overflow:"hidden" }}><img src="/hero-restaurant.jpg" alt="Restaurant" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/></div>
+            <div style={{ overflow:"hidden" }}><img src="/hero-buffet.jpg" alt="Food buffet" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/></div>
+            <div style={{ overflow:"hidden" }}><img src="/hero-phone.jpg" alt="Using the app on phone" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/></div>
+            <div style={{ overflow:"hidden" }}><img src="/hero-market.jpg" alt="Fresh produce market" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/></div>
           </div>
         </section>
 
@@ -210,9 +256,7 @@ export default function HomePage() {
             ))}
           </div>
           <div className="mt-12 text-center">
-            <Link href="/browse" className="inline-block rounded-xl bg-green-500 px-8 py-4 font-bold text-white shadow-lg shadow-green-100 hover:bg-green-600 transition">
-              {T.hero_cta}
-            </Link>
+            <Link href="/browse" className="inline-block rounded-xl bg-green-500 px-8 py-4 font-bold text-white shadow-lg shadow-green-100 hover:bg-green-600 transition">{T.hero_cta}</Link>
           </div>
         </section>
 
@@ -230,20 +274,12 @@ export default function HomePage() {
             </p>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"20px" }}>
               <div style={{ background:"rgba(255,255,255,0.08)", borderRadius:"20px", padding:"36px 24px" }}>
-                <p style={{ margin:"0 0 8px", fontSize:"56px", fontWeight:900, color:"#4ade80", lineHeight:1 }}>
-                  {statsLoaded ? liveStats.total_pickups.toLocaleString() : "—"}
-                </p>
-                <p style={{ margin:0, fontSize:"16px", color:"#a3c9b0", fontWeight:600 }}>
-                  🤲 {locale==="ar"?"وجبات مجانية محجوزة":locale==="fr"?"Repas offerts":locale==="es"?"Comidas reclamadas":locale==="pt"?"Refeições resgatadas":"Free meals claimed"}
-                </p>
+                <p style={{ margin:"0 0 8px", fontSize:"56px", fontWeight:900, color:"#4ade80", lineHeight:1 }}>{statsLoaded ? liveStats.total_pickups.toLocaleString() : "—"}</p>
+                <p style={{ margin:0, fontSize:"16px", color:"#a3c9b0", fontWeight:600 }}>🤲 {locale==="ar"?"وجبات مجانية محجوزة":locale==="fr"?"Repas offerts":locale==="es"?"Comidas reclamadas":locale==="pt"?"Refeições resgatadas":"Free meals claimed"}</p>
               </div>
               <div style={{ background:"rgba(255,255,255,0.08)", borderRadius:"20px", padding:"36px 24px" }}>
-                <p style={{ margin:"0 0 8px", fontSize:"56px", fontWeight:900, color:"#4ade80", lineHeight:1 }}>
-                  {statsLoaded ? liveStats.co2_saved_kg.toLocaleString() : "—"}
-                </p>
-                <p style={{ margin:0, fontSize:"16px", color:"#a3c9b0", fontWeight:600 }}>
-                  🌱 {locale==="ar"?"كغ CO₂ تم توفيرها":locale==="fr"?"kg de CO₂ économisés":locale==="es"?"kg CO₂ ahorrados":locale==="pt"?"kg CO₂ salvos":"kg CO₂ saved"}
-                </p>
+                <p style={{ margin:"0 0 8px", fontSize:"56px", fontWeight:900, color:"#4ade80", lineHeight:1 }}>{statsLoaded ? liveStats.co2_saved_kg.toLocaleString() : "—"}</p>
+                <p style={{ margin:0, fontSize:"16px", color:"#a3c9b0", fontWeight:600 }}>🌱 {locale==="ar"?"كغ CO₂ تم توفيرها":locale==="fr"?"kg de CO₂ économisés":locale==="es"?"kg CO₂ ahorrados":locale==="pt"?"kg CO₂ salvos":"kg CO₂ saved"}</p>
               </div>
             </div>
           </div>
@@ -347,6 +383,148 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* ── NEW: CUSTOMER SIGN-IN ── */}
+        <section style={{ background:"#f0fdf4", padding:"80px 24px", borderTop:"1px solid #bbf7d0" }}>
+          <div style={{ maxWidth:"480px", margin:"0 auto" }}>
+            <p style={{ margin:"0 0 8px", fontSize:"13px", fontWeight:700, color:"#16a34a", textTransform:"uppercase", letterSpacing:"0.8px", textAlign:"center" }}>
+              {locale==="ar"?"أعضاء المجتمع":locale==="fr"?"Membres de la communauté":locale==="es"?"Miembros de la comunidad":locale==="pt"?"Membros da comunidade":"Community Members"}
+            </p>
+            <h2 style={{ margin:"0 0 8px", fontSize:"32px", fontWeight:800, color:"#0a2e1a", textAlign:"center" }}>
+              {signinMode === "signin"
+                ? (locale==="ar"?"سجّل الدخول":locale==="fr"?"Se connecter":locale==="es"?"Iniciar sesión":locale==="pt"?"Entrar":"Sign in to your account")
+                : (locale==="ar"?"إنشاء حساب مجاني":locale==="fr"?"Créer un compte":locale==="es"?"Crear cuenta":locale==="pt"?"Criar conta":"Create a free account")}
+            </h2>
+            <p style={{ margin:"0 0 32px", color:"#4b7c5e", textAlign:"center", fontSize:"15px" }}>
+              {signinMode === "signin"
+                ? (locale==="ar"?"الوصول إلى حجوزاتك":locale==="fr"?"Accédez à vos réservations":locale==="es"?"Accede a tus reservas":locale==="pt"?"Acesse suas reservas":"Access your reservations and order history.")
+                : (locale==="ar"?"انضم للحصول على طعام مجاني":locale==="fr"?"Rejoignez-nous pour de la nourriture gratuite":locale==="es"?"Únete para obtener comida gratis":locale==="pt"?"Junte-se para comida grátis":"Join GAWA Loop to start claiming free food.")}
+            </p>
+            <div style={{ background:"#fff", borderRadius:"20px", padding:"32px", boxShadow:"0 4px 20px rgba(0,0,0,0.06)", border:"1px solid #d1fae5" }}>
+              {user ? (
+                <div style={{ textAlign:"center" }}>
+                  <p style={{ margin:"0 0 16px", fontSize:"16px", color:"#0a2e1a", fontWeight:600 }}>✅ {user.email}</p>
+                  <div style={{ display:"flex", gap:"12px", justifyContent:"center", flexWrap:"wrap" }}>
+                    <a href="/customer/profile" style={{ background:"#16a34a", color:"#fff", padding:"12px 24px", borderRadius:"10px", textDecoration:"none", fontWeight:700, fontSize:"14px" }}>
+                      {locale==="ar"?"حسابي":locale==="fr"?"Mon Compte":locale==="es"?"Mi Cuenta":locale==="pt"?"Minha Conta":"My Account"}
+                    </a>
+                    <a href="/browse" style={{ background:"#f3f4f6", color:"#374151", padding:"12px 24px", borderRadius:"10px", textDecoration:"none", fontWeight:600, fontSize:"14px", border:"1px solid #e5e7eb" }}>{T.hero_cta}</a>
+                    <button onClick={async () => { await supabase.auth.signOut(); setUser(null); }} style={{ background:"none", border:"none", color:"#9ca3af", fontSize:"13px", cursor:"pointer" }}>
+                      {locale==="ar"?"خروج":locale==="fr"?"Déconnexion":locale==="es"?"Cerrar sesión":locale==="pt"?"Sair":"Sign Out"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleCustomerAuth}>
+                  {signinError && (
+                    <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:"8px", padding:"10px 14px", marginBottom:"16px" }}>
+                      <p style={{ margin:0, color:"#991b1b", fontSize:"13px" }}>{signinError}</p>
+                    </div>
+                  )}
+                  <div style={{ marginBottom:"14px" }}>
+                    <label style={{ display:"block", fontSize:"13px", fontWeight:600, color:"#374151", marginBottom:"6px" }}>
+                      {locale==="ar"?"البريد الإلكتروني":locale==="fr"?"Adresse email":locale==="es"?"Correo electrónico":locale==="pt"?"Email":"Email Address"}
+                    </label>
+                    <input style={inp} type="email" required value={signinEmail} onChange={e => setSigninEmail(e.target.value)} placeholder="you@email.com" />
+                  </div>
+                  <div style={{ marginBottom:"20px" }}>
+                    <label style={{ display:"block", fontSize:"13px", fontWeight:600, color:"#374151", marginBottom:"6px" }}>
+                      {locale==="ar"?"كلمة المرور":locale==="fr"?"Mot de passe":locale==="es"?"Contraseña":locale==="pt"?"Senha":"Password"}
+                    </label>
+                    <input style={inp} type="password" required value={signinPassword} onChange={e => setSigninPassword(e.target.value)} placeholder="••••••••" minLength={6} />
+                  </div>
+                  <button type="submit" disabled={signinLoading}
+                    style={{ width:"100%", background: signinLoading?"#9ca3af":"#16a34a", color:"#fff", border:"none", padding:"13px", borderRadius:"10px", cursor: signinLoading?"not-allowed":"pointer", fontSize:"15px", fontWeight:700, marginBottom:"16px" }}>
+                    {signinLoading ? "..." : signinMode === "signin"
+                      ? (locale==="ar"?"دخول":locale==="fr"?"Se connecter":locale==="es"?"Iniciar sesión":locale==="pt"?"Entrar":"Sign In")
+                      : (locale==="ar"?"إنشاء حساب":locale==="fr"?"Créer le compte":locale==="es"?"Crear cuenta":locale==="pt"?"Criar conta":"Create Account")}
+                  </button>
+                  <p style={{ textAlign:"center", fontSize:"13px", color:"#6b7280", margin:0 }}>
+                    {signinMode === "signin"
+                      ? (locale==="ar"?"ليس لديك حساب؟":locale==="fr"?"Pas de compte ?":locale==="es"?"¿Sin cuenta?":locale==="pt"?"Sem conta?":"No account yet?")
+                      : (locale==="ar"?"لديك حساب؟":locale==="fr"?"Déjà un compte ?":locale==="es"?"¿Ya tienes cuenta?":locale==="pt"?"Já tem conta?":"Already have an account?")}{" "}
+                    <button type="button" onClick={() => { setSigninMode(signinMode === "signin" ? "signup" : "signin"); setSigninError(""); }}
+                      style={{ background:"none", border:"none", color:"#16a34a", fontWeight:700, cursor:"pointer", fontSize:"13px", padding:0 }}>
+                      {signinMode === "signin"
+                        ? (locale==="ar"?"إنشاء حساب مجاني":locale==="fr"?"Créer un compte":locale==="es"?"Crear cuenta":locale==="pt"?"Criar conta":"Create one free")
+                        : (locale==="ar"?"تسجيل الدخول":locale==="fr"?"Se connecter":locale==="es"?"Iniciar sesión":locale==="pt"?"Entrar":"Sign in")}
+                    </button>
+                  </p>
+                </form>
+              )}
+            </div>
+            <p style={{ textAlign:"center", marginTop:"16px", fontSize:"12px", color:"#9ca3af" }}>
+              {locale==="ar"?"هل أنت مطعم؟":locale==="fr"?"Vous êtes un restaurant ?":locale==="es"?"¿Eres un restaurante?":locale==="pt"?"É um restaurante?":"Are you a restaurant or business?"}{" "}
+              <a href="/business/login" style={{ color:"#16a34a", fontWeight:600, textDecoration:"none" }}>
+                {locale==="ar"?"دخول الشركات ←":locale==="fr"?"Connexion entreprise →":locale==="es"?"Login empresas →":locale==="pt"?"Login empresas →":"Business login →"}
+              </a>
+            </p>
+          </div>
+        </section>
+
+        {/* ── NEW: CONTACT US ── */}
+        <section style={{ background:"#fff", padding:"80px 24px", borderTop:"1px solid #e5e7eb" }}>
+          <div style={{ maxWidth:"560px", margin:"0 auto" }}>
+            <p style={{ margin:"0 0 8px", fontSize:"13px", fontWeight:700, color:"#16a34a", textTransform:"uppercase", letterSpacing:"0.8px", textAlign:"center" }}>
+              {locale==="ar"?"تواصل معنا":locale==="fr"?"Contactez-nous":locale==="es"?"Contáctenos":locale==="pt"?"Entre em contato":"Get in touch"}
+            </p>
+            <h2 style={{ margin:"0 0 8px", fontSize:"32px", fontWeight:800, color:"#0a2e1a", textAlign:"center" }}>
+              {locale==="ar"?"اتصل بنا":locale==="fr"?"Nous contacter":locale==="es"?"Contáctanos":locale==="pt"?"Contate-nos":"Contact Us"}
+            </h2>
+            <p style={{ margin:"0 0 32px", color:"#64748b", textAlign:"center", fontSize:"15px" }}>
+              {locale==="ar"?"لديك سؤال أو فكرة؟ نحن نحب أن نسمع منك.":locale==="fr"?"Une question ou une idée ? Nous serions ravis de vous lire.":locale==="es"?"¿Tienes una pregunta? Nos encantaría saber de ti.":locale==="pt"?"Tem uma pergunta? Adoraríamos ouvir de você.":"Have a question, partnership idea, or just want to say hi? We'd love to hear from you."}
+            </p>
+            <div style={{ background:"#f9fafb", borderRadius:"20px", padding:"32px", border:"1px solid #e5e7eb" }}>
+              {contactDone ? (
+                <div style={{ textAlign:"center", padding:"24px 0" }}>
+                  <div style={{ fontSize:"48px", marginBottom:"12px" }}>✅</div>
+                  <h3 style={{ margin:"0 0 8px", fontSize:"20px", fontWeight:800, color:"#0a2e1a" }}>
+                    {locale==="ar"?"تم الإرسال!":locale==="fr"?"Message envoyé !":locale==="es"?"¡Mensaje enviado!":locale==="pt"?"Mensagem enviada!":"Message sent!"}
+                  </h3>
+                  <p style={{ margin:"0 0 20px", color:"#6b7280", fontSize:"14px" }}>
+                    {locale==="ar"?"سنرد عليك خلال 24-48 ساعة.":locale==="fr"?"Nous vous répondrons sous 24–48h.":locale==="es"?"Te responderemos en 24–48h.":locale==="pt"?"Responderemos em 24–48h.":"We'll get back to you within 24–48 hours."}
+                  </p>
+                  <button onClick={() => setContactDone(false)} style={{ background:"#f3f4f6", border:"1px solid #e5e7eb", padding:"10px 20px", borderRadius:"8px", cursor:"pointer", fontWeight:600, fontSize:"14px", color:"#374151" }}>
+                    {locale==="ar"?"إرسال رسالة أخرى":locale==="fr"?"Envoyer un autre message":locale==="es"?"Enviar otro mensaje":locale==="pt"?"Enviar outra mensagem":"Send another message"}
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleContact}>
+                  {contactError && <p style={{ margin:"0 0 14px", fontSize:"13px", color:"#ef4444", fontWeight:600 }}>{contactError}</p>}
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px", marginBottom:"14px" }}>
+                    <div>
+                      <label style={{ display:"block", fontSize:"13px", fontWeight:600, color:"#374151", marginBottom:"6px" }}>
+                        {locale==="ar"?"الاسم *":locale==="fr"?"Votre nom *":locale==="es"?"Tu nombre *":locale==="pt"?"Seu nome *":"Your Name *"}
+                      </label>
+                      <input style={inp} required value={contactName} onChange={e => setContactName(e.target.value)} placeholder="Alex Johnson" />
+                    </div>
+                    <div>
+                      <label style={{ display:"block", fontSize:"13px", fontWeight:600, color:"#374151", marginBottom:"6px" }}>
+                        {locale==="ar"?"البريد الإلكتروني *":locale==="fr"?"Email *":locale==="es"?"Email *":locale==="pt"?"Email *":"Email *"}
+                      </label>
+                      <input style={inp} type="email" required value={contactEmail} onChange={e => setContactEmail(e.target.value)} placeholder="you@email.com" />
+                    </div>
+                  </div>
+                  <div style={{ marginBottom:"20px" }}>
+                    <label style={{ display:"block", fontSize:"13px", fontWeight:600, color:"#374151", marginBottom:"6px" }}>
+                      {locale==="ar"?"الرسالة *":locale==="fr"?"Message *":locale==="es"?"Mensaje *":locale==="pt"?"Mensagem *":"Message *"}
+                    </label>
+                    <textarea style={{ ...inp, height:"120px", resize:"vertical" }} required value={contactMsg} onChange={e => setContactMsg(e.target.value)}
+                      placeholder={locale==="ar"?"اكتب رسالتك هنا...":locale==="fr"?"Votre message...":locale==="es"?"Tu mensaje...":locale==="pt"?"Sua mensagem...":"Tell us what's on your mind..."} />
+                  </div>
+                  <button type="submit" disabled={contactSending}
+                    style={{ width:"100%", background: contactSending?"#9ca3af":"#0a2e1a", color:"#fff", border:"none", padding:"13px", borderRadius:"10px", cursor: contactSending?"not-allowed":"pointer", fontSize:"15px", fontWeight:700 }}>
+                    {contactSending ? "..." : (locale==="ar"?"إرسال الرسالة":locale==="fr"?"Envoyer le message":locale==="es"?"Enviar mensaje":locale==="pt"?"Enviar mensagem":"Send Message")}
+                  </button>
+                  <p style={{ textAlign:"center", marginTop:"14px", fontSize:"12px", color:"#9ca3af" }}>
+                    {locale==="ar"?"أو راسلنا مباشرة:":locale==="fr"?"Ou par email :":locale==="es"?"O escríbenos:":locale==="pt"?"Ou por email:":"Or email directly:"}{" "}
+                    <a href="mailto:admin@gawaloop.com" style={{ color:"#16a34a", fontWeight:600, textDecoration:"none" }}>admin@gawaloop.com</a>
+                  </p>
+                </form>
+              )}
+            </div>
+          </div>
+        </section>
+
         {/* CTA */}
         <section className="bg-gradient-to-br from-green-500 to-emerald-600">
           <div className="mx-auto max-w-4xl px-6 py-20 text-center">
@@ -380,7 +558,12 @@ export default function HomePage() {
                 <Link href="/browse" className="hover:text-green-600 transition">{T.browse}</Link>
                 <Link href="/business/signup" className="hover:text-green-600 transition">{T.forBusiness}</Link>
                 <Link href="/business/login" className="hover:text-green-600 transition">{T.login}</Link>
-                <Link href="/customer/signup" className="hover:text-green-600 transition">Join as Customer</Link>
+                <Link href="/customer/signup" className="hover:text-green-600 transition">
+                  {locale==="ar"?"انضم كعميل":locale==="fr"?"Rejoindre":locale==="es"?"Únete":locale==="pt"?"Junte-se":"Join as Customer"}
+                </Link>
+                <a href="mailto:admin@gawaloop.com" className="hover:text-green-600 transition">
+                  {locale==="ar"?"اتصل بنا":locale==="fr"?"Contact":locale==="es"?"Contacto":locale==="pt"?"Contato":"Contact Us"}
+                </a>
               </div>
               <div className="text-sm text-slate-400">© 2026 GAWA Loop · Free food. Less waste. Real impact.</div>
             </div>
