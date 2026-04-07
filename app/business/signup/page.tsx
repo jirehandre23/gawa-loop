@@ -33,14 +33,10 @@ export default function BusinessSignup() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name:         form.name,
-        email:        form.email,
-        phone:        form.phone,
-        address:      form.address,
-        type:         form.type,
-        account_type: form.account_type,
-        password:     form.password,
-        description:  form.description,
+        name: form.name, email: form.email, phone: form.phone,
+        address: form.address, type: form.type,
+        account_type: form.account_type, password: form.password,
+        description: form.description,
       }),
     });
     const data = await res.json();
@@ -66,8 +62,7 @@ export default function BusinessSignup() {
   });
 
   if (done) return (
-    <div dir={isRTL ? "rtl" : "ltr"}
-      style={{ minHeight: "100vh", background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", fontFamily: "sans-serif" }}>
+    <div dir={isRTL ? "rtl" : "ltr"} style={{ minHeight: "100vh", background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", fontFamily: "sans-serif" }}>
       <div style={{ background: "#fff", borderRadius: "20px", padding: "48px 40px", maxWidth: "480px", width: "100%", textAlign: "center", boxShadow: "0 8px 32px rgba(0,0,0,0.08)" }}>
         <div style={{ fontSize: "64px", marginBottom: "16px" }}>🕐</div>
         <h1 style={{ margin: "0 0 12px", fontSize: "24px", fontWeight: 800, color: "#0a2e1a" }}>Application Submitted!</h1>
@@ -83,10 +78,8 @@ export default function BusinessSignup() {
   );
 
   return (
-    <div dir={isRTL ? "rtl" : "ltr"}
-      style={{ minHeight: "100vh", background: "#f3f4f6", padding: "32px 16px", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
+    <div dir={isRTL ? "rtl" : "ltr"} style={{ minHeight: "100vh", background: "#f3f4f6", padding: "32px 16px", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
       <div style={{ maxWidth: "560px", margin: "0 auto" }}>
-
         <div style={{ textAlign: "center", marginBottom: "28px" }}>
           <a href="/"><img src="/gawa-logo-green.png" alt="GAWA Loop" style={{ width: "52px", height: "52px", objectFit: "contain", marginBottom: "12px" }}/></a>
           <h1 style={{ margin: "0 0 4px", fontSize: "26px", fontWeight: 800, color: "#0a2e1a" }}>
@@ -97,7 +90,6 @@ export default function BusinessSignup() {
           </p>
         </div>
 
-        {/* Steps */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", marginBottom: "24px" }}>
           {["Terms", "Account Info"].map((label, i) => (
             <div key={label} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -111,8 +103,6 @@ export default function BusinessSignup() {
         </div>
 
         <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "32px", boxShadow: "0 4px 20px rgba(0,0,0,0.06)" }}>
-
-          {/* STEP 1: TERMS */}
           {step === "terms" && (
             <div>
               <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "12px", padding: "14px 18px", marginBottom: "24px" }}>
@@ -120,13 +110,12 @@ export default function BusinessSignup() {
                   <b>GAWA Loop</b> is a free platform connecting businesses and NGOs with community members to share surplus food before it goes to waste. By creating an account, you agree to the following terms.
                 </p>
               </div>
-
               {[
-                { key: "terms",       title: "I agree to the Platform Terms of Use *",         body: "I understand that GAWA Loop is a free food-sharing platform. I will use it responsibly and only for its intended purpose of sharing surplus food with community members." },
-                { key: "food_safety", title: "I commit to food safety standards *",              body: "I confirm that all food listed on GAWA Loop will be safe for consumption, properly stored, and clearly described. I will not post expired, contaminated, or unsafe food items." },
-                { key: "accuracy",    title: "I will provide accurate information *",            body: "I agree to provide truthful and accurate information about my business or organization. I understand that false information may result in immediate account suspension." },
-                { key: "community",   title: "I will respect community members *",               body: "I agree to treat all community members with dignity and respect. I will not discriminate on the basis of race, ethnicity, religion, gender, or any other characteristic." },
-                { key: "compliance",  title: "I acknowledge data and compliance terms *",        body: "I understand that GAWA Loop may share my business name, address, and food listings publicly. I consent to GAWA Loop contacting me by email about my account. GAWA Loop reserves the right to suspend accounts that violate these terms." },
+                { key: "terms",       title: "I agree to the Platform Terms of Use *",      body: "I understand that GAWA Loop is a free food-sharing platform. I will use it responsibly and only for its intended purpose of sharing surplus food with community members." },
+                { key: "food_safety", title: "I commit to food safety standards *",           body: "I confirm that all food listed on GAWA Loop will be safe for consumption, properly stored, and clearly described. I will not post expired, contaminated, or unsafe food items." },
+                { key: "accuracy",    title: "I will provide accurate information *",         body: "I agree to provide truthful and accurate information about my business or organization. I understand that false information may result in immediate account suspension." },
+                { key: "community",   title: "I will respect community members *",            body: "I agree to treat all community members with dignity and respect. I will not discriminate on the basis of race, ethnicity, religion, gender, or any other characteristic." },
+                { key: "compliance",  title: "I acknowledge data and compliance terms *",     body: "I understand that GAWA Loop may share my business name, address, and food listings publicly. I consent to GAWA Loop contacting me by email about my account. GAWA Loop reserves the right to suspend accounts that violate these terms." },
               ].map(item => (
                 <label key={item.key} style={checkRow((accepted as any)[item.key])}
                   onClick={() => setAccepted(a => ({ ...a, [item.key]: !(a as any)[item.key] }))}>
@@ -139,18 +128,11 @@ export default function BusinessSignup() {
                   </div>
                 </label>
               ))}
-
-              {!allAccepted && (
-                <p style={{ margin: "8px 0 12px", fontSize: "12px", color: "#9ca3af", textAlign: "center" }}>
-                  Please accept all terms above to continue
-                </p>
-              )}
-
+              {!allAccepted && <p style={{ margin: "8px 0 12px", fontSize: "12px", color: "#9ca3af", textAlign: "center" }}>Please accept all terms above to continue</p>}
               <button onClick={() => { if (allAccepted) setStep("form"); }} disabled={!allAccepted}
                 style={{ width: "100%", background: allAccepted ? "#16a34a" : "#d1d5db", color: "#fff", border: "none", padding: "13px", borderRadius: "10px", cursor: allAccepted ? "pointer" : "not-allowed", fontSize: "15px", fontWeight: 700, marginTop: "8px" }}>
                 Continue to Account Setup →
               </button>
-
               <p style={{ textAlign: "center", marginTop: "16px", fontSize: "13px", color: "#6b7280" }}>
                 Already have an account?{" "}
                 <a href="/business/login" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>{T.signup_login}</a>
@@ -158,7 +140,6 @@ export default function BusinessSignup() {
             </div>
           )}
 
-          {/* STEP 2: FORM */}
           {step === "form" && (
             <form onSubmit={handleSubmit}>
               {error && (
@@ -166,16 +147,11 @@ export default function BusinessSignup() {
                   {error}
                 </div>
               )}
-
               <div style={{ marginBottom: "20px" }}>
                 <label style={lbl}>Account Type *</label>
                 <div style={{ display: "flex", gap: "10px" }}>
-                  {[
-                    { val: "restaurant", label: "🍽️ Restaurant / Business" },
-                    { val: "ngo",        label: "🤝 NGO / Food Bank" },
-                  ].map(opt => (
-                    <button key={opt.val} type="button"
-                      onClick={() => setForm(f => ({ ...f, account_type: opt.val }))}
+                  {[{ val: "restaurant", label: "🍽️ Restaurant / Business" }, { val: "ngo", label: "🤝 NGO / Food Bank" }].map(opt => (
+                    <button key={opt.val} type="button" onClick={() => setForm(f => ({ ...f, account_type: opt.val }))}
                       style={{ flex: 1, padding: "12px", borderRadius: "10px", border: `2px solid ${form.account_type === opt.val ? "#16a34a" : "#e5e7eb"}`, background: form.account_type === opt.val ? "#f0fdf4" : "#fff", color: form.account_type === opt.val ? "#15803d" : "#374151", fontWeight: form.account_type === opt.val ? 700 : 400, cursor: "pointer", fontSize: "13px" }}>
                       {opt.label}
                     </button>
@@ -183,13 +159,10 @@ export default function BusinessSignup() {
                 </div>
                 {form.account_type === "ngo" && (
                   <div style={{ marginTop: "10px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "8px", padding: "10px 14px" }}>
-                    <p style={{ margin: 0, fontSize: "12px", color: "#1d4ed8" }}>
-                      ℹ️ As an NGO or Food Bank, you can both <b>post surplus food</b> and <b>claim food</b> from other businesses on GAWA Loop.
-                    </p>
+                    <p style={{ margin: 0, fontSize: "12px", color: "#1d4ed8" }}>ℹ️ As an NGO or Food Bank, you can both <b>post surplus food</b> and <b>claim food</b> from other businesses on GAWA Loop.</p>
                   </div>
                 )}
               </div>
-
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                 <div style={{ gridColumn: "1/-1" }}>
                   <label style={lbl}>{T.signup_name} *</label>
@@ -201,11 +174,13 @@ export default function BusinessSignup() {
                 </div>
                 <div>
                   <label style={lbl}>📱 Phone Number *</label>
-                  <input style={{ ...inp, border: !form.phone.trim() ? "1px solid #fca5a5" : "1px solid #d1d5db" }}
+                  <input
+                    style={{ ...inp, border: `1px solid ${!form.phone.trim() && form.phone !== "" ? "#fca5a5" : "#d1d5db"}` }}
                     type="tel" required value={form.phone}
                     onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                    placeholder="e.g. +1 718 555 0123"/>
-                  {!form.phone.trim() && (
+                    placeholder="e.g. +1 718 555 0123"
+                  />
+                  {!form.phone.trim() && form.phone !== "" && (
                     <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#ef4444" }}>Phone number is required</p>
                   )}
                 </div>
@@ -234,13 +209,9 @@ export default function BusinessSignup() {
                   <input style={inp} type="password" required value={form.confirmPassword} onChange={e => setForm(f => ({ ...f, confirmPassword: e.target.value }))}/>
                 </div>
               </div>
-
               <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "10px", padding: "12px 14px", marginTop: "20px", marginBottom: "20px" }}>
-                <p style={{ margin: 0, fontSize: "13px", color: "#92400e" }}>
-                  ⏳ <b>Manual review:</b> All accounts are manually reviewed before activation. You'll receive an email within 24–48 hours.
-                </p>
+                <p style={{ margin: 0, fontSize: "13px", color: "#92400e" }}>⏳ <b>Manual review:</b> All accounts are manually reviewed. You'll receive an email within 24–48 hours.</p>
               </div>
-
               <div style={{ display: "flex", gap: "10px" }}>
                 <button type="button" onClick={() => setStep("terms")}
                   style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "13px 20px", borderRadius: "10px", cursor: "pointer", fontSize: "14px", fontWeight: 600 }}>
@@ -251,7 +222,6 @@ export default function BusinessSignup() {
                   {submitting ? "Submitting..." : T.signup_btn}
                 </button>
               </div>
-
               <p style={{ textAlign: "center", marginTop: "16px", fontSize: "13px", color: "#6b7280" }}>
                 {T.signup_have_account}{" "}
                 <a href="/business/login" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>{T.signup_login}</a>
@@ -263,4 +233,3 @@ export default function BusinessSignup() {
     </div>
   );
 }
-
