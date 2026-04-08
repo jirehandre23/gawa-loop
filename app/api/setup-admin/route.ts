@@ -25,3 +25,4 @@ export async function GET() {
   );
 
   return NextResponse.json({ success: true, id: data.user.id, email: data.user.email });
+}
