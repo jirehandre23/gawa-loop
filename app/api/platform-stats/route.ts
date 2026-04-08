@@ -8,5 +8,16 @@ const supabase = createClient(
 
 export async function GET() {
   const { data } = await supabase.from("platform_stats").select("*").single();
-  return NextResponse.json(data || { total_pickups: 0, total_weight_kg: 0, co2_saved_kg: 0 });
+
+  const totalPickups   = data?.total_pickups   ?? 0;
+  const totalWeightKg  = data?.total_weight_kg ?? 0;
+
+  // Convert to lbs, then apply FAO global average: 2.5 lbs CO₂e saved per lb of food diverted
+  const totalWeightLbs = totalWeightKg * 2.20462;
+  const co2SavedLbs    = Math.round(totalWeightLbs * 2.5);
+
+  return NextResponse.json({
+    total_pickups:  totalPickups,
+    co2_saved_lbs:  co2SavedLbs,
+  });
 }
