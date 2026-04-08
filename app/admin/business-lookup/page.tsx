@@ -10,6 +10,7 @@ const supabase = createClient(
 const ADMIN_EMAIL = "admin@gawaloop.com";
 
 type BizResult = {
+  id: string; // added
   name: string;
   email: string;
   phone?: string;
@@ -28,7 +29,6 @@ export default function AdminBusinessLookup() {
   const [working, setWorking]   = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    // Use onAuthStateChange which fires reliably once session is restored
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!session) {
         setAuthState("loggedout");
@@ -43,12 +43,42 @@ export default function AdminBusinessLookup() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // ── NEW: Suspend / Reinstate ─────────────────────────
+  async function handleSuspendBusiness(bizId: string, bizName: string, weeks: number) {
+    const reason = prompt(`Reason for suspending ${bizName}:`);
+    if (!reason) return;
+    const suspendedUntil = new Date(Date.now() + weeks * 7 * 24 * 3600 * 1000).toISOString();
+    const { error } = await supabase.from("businesses")
+      .update({
+        suspended_until: suspendedUntil,
+        suspension_reason: reason,
+        suspended_by: "admin@gawaloop.com",
+        status: "suspended",
+      })
+      .eq("id", bizId);
+    if (!error) alert(`${bizName} suspended for ${weeks} week(s). They cannot post listings until ${new Date(suspendedUntil).toLocaleDateString()}.`);
+    else alert("Error: " + error.message);
+  }
+
+  async function handleReinstateBusiness(bizId: string, bizName: string) {
+    const { error } = await supabase.from("businesses")
+      .update({
+        suspended_until: null,
+        suspension_reason: null,
+        suspended_by: null,
+        status: "approved",
+      })
+      .eq("id", bizId);
+    if (!error) alert(`${bizName} reinstated.`);
+    else alert("Error: " + error.message);
+  }
+
   async function handleSearch(sq?: string) {
     setLoading(true);
     setError("");
     setResults([]);
     const q = (sq ?? query).trim();
-    let builder = supabase.from("businesses").select("name, email, phone, address").order("name");
+    let builder = supabase.from("businesses").select("id, name, email, phone, address").order("name");
     if (q) builder = builder.or(`name.ilike.%${q}%,email.ilike.%${q}%`);
     const { data, error: err } = await builder.limit(30);
     if (err) {
@@ -97,7 +127,6 @@ export default function AdminBusinessLookup() {
     color: "#111827", background: "#fff", outline: "none",
   };
 
-  // ── Auth States ──────────────────────────────────────
   if (authState === "checking") {
     return (
       <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"sans-serif" }}>
@@ -153,12 +182,10 @@ export default function AdminBusinessLookup() {
     );
   }
 
-  // ── Admin Panel ──────────────────────────────────────
   return (
     <div style={{ minHeight:"100vh", background:"#f3f4f6", fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", padding:"32px 16px" }}>
       <div style={{ maxWidth:"720px", margin:"0 auto" }}>
 
-        {/* Header */}
         <div style={{ display:"flex", alignItems:"center", gap:"14px", marginBottom:"6px" }}>
           <img src="/gawa-logo-green.png" alt="GAWA" style={{ width:"40px", height:"40px", objectFit:"contain" }} />
           <div>
@@ -183,7 +210,6 @@ export default function AdminBusinessLookup() {
           </div>
         )}
 
-        {/* Search */}
         <div style={{ background:"#fff", border:"1px solid #e5e7eb", borderRadius:"14px", padding:"20px 24px", marginBottom:"20px" }}>
           <label style={{ display:"block", fontSize:"14px", fontWeight:700, color:"#111827", marginBottom:"8px" }}>
             Search by business name or email
@@ -206,11 +232,21 @@ export default function AdminBusinessLookup() {
           </div>
         </div>
 
-        {/* Results */}
         {results.map(biz => (
-          <div key={biz.email} style={{ background:"#fff", border:"1px solid #e5e7eb", borderRadius:"14px", padding:"22px 24px", marginBottom:"14px" }}>
+          <div key={biz.id} style={{ background:"#fff", border:"1px solid #e5e7eb", borderRadius:"14px", padding:"22px 24px", marginBottom:"14px" }}>
             <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:"12px", flexWrap:"wrap", gap:"10px" }}>
               <h2 style={{ margin:0, fontSize:"20px", fontWeight:800, color:"#0a2e1a" }}>{biz.name}</h2>
+              {/* NEW ACTION BUTTONS */}
+              <div>
+                <button onClick={() => handleSuspendBusiness(biz.id, biz.name, 1)}
+                  style={{ background: "#f59e0b", color: "#fff", border: "none", padding: "6px 12px", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: 700 }}>
+                  Suspend 1 wk
+                </button>
+                <button onClick={() => handleReinstateBusiness(biz.id, biz.name)}
+                  style={{ background: "#16a34a", color: "#fff", border: "none", padding: "6px 12px", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: 700, marginLeft: "6px" }}>
+                  Reinstate
+                </button>
+              </div>
             </div>
             <div style={{ fontSize:"14px", color:"#1f2937", lineHeight:"1.9", marginBottom:"18px" }}>
               <p style={{ margin:"2px 0" }}><b>Email:</b> {biz.email}</p>
