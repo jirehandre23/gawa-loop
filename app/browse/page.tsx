@@ -9,6 +9,8 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+const ADMIN_EMAIL = "admin@gawaloop.com";
+
 type Listing = {
   id: string; business_name: string; food_name: string; category: string;
   quantity: string; allergy_note: string; estimated_value: number; note: string;
@@ -25,6 +27,7 @@ export default function BrowsePage() {
   const [loading, setLoading]           = useState(true);
   const [user, setUser]                 = useState<any>(null);
   const [isBusiness, setIsBusiness]     = useState(false);
+  const [isAdmin, setIsAdmin]           = useState(false);
   const [bizInfoMap, setBizInfoMap]     = useState<Record<string, BizInfo>>({});
   const [selectedId, setSelectedId]     = useState<string | null>(null);
   const [claimForm, setClaimForm]       = useState({ first_name: "", email: "", phone: "", eta_minutes: 15 });
@@ -49,14 +52,20 @@ export default function BrowsePage() {
       setUser(u);
       if (u?.email) {
         setClaimForm(f => ({ ...f, email: u.email! }));
-        const { data: biz } = await supabase
-          .from("businesses").select("id").eq("email", u.email).single();
-        setIsBusiness(!!biz);
-        if (biz) setSigninModal(false);
+        if (u.email === ADMIN_EMAIL) {
+          setIsAdmin(true);
+          setIsBusiness(false);
+        } else {
+          const { data: biz } = await supabase
+            .from("businesses").select("id").eq("email", u.email).single();
+          setIsBusiness(!!biz);
+          if (biz) setSigninModal(false);
+        }
         setSigninModal(false);
         setSigninDone(false);
       } else {
         setIsBusiness(false);
+        setIsAdmin(false);
         setClaimForm(f => ({ ...f, email: "" }));
       }
     });
@@ -64,14 +73,22 @@ export default function BrowsePage() {
   }, []);
 
   async function fetchListings() {
-    const { data } = await supabase
-      .from("listings").select("*")
-      .eq("status", "AVAILABLE")
-      .order("created_at", { ascending: false });
-    const all = data || [];
-    setListings(all);
-    applySearch(all, search);
-    setLoading(false);
+    try {
+      const { data, error } = await supabase
+        .from("listings").select("*")
+        .eq("status", "AVAILABLE")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      const all = data || [];
+      setListings(all);
+      applySearch(all, search);
+    } catch (e) {
+      console.error("fetchListings error:", e);
+      setListings([]);
+      setFiltered([]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function fetchBizInfo(all: Listing[]) {
@@ -87,9 +104,14 @@ export default function BrowsePage() {
   }
 
   useEffect(() => {
-    (async () => { await fetchListings(); })();
+    // Safety net: force loading=false after 5s no matter what
+    const timeout = setTimeout(() => setLoading(false), 5000);
+    (async () => { await fetchListings(); clearTimeout(timeout); })();
     intervalRef.current = setInterval(fetchListings, 30000);
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+    return () => {
+      clearTimeout(timeout);
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -112,28 +134,19 @@ export default function BrowsePage() {
   async function handleSignin(e: React.FormEvent) {
     e.preventDefault();
     setSigninLoading(true); setSigninError("");
-
     if (signinMode === "signin") {
       const { error } = await supabase.auth.signInWithPassword({
         email: signinEmail.trim().toLowerCase(),
         password: signinPassword,
       });
-      if (error) {
-        setSigninError("Invalid email or password.");
-        setSigninLoading(false);
-        return;
-      }
+      if (error) { setSigninError("Invalid email or password."); setSigninLoading(false); return; }
     } else {
       const { error } = await supabase.auth.signUp({
         email: signinEmail.trim().toLowerCase(),
         password: signinPassword,
         options: { emailRedirectTo: "https://gawaloop.com/browse" },
       });
-      if (error) {
-        setSigninError(error.message);
-        setSigninLoading(false);
-        return;
-      }
+      if (error) { setSigninError(error.message); setSigninLoading(false); return; }
       setSigninDone(true);
     }
     setSigninLoading(false);
@@ -166,9 +179,9 @@ export default function BrowsePage() {
     setClaimLoading(false);
   }
 
-  const T     = t[locale];
-  const isRTL = locale === "ar";
-  const isSignedIn = !!user && !isBusiness;
+  const T      = t[locale];
+  const isRTL  = locale === "ar";
+  const isSignedIn = !!user && (!isBusiness || isAdmin);
 
   const inp: React.CSSProperties = {
     width: "100%", padding: "11px 14px", borderRadius: "8px",
@@ -182,7 +195,6 @@ export default function BrowsePage() {
   return (
     <div dir={isRTL ? "rtl" : "ltr"} style={{ minHeight: "100vh", background: "#f9fafb", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
 
-      {/* NAV */}
       <nav style={{ background: "#0a2e1a", padding: "0 24px", height: "56px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 50 }}>
         <a href="/" style={{ display: "flex", alignItems: "center", gap: "8px", textDecoration: "none" }}>
           <img src="/gawa-logo-green.png" alt="GAWA Loop" style={{ width: "28px", height: "28px", objectFit: "contain" }}/>
@@ -191,9 +203,9 @@ export default function BrowsePage() {
         <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
           <LanguageSwitcher />
           {user ? (
-            <a href={isBusiness ? "/business/dashboard" : "/customer/profile"}
+            <a href={isAdmin ? "/admin/business-lookup" : isBusiness ? "/business/dashboard" : "/customer/profile"}
               style={{ background: "#16a34a", color: "#fff", padding: "7px 14px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 700 }}>
-              {isBusiness ? "Dashboard" : "My Profile"}
+              {isAdmin ? "🔑 Admin" : isBusiness ? "Dashboard" : "My Profile"}
             </a>
           ) : (
             <button onClick={() => { setSigninModal(true); setSigninError(""); setSigninDone(false); }}
@@ -219,7 +231,6 @@ export default function BrowsePage() {
             value={search} onChange={e => handleSearch(e.target.value)}/>
         </div>
 
-        {/* CHANGED: spinner while loading, friendly empty state when done */}
         {loading ? (
           <div style={{ textAlign: "center", padding: "80px 0" }}>
             <div style={{ display: "inline-block", width: "36px", height: "36px", border: "3px solid #e5e7eb", borderTopColor: "#16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
@@ -237,7 +248,6 @@ export default function BrowsePage() {
           </div>
         ) : filtered.map(listing => {
           const bizInfo = bizInfoMap[listing.business_name];
-
           return (
             <div key={listing.id} style={{ background: "#fff", borderRadius: "20px", border: "1px solid #e5e7eb", overflow: "hidden", marginBottom: "20px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
 
@@ -318,14 +328,20 @@ export default function BrowsePage() {
                   </div>
                 )}
 
-                {isSignedIn && (
+                {isSignedIn && !isAdmin && (
                   <button onClick={() => openClaim(listing.id)}
                     style={{ width: "100%", background: "#16a34a", color: "#fff", border: "none", padding: "14px", borderRadius: "10px", cursor: "pointer", fontSize: "15px", fontWeight: 800 }}>
                     Reserve Now — It is Free
                   </button>
                 )}
 
-                {isBusiness && (
+                {isAdmin && (
+                  <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
+                    <p style={{ margin: 0, fontSize: "13px", color: "#166534", fontWeight: 600 }}>👁️ Admin view — claims disabled for admin account</p>
+                  </div>
+                )}
+
+                {isBusiness && !isAdmin && (
                   <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
                     <p style={{ margin: 0, fontSize: "13px", color: "#6b7280" }}>Business accounts cannot claim food. Use a customer account to reserve.</p>
                   </div>
@@ -361,12 +377,10 @@ export default function BrowsePage() {
                 <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "12px", padding: "16px", marginBottom: "20px", textAlign: "left" }}>
                   <p style={{ margin: "0 0 8px", fontSize: "14px", color: "#166534", fontWeight: 700 }}>What to do next:</p>
                   <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#374151" }}>1. Open your email inbox</p>
-                  <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#374151" }}>2. Click the confirmation link in the email from GAWA Loop</p>
-                  <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>3. You'll be brought back here and signed in automatically</p>
+                  <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#374151" }}>2. Click the confirmation link from GAWA Loop</p>
+                  <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>3. You'll be signed in automatically</p>
                 </div>
-                <p style={{ margin: "0 0 16px", fontSize: "12px", color: "#9ca3af" }}>
-                  Don't see it? Check your spam folder.
-                </p>
+                <p style={{ margin: "0 0 16px", fontSize: "12px", color: "#9ca3af" }}>Don't see it? Check your spam folder.</p>
                 <button onClick={() => { setSigninModal(false); setSigninDone(false); }}
                   style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "10px 24px", borderRadius: "8px", cursor: "pointer", fontSize: "14px", fontWeight: 600 }}>
                   OK, got it
@@ -450,8 +464,7 @@ export default function BrowsePage() {
                   <div style={{ marginBottom: "14px" }}>
                     <label style={lbl}>Your First Name *</label>
                     <input style={inp} required value={claimForm.first_name}
-                      onChange={e => setClaimForm(f => ({ ...f, first_name: e.target.value }))}
-                      placeholder="Your first name"/>
+                      onChange={e => setClaimForm(f => ({ ...f, first_name: e.target.value }))} placeholder="Your first name"/>
                   </div>
                   <div style={{ marginBottom: "14px" }}>
                     <label style={lbl}>Email *</label>
@@ -461,8 +474,7 @@ export default function BrowsePage() {
                   <div style={{ marginBottom: "14px" }}>
                     <label style={lbl}>Phone Number *</label>
                     <input style={inp} type="tel" required value={claimForm.phone}
-                      onChange={e => setClaimForm(f => ({ ...f, phone: e.target.value }))}
-                      placeholder="e.g. 3478015325"/>
+                      onChange={e => setClaimForm(f => ({ ...f, phone: e.target.value }))} placeholder="e.g. 3478015325"/>
                     <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#9ca3af" }}>So the business can contact you if needed</p>
                   </div>
                   <div style={{ marginBottom: "20px" }}>
