@@ -9,284 +9,342 @@ const supabase = createClient(
 
 const ADMIN_EMAIL = "admin@gawaloop.com";
 
-type BizResult = {
-  id: string; // added
-  name: string;
-  email: string;
-  phone?: string;
-  address?: string;
+type Business = {
+  id: string; name: string; email: string; phone: string; address: string;
+  status: string; suspended_until: string | null; suspension_reason: string | null;
+  created_at: string;
+};
+type Customer = {
+  id: string; user_id: string; first_name: string; last_name: string;
+  email: string; phone: string; city: string; noshow_count: number;
+  suspension_count: number; suspended_until: string | null;
+  suspension_reason: string | null; permanently_banned: boolean; created_at: string;
 };
 
-export default function AdminBusinessLookup() {
-  const [authState, setAuthState] = useState<"checking"|"admin"|"denied"|"loggedout">("checking");
-  const [currentEmail, setCurrentEmail] = useState("");
-  const [query, setQuery]       = useState("");
-  const [results, setResults]   = useState<BizResult[]>([]);
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState("");
-  const [tempPwds, setTempPwds] = useState<Record<string, string>>({});
-  const [messages, setMessages] = useState<Record<string, string>>({});
-  const [working, setWorking]   = useState<Record<string, boolean>>({});
+const BADGE = (label: string, color: string) => (
+  <span style={{ background: color, color: "#fff", fontSize: "11px", fontWeight: 700, padding: "3px 10px", borderRadius: "20px" }}>{label}</span>
+);
+
+const BTN = (label: string, color: string, onClick: () => void, small = false) => (
+  <button onClick={onClick} style={{ background: color, color: "#fff", border: "none", padding: small ? "5px 10px" : "7px 14px", borderRadius: "7px", cursor: "pointer", fontSize: small ? "11px" : "12px", fontWeight: 700 }}>{label}</button>
+);
+
+export default function AdminPanel() {
+  const [tab, setTab]               = useState<"summary" | "businesses" | "customers">("summary");
+  const [businesses, setBusinesses] = useState<Business[]>([]);
+  const [customers, setCustomers]   = useState<Customer[]>([]);
+  const [bizSearch, setBizSearch]   = useState("");
+  const [cusSearch, setCusSearch]   = useState("");
+  const [msg, setMsg]               = useState("");
+  const [loading, setLoading]       = useState(true);
+  const [stats, setStats]           = useState<any>(null);
+  const [bizPwds, setBizPwds]       = useState<Record<string, string>>({});
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        setAuthState("loggedout");
-      } else if (session.user.email === ADMIN_EMAIL) {
-        setCurrentEmail(session.user.email);
-        setAuthState("admin");
-      } else {
-        setCurrentEmail(session.user.email || "");
-        setAuthState("denied");
-      }
-    });
-    return () => subscription.unsubscribe();
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || user.email !== ADMIN_EMAIL) { window.location.href = "/business/login"; return; }
+      await Promise.all([loadBusinesses(), loadCustomers(), loadStats()]);
+      setLoading(false);
+    })();
   }, []);
 
-  // ── NEW: Suspend / Reinstate ─────────────────────────
-  async function handleSuspendBusiness(bizId: string, bizName: string, weeks: number) {
-    const reason = prompt(`Reason for suspending ${bizName}:`);
+  async function loadBusinesses() {
+    const { data } = await supabase.from("businesses").select("*").order("name");
+    setBusinesses(data || []);
+  }
+
+  async function loadCustomers() {
+    const { data } = await supabase.from("customer_profiles").select("*").order("created_at", { ascending: false });
+    setCustomers(data || []);
+  }
+
+  async function loadStats() {
+    const [
+      { count: bizTotal }, { count: cusTotal }, { count: listTotal },
+      { count: pickups }, { count: claims }, { data: weights },
+      { count: active }, { count: suspended_biz }, { count: suspended_cus },
+      { count: banned },
+    ] = await Promise.all([
+      supabase.from("businesses").select("*", { count: "exact", head: true }),
+      supabase.from("customer_profiles").select("*", { count: "exact", head: true }),
+      supabase.from("listings").select("*", { count: "exact", head: true }),
+      supabase.from("listings").select("*", { count: "exact", head: true }).eq("status", "PICKED_UP"),
+      supabase.from("claims").select("*", { count: "exact", head: true }),
+      supabase.from("listings").select("weight_kg").eq("status", "PICKED_UP"),
+      supabase.from("listings").select("*", { count: "exact", head: true }).eq("status", "AVAILABLE"),
+      supabase.from("businesses").select("*", { count: "exact", head: true }).not("suspended_until", "is", null),
+      supabase.from("customer_profiles").select("*", { count: "exact", head: true }).not("suspended_until", "is", null),
+      supabase.from("customer_profiles").select("*", { count: "exact", head: true }).eq("permanently_banned", true),
+    ]);
+    const lbs = (weights || []).reduce((s: number, l: any) => s + (Number(l.weight_kg || 0) * 2.205), 0);
+    setStats({ bizTotal, cusTotal, listTotal, pickups, claims, lbs, active, suspended_biz, suspended_cus, banned });
+  }
+
+  function flash(text: string) { setMsg(text); setTimeout(() => setMsg(""), 4000); }
+
+  async function suspendBusiness(biz: Business, weeks: number | "permanent") {
+    const reason = prompt(`Reason for ${weeks === "permanent" ? "permanently banning" : `suspending ${weeks} week(s)`} — ${biz.name}:`);
     if (!reason) return;
-    const suspendedUntil = new Date(Date.now() + weeks * 7 * 24 * 3600 * 1000).toISOString();
-    const { error } = await supabase.from("businesses")
-      .update({
-        suspended_until: suspendedUntil,
-        suspension_reason: reason,
-        suspended_by: "admin@gawaloop.com",
-        status: "suspended",
-      })
-      .eq("id", bizId);
-    if (!error) alert(`${bizName} suspended for ${weeks} week(s). They cannot post listings until ${new Date(suspendedUntil).toLocaleDateString()}.`);
-    else alert("Error: " + error.message);
+    const until = weeks === "permanent" ? "9999-12-31T00:00:00Z"
+      : new Date(Date.now() + (weeks as number) * 7 * 24 * 3600000).toISOString();
+    await supabase.from("businesses").update({
+      suspended_until: until, suspension_reason: reason,
+      suspended_by: ADMIN_EMAIL, status: "suspended",
+    }).eq("id", biz.id);
+    flash(`✅ ${biz.name} ${weeks === "permanent" ? "permanently banned" : `suspended ${weeks}wk`}.`);
+    await loadBusinesses();
   }
 
-  async function handleReinstateBusiness(bizId: string, bizName: string) {
-    const { error } = await supabase.from("businesses")
-      .update({
-        suspended_until: null,
-        suspension_reason: null,
-        suspended_by: null,
-        status: "approved",
-      })
-      .eq("id", bizId);
-    if (!error) alert(`${bizName} reinstated.`);
-    else alert("Error: " + error.message);
+  async function reinstateBusiness(biz: Business) {
+    await supabase.from("businesses").update({
+      suspended_until: null, suspension_reason: null, suspended_by: null, status: "approved",
+    }).eq("id", biz.id);
+    flash(`✅ ${biz.name} reinstated.`);
+    await loadBusinesses();
   }
 
-  async function handleSearch(sq?: string) {
-    setLoading(true);
-    setError("");
-    setResults([]);
-    const q = (sq ?? query).trim();
-    let builder = supabase.from("businesses").select("id, name, email, phone, address").order("name");
-    if (q) builder = builder.or(`name.ilike.%${q}%,email.ilike.%${q}%`);
-    const { data, error: err } = await builder.limit(30);
-    if (err) {
-      setError("Search error: " + err.message);
-    } else {
-      const filtered = (data || []).filter((b: any) => b.email !== ADMIN_EMAIL);
-      setResults(filtered);
-      if (filtered.length === 0) setError("No businesses found.");
-    }
-    setLoading(false);
-  }
-
-  async function handleSetPassword(email: string) {
-    const pwd = tempPwds[email];
-    if (!pwd || pwd.length < 6) {
-      setMessages(m => ({ ...m, [email]: "❌ Password must be at least 6 characters." }));
-      return;
-    }
-    setWorking(w => ({ ...w, [email]: true }));
+  async function setBusinessPassword(bizEmail: string, password: string) {
     const res = await fetch("/api/admin/set-password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password: pwd }),
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: bizEmail, password }),
     });
     const data = await res.json();
-    setMessages(m => ({ ...m, [email]: data.success ? `✅ Password updated` : `❌ ${data.error}` }));
-    setWorking(w => ({ ...w, [email]: false }));
+    flash(data.success ? `✅ Password updated for ${bizEmail}` : `❌ ${data.error}`);
   }
 
-  async function handleResetEmail(email: string) {
-    const key = email + "_reset";
-    setWorking(w => ({ ...w, [key]: true }));
-    const res = await fetch("/api/admin/reset-email", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-    const data = await res.json();
-    setMessages(m => ({ ...m, [key]: data.success ? `✅ Reset email sent` : `❌ ${data.error}` }));
-    setWorking(w => ({ ...w, [key]: false }));
+  async function suspendCustomer(cus: Customer, weeks: number | "permanent") {
+    const reason = prompt(`Reason for ${weeks === "permanent" ? "permanently banning" : `suspending ${weeks} week(s)`} — ${cus.first_name} ${cus.last_name} (${cus.email}):`);
+    if (!reason) return;
+    const until = weeks === "permanent" ? "9999-12-31T00:00:00Z"
+      : new Date(Date.now() + (weeks as number) * 7 * 24 * 3600000).toISOString();
+    await supabase.from("customer_profiles").update({
+      suspended_until: until,
+      suspension_reason: reason,
+      permanently_banned: weeks === "permanent",
+    }).eq("id", cus.id);
+    flash(`✅ ${cus.first_name} ${weeks === "permanent" ? "permanently banned" : `suspended ${weeks}wk`}.`);
+    await loadCustomers();
   }
 
-  const inp: React.CSSProperties = {
-    padding: "10px 14px", borderRadius: "8px",
-    border: "1px solid #d1d5db", fontSize: "14px",
-    color: "#111827", background: "#fff", outline: "none",
-  };
+  async function reinstateCustomer(cus: Customer) {
+    await supabase.from("customer_profiles").update({
+      suspended_until: null, suspension_reason: null, permanently_banned: false,
+    }).eq("id", cus.id);
+    flash(`✅ ${cus.first_name} reinstated.`);
+    await loadCustomers();
+  }
 
-  if (authState === "checking") {
-    return (
-      <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"sans-serif" }}>
-        <div style={{ textAlign:"center" }}>
-          <img src="/gawa-logo-green.png" alt="GAWA Loop" style={{ width:"48px", height:"48px", objectFit:"contain", marginBottom:"16px" }} />
-          <p style={{ color:"#6b7280", fontSize:"15px" }}>Verifying admin access...</p>
-        </div>
+  const isBanned = (until: string | null) => until === "9999-12-31T00:00:00+00:00" || until === "9999-12-31T00:00:00Z";
+  const isSuspended = (until: string | null) => !!until && new Date(until) > new Date() && !isBanned(until);
+
+  const filteredBiz = businesses.filter(b =>
+    !bizSearch || b.name?.toLowerCase().includes(bizSearch.toLowerCase()) || b.email?.toLowerCase().includes(bizSearch.toLowerCase())
+  );
+  const filteredCus = customers.filter(c =>
+    !cusSearch || c.first_name?.toLowerCase().includes(cusSearch.toLowerCase()) ||
+    c.last_name?.toLowerCase().includes(cusSearch.toLowerCase()) || c.email?.toLowerCase().includes(cusSearch.toLowerCase())
+  );
+
+  const tabStyle = (t: string): React.CSSProperties => ({
+    padding: "10px 20px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 700,
+    borderRadius: "8px", background: tab === t ? "#0a2e1a" : "transparent", color: tab === t ? "#fff" : "#374151",
+  });
+
+  if (loading) return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "sans-serif" }}>
+      <div style={{ textAlign: "center" }}>
+        <img src="/gawa-logo-green.png" alt="GAWA Loop" style={{ width: "48px", height: "48px", objectFit: "contain", marginBottom: "16px" }} />
+        <p style={{ color: "#6b7280", fontSize: "15px" }}>Loading admin panel...</p>
       </div>
-    );
-  }
-
-  if (authState === "loggedout") {
-    return (
-      <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"sans-serif", padding:"24px" }}>
-        <div style={{ background:"#fff", border:"1px solid #e5e7eb", borderRadius:"16px", padding:"40px", maxWidth:"400px", width:"100%", textAlign:"center" }}>
-          <img src="/gawa-logo-green.png" alt="GAWA Loop" style={{ width:"48px", height:"48px", objectFit:"contain", marginBottom:"16px" }} />
-          <h2 style={{ margin:"0 0 8px", color:"#0a2e1a", fontWeight:800 }}>Admin Login Required</h2>
-          <p style={{ color:"#6b7280", fontSize:"14px", marginBottom:"24px" }}>You need to be logged in as admin to access this page.</p>
-          <a href="/business/login" style={{ display:"inline-block", background:"#16a34a", color:"#fff", padding:"12px 28px", borderRadius:"10px", textDecoration:"none", fontWeight:700, fontSize:"15px" }}>
-            Go to Login
-          </a>
-        </div>
-      </div>
-    );
-  }
-
-  if (authState === "denied") {
-    return (
-      <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"sans-serif", padding:"24px" }}>
-        <div style={{ background:"#fff", border:"1px solid #fecaca", borderRadius:"16px", padding:"40px", maxWidth:"440px", width:"100%", textAlign:"center" }}>
-          <img src="/gawa-logo-green.png" alt="GAWA Loop" style={{ width:"48px", height:"48px", objectFit:"contain", marginBottom:"16px" }} />
-          <h2 style={{ margin:"0 0 8px", color:"#991b1b", fontWeight:800 }}>Access Denied</h2>
-          <p style={{ color:"#374151", fontSize:"14px", marginBottom:"8px" }}>
-            You are logged in as <b>{currentEmail}</b>
-          </p>
-          <p style={{ color:"#6b7280", fontSize:"14px", marginBottom:"24px" }}>
-            This page is only accessible with the admin account.<br/>
-            Sign out and log in as <b>admin@gawaloop.com</b>.
-          </p>
-          <div style={{ display:"flex", gap:"10px", justifyContent:"center", flexWrap:"wrap" }}>
-            <button
-              onClick={async () => { await supabase.auth.signOut(); window.location.href = "/business/login"; }}
-              style={{ background:"#16a34a", color:"#fff", border:"none", padding:"12px 24px", borderRadius:"10px", cursor:"pointer", fontWeight:700, fontSize:"15px" }}
-            >
-              Sign Out & Switch Account
-            </button>
-            <a href="/business/dashboard" style={{ display:"inline-block", background:"#f3f4f6", color:"#374151", border:"1px solid #e5e7eb", padding:"12px 20px", borderRadius:"10px", textDecoration:"none", fontWeight:600, fontSize:"14px" }}>
-              Back to Dashboard
-            </a>
-          </div>
-        </div>
-      </div>
-    );
-  }
+    </div>
+  );
 
   return (
-    <div style={{ minHeight:"100vh", background:"#f3f4f6", fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", padding:"32px 16px" }}>
-      <div style={{ maxWidth:"720px", margin:"0 auto" }}>
+    <div style={{ minHeight: "100vh", background: "#f3f4f6", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
 
-        <div style={{ display:"flex", alignItems:"center", gap:"14px", marginBottom:"6px" }}>
-          <img src="/gawa-logo-green.png" alt="GAWA" style={{ width:"40px", height:"40px", objectFit:"contain" }} />
-          <div>
-            <h1 style={{ margin:0, fontSize:"22px", fontWeight:800, color:"#0a2e1a" }}>Admin Business Lookup</h1>
-            <p style={{ margin:0, fontSize:"13px", color:"#4b5563" }}>Search · view details · set passwords · send reset emails</p>
-          </div>
+      {/* HEADER */}
+      <div style={{ background: "#0a2e1a", padding: "0 32px", height: "56px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <img src="/gawa-logo-green.png" alt="GAWA Loop" style={{ width: "28px", height: "28px", objectFit: "contain" }} />
+          <span style={{ color: "#fff", fontWeight: 800, fontSize: "16px" }}>GAWA Admin</span>
+          <span style={{ background: "#4ade80", color: "#0a2e1a", fontSize: "11px", fontWeight: 800, padding: "3px 10px", borderRadius: "20px" }}>🔑 SUPER ADMIN</span>
         </div>
-        <div style={{ display:"flex", gap:"12px", alignItems:"center", marginBottom:"20px" }}>
-          <span style={{ background:"#0a2e1a", color:"#4ade80", fontSize:"11px", fontWeight:700, padding:"3px 10px", borderRadius:"6px" }}>🔑 ADMIN</span>
-          <a href="/business/dashboard" style={{ fontSize:"13px", color:"#2563eb", textDecoration:"none", fontWeight:500 }}>← Business Dashboard</a>
-          <button
-            onClick={async () => { await supabase.auth.signOut(); window.location.href = "/business/login"; }}
-            style={{ marginLeft:"auto", background:"#f3f4f6", color:"#374151", border:"1px solid #e5e7eb", padding:"6px 14px", borderRadius:"6px", cursor:"pointer", fontSize:"13px" }}
-          >
+        <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+          <a href="/business/dashboard" style={{ color: "#a3c9b0", fontSize: "13px", textDecoration: "none" }}>← Business Dashboard</a>
+          <a href="/admin/survey-dashboard" style={{ color: "#a3c9b0", fontSize: "13px", textDecoration: "none" }}>Survey Dashboard</a>
+          <button onClick={async () => { await supabase.auth.signOut(); window.location.href = "/business/login"; }}
+            style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "none", padding: "7px 14px", borderRadius: "8px", cursor: "pointer", fontSize: "13px" }}>
             Sign Out
           </button>
         </div>
+      </div>
 
-        {error && (
-          <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:"10px", padding:"12px 16px", marginBottom:"16px" }}>
-            <p style={{ margin:0, color:"#991b1b", fontSize:"14px", fontWeight:500 }}>{error}</p>
+      <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "28px 24px" }}>
+
+        {/* FLASH MSG */}
+        {msg && (
+          <div style={{ background: msg.startsWith("✅") ? "#f0fdf4" : "#fef2f2", border: `1px solid ${msg.startsWith("✅") ? "#bbf7d0" : "#fecaca"}`, borderRadius: "10px", padding: "12px 20px", marginBottom: "20px", color: msg.startsWith("✅") ? "#166534" : "#991b1b", fontWeight: 600, fontSize: "14px" }}>
+            {msg}
           </div>
         )}
 
-        <div style={{ background:"#fff", border:"1px solid #e5e7eb", borderRadius:"14px", padding:"20px 24px", marginBottom:"20px" }}>
-          <label style={{ display:"block", fontSize:"14px", fontWeight:700, color:"#111827", marginBottom:"8px" }}>
-            Search by business name or email
-          </label>
-          <div style={{ display:"flex", gap:"10px" }}>
-            <input style={{ ...inp, flex:1 }}
-              placeholder="e.g. Meee or jirehandre@yahoo.fr"
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && handleSearch()}
-            />
-            <button onClick={() => handleSearch()} disabled={loading}
-              style={{ background:"#2563eb", color:"#fff", border:"none", padding:"10px 22px", borderRadius:"8px", cursor:loading?"not-allowed":"pointer", fontSize:"14px", fontWeight:700 }}>
-              {loading ? "..." : "Search"}
-            </button>
-            <button onClick={() => { setQuery(""); handleSearch(""); }}
-              style={{ background:"#f3f4f6", color:"#374151", border:"1px solid #e5e7eb", padding:"10px 16px", borderRadius:"8px", cursor:"pointer", fontSize:"14px" }}>
-              All
-            </button>
-          </div>
+        {/* TABS */}
+        <div style={{ display: "flex", gap: "4px", background: "#fff", borderRadius: "12px", padding: "4px", border: "1px solid #e5e7eb", marginBottom: "24px", width: "fit-content" }}>
+          {[
+            { key: "summary",    label: "📊 Platform Summary" },
+            { key: "businesses", label: `🏪 Businesses (${businesses.length})` },
+            { key: "customers",  label: `👥 Customers (${customers.length})` },
+          ].map(t => (
+            <button key={t.key} onClick={() => setTab(t.key as any)} style={tabStyle(t.key)}>{t.label}</button>
+          ))}
         </div>
 
-        {results.map(biz => (
-          <div key={biz.id} style={{ background:"#fff", border:"1px solid #e5e7eb", borderRadius:"14px", padding:"22px 24px", marginBottom:"14px" }}>
-            <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:"12px", flexWrap:"wrap", gap:"10px" }}>
-              <h2 style={{ margin:0, fontSize:"20px", fontWeight:800, color:"#0a2e1a" }}>{biz.name}</h2>
-              {/* NEW ACTION BUTTONS */}
-              <div>
-                <button onClick={() => handleSuspendBusiness(biz.id, biz.name, 1)}
-                  style={{ background: "#f59e0b", color: "#fff", border: "none", padding: "6px 12px", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: 700 }}>
-                  Suspend 1 wk
-                </button>
-                <button onClick={() => handleReinstateBusiness(biz.id, biz.name)}
-                  style={{ background: "#16a34a", color: "#fff", border: "none", padding: "6px 12px", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: 700, marginLeft: "6px" }}>
-                  Reinstate
-                </button>
-              </div>
-            </div>
-            <div style={{ fontSize:"14px", color:"#1f2937", lineHeight:"1.9", marginBottom:"18px" }}>
-              <p style={{ margin:"2px 0" }}><b>Email:</b> {biz.email}</p>
-              <p style={{ margin:"2px 0" }}><b>Phone:</b> {biz.phone || "Not provided"}</p>
-              <p style={{ margin:"2px 0" }}><b>Address:</b> {biz.address || "Not provided"}</p>
-            </div>
-            <div style={{ borderTop:"1px solid #f0f0f0", paddingTop:"16px" }}>
-              <p style={{ margin:"0 0 12px", fontSize:"12px", fontWeight:700, color:"#374151", textTransform:"uppercase", letterSpacing:"0.6px" }}>Account Actions</p>
-              <div style={{ marginBottom:"12px" }}>
-                <label style={{ display:"block", fontSize:"13px", fontWeight:600, color:"#374151", marginBottom:"6px" }}>Set new password</label>
-                <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
-                  <input style={{ ...inp, flex:1, minWidth:"180px" }} type="text"
-                    placeholder="New password (min 6 chars)"
-                    value={tempPwds[biz.email] || ""}
-                    onChange={e => setTempPwds(p => ({ ...p, [biz.email]: e.target.value }))} />
-                  <button onClick={() => handleSetPassword(biz.email)} disabled={working[biz.email]}
-                    style={{ background:"#f59e0b", color:"#fff", border:"none", padding:"10px 18px", borderRadius:"8px", cursor:working[biz.email]?"not-allowed":"pointer", fontSize:"14px", fontWeight:700 }}>
-                    {working[biz.email] ? "Saving..." : "Set Password"}
-                  </button>
+        {/* ── SUMMARY TAB ── */}
+        {tab === "summary" && stats && (
+          <div>
+            <h2 style={{ margin: "0 0 20px", fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>Platform Overview</h2>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px", marginBottom: "24px" }}>
+              {[
+                { label: "Total Businesses",      value: stats.bizTotal,      icon: "🏪", color: "#0a2e1a" },
+                { label: "Total Customers",        value: stats.cusTotal,      icon: "👥", color: "#2563eb" },
+                { label: "Total Listings",         value: stats.listTotal,     icon: "📋", color: "#7c3aed" },
+                { label: "Total Pickups",          value: stats.pickups,       icon: "✅", color: "#16a34a" },
+                { label: "Total Claims",           value: stats.claims,        icon: "🎯", color: "#ea580c" },
+                { label: "Active Listings Now",    value: stats.active,        icon: "🟢", color: "#16a34a" },
+                { label: "Food Donated (lbs)",     value: `${Number(stats.lbs).toFixed(1)} lbs`, icon: "⚖️", color: "#059669" },
+                { label: "CO₂e Saved (lbs)",       value: `${Math.round(stats.lbs * 2.5)} lbs`, icon: "🌍", color: "#0369a1" },
+                { label: "Suspended Businesses",   value: stats.suspended_biz, icon: "⚠️", color: "#f59e0b" },
+                { label: "Suspended Customers",    value: stats.suspended_cus, icon: "⚠️", color: "#f59e0b" },
+                { label: "Permanently Banned",     value: stats.banned,        icon: "🚫", color: "#ef4444" },
+              ].map((s, i) => (
+                <div key={i} style={{ background: "#fff", borderRadius: "14px", padding: "20px", border: "1px solid #e5e7eb", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                  <p style={{ margin: "0 0 6px", fontSize: "22px" }}>{s.icon}</p>
+                  <p style={{ margin: "0 0 4px", fontSize: "26px", fontWeight: 900, color: s.color }}>{s.value}</p>
+                  <p style={{ margin: 0, fontSize: "12px", color: "#6b7280", fontWeight: 600 }}>{s.label}</p>
                 </div>
-                {messages[biz.email] && (
-                  <p style={{ margin:"6px 0 0", fontSize:"13px", fontWeight:600, color:messages[biz.email].startsWith("✅")?"#16a34a":"#dc2626" }}>
-                    {messages[biz.email]}
-                  </p>
-                )}
-              </div>
-              <div>
-                <button onClick={() => handleResetEmail(biz.email)} disabled={working[biz.email+"_reset"]}
-                  style={{ background:"#2563eb", color:"#fff", border:"none", padding:"10px 20px", borderRadius:"8px", cursor:working[biz.email+"_reset"]?"not-allowed":"pointer", fontSize:"14px", fontWeight:700 }}>
-                  {working[biz.email+"_reset"] ? "Sending..." : "📧 Send Password Reset Email"}
-                </button>
-                {messages[biz.email+"_reset"] && (
-                  <p style={{ margin:"6px 0 0", fontSize:"13px", fontWeight:600, color:messages[biz.email+"_reset"].startsWith("✅")?"#16a34a":"#dc2626" }}>
-                    {messages[biz.email+"_reset"]}
-                  </p>
-                )}
-              </div>
+              ))}
+            </div>
+            <button onClick={() => Promise.all([loadBusinesses(), loadCustomers(), loadStats()])}
+              style={{ background: "#0a2e1a", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: 700 }}>
+              🔄 Refresh Stats
+            </button>
+          </div>
+        )}
+
+        {/* ── BUSINESSES TAB ── */}
+        {tab === "businesses" && (
+          <div>
+            <div style={{ display: "flex", gap: "12px", marginBottom: "20px", alignItems: "center", flexWrap: "wrap" }}>
+              <input placeholder="Search by name or email..." value={bizSearch} onChange={e => setBizSearch(e.target.value)}
+                style={{ padding: "10px 14px", borderRadius: "8px", border: "1px solid #d1d5db", fontSize: "14px", minWidth: "280px", outline: "none" }} />
+              <span style={{ fontSize: "13px", color: "#6b7280" }}>{filteredBiz.length} results</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              {filteredBiz.map(biz => {
+                const banned = isBanned(biz.suspended_until);
+                const suspended = isSuspended(biz.suspended_until);
+                return (
+                  <div key={biz.id} style={{ background: "#fff", borderRadius: "14px", padding: "20px 24px", border: `1px solid ${banned ? "#fecaca" : suspended ? "#fde68a" : "#e5e7eb"}` }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
+                          <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 800, color: "#0a2e1a" }}>{biz.name}</h3>
+                          {banned && BADGE("PERMANENTLY BANNED", "#ef4444")}
+                          {suspended && BADGE(`SUSPENDED until ${new Date(biz.suspended_until!).toLocaleDateString()}`, "#f59e0b")}
+                          {!banned && !suspended && BADGE("ACTIVE", "#16a34a")}
+                        </div>
+                        <p style={{ margin: "2px 0", fontSize: "13px", color: "#374151" }}>📧 {biz.email}</p>
+                        {biz.phone && <p style={{ margin: "2px 0", fontSize: "13px", color: "#374151" }}>📞 {biz.phone}</p>}
+                        {biz.address && <p style={{ margin: "2px 0", fontSize: "13px", color: "#374151" }}>📍 {biz.address}</p>}
+                        {biz.suspension_reason && <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#ef4444", fontStyle: "italic" }}>Reason: {biz.suspension_reason}</p>}
+                      </div>
+                      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-start" }}>
+                        {(banned || suspended)
+                          ? BTN("✅ Reinstate", "#16a34a", () => reinstateBusiness(biz))
+                          : <>
+                              {BTN("Suspend 1wk", "#f59e0b", () => suspendBusiness(biz, 1))}
+                              {BTN("Suspend 1mo", "#ea580c", () => suspendBusiness(biz, 4))}
+                              {BTN("🚫 Permanent Ban", "#ef4444", () => suspendBusiness(biz, "permanent"))}
+                            </>
+                        }
+                      </div>
+                    </div>
+                    <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px solid #f3f4f6" }}>
+                      <p style={{ margin: "0 0 8px", fontSize: "12px", fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>Set New Password</p>
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <input placeholder="New password (min 6 chars)" value={bizPwds[biz.id] || ""}
+                          onChange={e => setBizPwds(p => ({ ...p, [biz.id]: e.target.value }))}
+                          style={{ padding: "8px 12px", borderRadius: "7px", border: "1px solid #d1d5db", fontSize: "13px", flex: 1, outline: "none" }} />
+                        <button onClick={() => setBusinessPassword(biz.email, bizPwds[biz.id] || "")}
+                          style={{ background: "#2563eb", color: "#fff", border: "none", padding: "8px 16px", borderRadius: "7px", cursor: "pointer", fontSize: "13px", fontWeight: 700, whiteSpace: "nowrap" }}>
+                          Set Password
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-        ))}
+        )}
+
+        {/* ── CUSTOMERS TAB ── */}
+        {tab === "customers" && (
+          <div>
+            <div style={{ display: "flex", gap: "12px", marginBottom: "20px", alignItems: "center", flexWrap: "wrap" }}>
+              <input placeholder="Search by name or email..." value={cusSearch} onChange={e => setCusSearch(e.target.value)}
+                style={{ padding: "10px 14px", borderRadius: "8px", border: "1px solid #d1d5db", fontSize: "14px", minWidth: "280px", outline: "none" }} />
+              <span style={{ fontSize: "13px", color: "#6b7280" }}>{filteredCus.length} results</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              {filteredCus.map(cus => {
+                const banned = cus.permanently_banned || isBanned(cus.suspended_until);
+                const suspended = isSuspended(cus.suspended_until);
+                const name = [cus.first_name, cus.last_name].filter(Boolean).join(" ") || "Unknown";
+                return (
+                  <div key={cus.id} style={{ background: "#fff", borderRadius: "14px", padding: "20px 24px", border: `1px solid ${banned ? "#fecaca" : suspended ? "#fde68a" : "#e5e7eb"}` }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
+                          <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 800, color: "#0a2e1a" }}>{name}</h3>
+                          {banned && BADGE("PERMANENTLY BANNED", "#ef4444")}
+                          {suspended && !banned && BADGE(`SUSPENDED until ${new Date(cus.suspended_until!).toLocaleDateString()}`, "#f59e0b")}
+                          {!banned && !suspended && BADGE("ACTIVE", "#16a34a")}
+                        </div>
+                        <p style={{ margin: "2px 0", fontSize: "13px", color: "#374151" }}>📧 {cus.email}</p>
+                        {cus.phone && <p style={{ margin: "2px 0", fontSize: "13px", color: "#374151" }}>📞 {cus.phone}</p>}
+                        {cus.city && <p style={{ margin: "2px 0", fontSize: "13px", color: "#374151" }}>📍 {cus.city}</p>}
+                        <div style={{ display: "flex", gap: "16px", marginTop: "8px" }}>
+                          <span style={{ fontSize: "12px", color: "#ef4444", fontWeight: 700 }}>No-shows: {cus.noshow_count || 0}</span>
+                          <span style={{ fontSize: "12px", color: "#f59e0b", fontWeight: 700 }}>Suspensions: {cus.suspension_count || 0}</span>
+                          <span style={{ fontSize: "12px", color: "#6b7280" }}>Joined: {new Date(cus.created_at).toLocaleDateString()}</span>
+                        </div>
+                        {cus.suspension_reason && <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#ef4444", fontStyle: "italic" }}>Reason: {cus.suspension_reason}</p>}
+                      </div>
+                      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-start" }}>
+                        {(banned || suspended)
+                          ? BTN("✅ Reinstate", "#16a34a", () => reinstateCustomer(cus))
+                          : <>
+                              {BTN("Suspend 1wk", "#f59e0b", () => suspendCustomer(cus, 1))}
+                              {BTN("Suspend 1mo", "#ea580c", () => suspendCustomer(cus, 4))}
+                              {BTN("🚫 Permanent Ban", "#ef4444", () => suspendCustomer(cus, "permanent"))}
+                            </>
+                        }
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {filteredCus.length === 0 && (
+                <div style={{ background: "#fff", borderRadius: "14px", padding: "40px", textAlign: "center", color: "#6b7280" }}>
+                  No customers found.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
