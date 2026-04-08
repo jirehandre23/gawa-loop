@@ -32,10 +32,18 @@ export default function BrowsePage() {
   const [claimMsg, setClaimMsg]         = useState("");
   const [claimSuccess, setClaimSuccess] = useState(false);
   const [lastCode, setLastCode]         = useState("");
+  // NEW: inline sign-in modal state
+  const [signinModal, setSigninModal]   = useState(false);
+  const [signinEmail, setSigninEmail]   = useState("");
+  const [signinPassword, setSigninPassword] = useState("");
+  const [signinLoading, setSigninLoading]   = useState(false);
+  const [signinError, setSigninError]       = useState("");
+  const [signinMode, setSigninMode]         = useState<"signin" | "signup">("signin");
   const intervalRef                     = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => { setLocale(detectLocale()); }, []);
 
+  // CHANGED: onAuthStateChange instead of getUser() — detects auth after sign-in without reload
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const u = session?.user ?? null;
@@ -45,8 +53,10 @@ export default function BrowsePage() {
         const { data: biz } = await supabase
           .from("businesses").select("id").eq("email", u.email).single();
         setIsBusiness(!!biz);
+        if (biz) setSigninModal(false); // close modal if business owner signs in
       } else {
         setIsBusiness(false);
+        setClaimForm(f => ({ ...f, email: "" }));
       }
     });
     return () => subscription.unsubscribe();
@@ -101,6 +111,29 @@ export default function BrowsePage() {
   function handleSearch(q: string) { setSearch(q); applySearch(listings, q); }
   function openClaim(id: string) { setSelectedId(id); setClaimMsg(""); setClaimSuccess(false); }
 
+  // NEW: handle sign-in inside the browse page modal
+  async function handleSignin(e: React.FormEvent) {
+    e.preventDefault();
+    setSigninLoading(true); setSigninError("");
+    if (signinMode === "signin") {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: signinEmail.trim().toLowerCase(),
+        password: signinPassword,
+      });
+      if (error) { setSigninError("Invalid email or password."); setSigninLoading(false); return; }
+    } else {
+      const { error } = await supabase.auth.signUp({
+        email: signinEmail.trim().toLowerCase(),
+        password: signinPassword,
+        options: { emailRedirectTo: "https://gawaloop.com/browse" },
+      });
+      if (error) { setSigninError(error.message); setSigninLoading(false); return; }
+    }
+    // onAuthStateChange will fire automatically and update user state + close modal
+    setSigninModal(false);
+    setSigninLoading(false);
+  }
+
   async function handleClaim(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedId || isBusiness) return;
@@ -130,6 +163,8 @@ export default function BrowsePage() {
 
   const T     = t[locale];
   const isRTL = locale === "ar";
+  const isSignedIn = !!user && !isBusiness;
+
   const inp: React.CSSProperties = {
     width: "100%", padding: "11px 14px", borderRadius: "8px",
     border: "1px solid #d1d5db", fontSize: "14px", color: "#111827",
@@ -156,9 +191,10 @@ export default function BrowsePage() {
               {isBusiness ? "Dashboard" : "My Profile"}
             </a>
           ) : (
-            <a href="/?returnTo=/browse" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", padding: "7px 14px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 600 }}>
+            <button onClick={() => { setSigninModal(true); setSigninError(""); }}
+              style={{ background: "rgba(255,255,255,0.1)", color: "#fff", padding: "7px 14px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 600 }}>
               Sign In
-            </a>
+            </button>
           )}
         </div>
       </nav>
@@ -187,9 +223,7 @@ export default function BrowsePage() {
             <p style={{ color: "#6b7280", fontSize: "15px" }}>No food available right now. Check back soon!</p>
           </div>
         ) : filtered.map(listing => {
-          const bizInfo  = bizInfoMap[listing.business_name];
-          const canClaim = !isBusiness;
-          const isSignedIn = !!user && !isBusiness;
+          const bizInfo = bizInfoMap[listing.business_name];
 
           return (
             <div key={listing.id} style={{ background: "#fff", borderRadius: "20px", border: "1px solid #e5e7eb", overflow: "hidden", marginBottom: "20px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
@@ -266,14 +300,15 @@ export default function BrowsePage() {
                     )}
                   </div>
                 ) : (
-                  /* NOT SIGNED IN — show sign-in prompt, no restaurant info */
+                  /* NOT SIGNED IN — opens modal instead of redirecting away */
                   <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "12px", padding: "14px 16px", marginBottom: "16px", textAlign: "center" }}>
                     <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#374151", fontWeight: 600 }}>
                       🔒 Sign in to see the restaurant details & claim this food
                     </p>
-                    <a href="/?returnTo=/browse" style={{ background: "#16a34a", color: "#fff", padding: "8px 20px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 700, display: "inline-block" }}>
+                    <button onClick={() => { setSigninModal(true); setSigninError(""); }}
+                      style={{ background: "#16a34a", color: "#fff", padding: "8px 20px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 700 }}>
                       Sign In — It's Free
-                    </a>
+                    </button>
                   </div>
                 )}
 
@@ -303,6 +338,51 @@ export default function BrowsePage() {
           <a href="/" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none", fontSize: "14px" }}>← Back to Home</a>
         </p>
       </div>
+
+      {/* SIGN-IN MODAL — opens inline, no redirect away from browse */}
+      {signinModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: "16px" }}>
+          <div style={{ background: "#fff", borderRadius: "20px", padding: "32px", width: "100%", maxWidth: "420px", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
+              <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>
+                {signinMode === "signin" ? "Sign In" : "Create Account"}
+              </h2>
+              <button onClick={() => setSigninModal(false)} style={{ background: "none", border: "none", fontSize: "22px", cursor: "pointer", color: "#9ca3af" }}>✕</button>
+            </div>
+            <form onSubmit={handleSignin}>
+              {signinError && (
+                <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px", padding: "10px 14px", marginBottom: "16px" }}>
+                  <p style={{ margin: 0, color: "#991b1b", fontSize: "13px" }}>{signinError}</p>
+                </div>
+              )}
+              <div style={{ marginBottom: "14px" }}>
+                <label style={lbl}>Email *</label>
+                <input style={inp} type="email" required value={signinEmail}
+                  onChange={e => setSigninEmail(e.target.value)} placeholder="you@email.com"/>
+              </div>
+              <div style={{ marginBottom: "20px" }}>
+                <label style={lbl}>Password *</label>
+                <input style={inp} type="password" required value={signinPassword}
+                  onChange={e => setSigninPassword(e.target.value)} placeholder="••••••••" minLength={6}/>
+              </div>
+              <button type="submit" disabled={signinLoading}
+                style={{ width: "100%", background: signinLoading ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "13px", borderRadius: "10px", cursor: signinLoading ? "not-allowed" : "pointer", fontSize: "15px", fontWeight: 700, marginBottom: "14px" }}>
+                {signinLoading ? "..." : signinMode === "signin" ? "Sign In" : "Create Account"}
+              </button>
+              <p style={{ textAlign: "center", fontSize: "13px", color: "#6b7280", margin: 0 }}>
+                {signinMode === "signin" ? "No account?" : "Already have one?"}{" "}
+                <button type="button" onClick={() => { setSigninMode(signinMode === "signin" ? "signup" : "signin"); setSigninError(""); }}
+                  style={{ background: "none", border: "none", color: "#16a34a", fontWeight: 700, cursor: "pointer", fontSize: "13px", padding: 0 }}>
+                  {signinMode === "signin" ? "Create one free" : "Sign in"}
+                </button>
+              </p>
+            </form>
+            <p style={{ textAlign: "center", marginTop: "14px", fontSize: "12px", color: "#9ca3af" }}>
+              Business? <a href="/business/login" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>Business login →</a>
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* CLAIM MODAL */}
       {selectedId && (
