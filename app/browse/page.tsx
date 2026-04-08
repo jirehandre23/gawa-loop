@@ -138,7 +138,7 @@ export default function BrowsePage() {
     e.preventDefault();
     if (!selectedId || isBusiness) return;
     setClaimLoading(true); setClaimMsg("");
-    const res = await fetch("/api/claim", {
+   const res = await fetch("/api/claim-submit", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         listingId:        selectedId,
