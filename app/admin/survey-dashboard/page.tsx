@@ -51,7 +51,6 @@ export default function SurveyDashboard() {
   async function refresh() {
     setLoading(true);
 
-    // Business sheet
     const biz = await fetchSheet(BUSINESS_SHEET_ID, "728361962");
     setBizData(
       biz.rows.map((r: SheetRow): BizRow => ({
@@ -65,7 +64,6 @@ export default function SurveyDashboard() {
       }))
     );
 
-    // Customer sheet
     const cust = await fetchSheet(CUSTOMER_SHEET_ID, "1882785104");
     setCustData(cust.rows);
     setCustCols(cust.cols);
@@ -76,7 +74,6 @@ export default function SurveyDashboard() {
 
   useEffect(() => { refresh(); }, []);
 
-  // Business stats
   const bizCompleted = bizData.filter((r) => {
     const s = r.status?.toLowerCase() || "";
     return s.includes("completed") && !s.includes("not") && !s.includes("partial");
@@ -86,15 +83,12 @@ export default function SurveyDashboard() {
   const bizTotal     = bizData.length;
   const bizPct       = Math.min(Math.round((bizCompleted / BUSINESS_GOAL) * 100), 100);
 
-  // Customer stats
   const custTotal = custData.length;
   const custPct   = Math.min(Math.round((custTotal / CUSTOMER_GOAL) * 100), 100);
 
-  // Team
   const jireh = bizData.filter((r) => r.rep?.toLowerCase().includes("jireh")).length;
   const liam  = bizData.filter((r) => r.rep?.toLowerCase().includes("liam")).length;
 
-  // Motivations
   const motivCounts: Record<string, number> = {};
   bizData.forEach((r) => {
     (r.motivation || "").split(",").forEach((m) => {
@@ -104,7 +98,6 @@ export default function SurveyDashboard() {
   });
   const topMotivations = Object.entries(motivCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
-  // Barriers
   const barrierCounts: Record<string, number> = {};
   bizData.forEach((r) => {
     (r.barriers || "").split(",").forEach((b) => {
@@ -114,7 +107,6 @@ export default function SurveyDashboard() {
   });
   const topBarriers = Object.entries(barrierCounts).sort((a, b) => b[1] - a[1]).slice(0, 3);
 
-  // Customer column breakdown (all non-timestamp columns)
   const custAnalysisCols = custCols.filter(c =>
     c && !c.toLowerCase().includes("timestamp") && !c.toLowerCase().includes("email")
   ).slice(0, 6);
@@ -152,7 +144,7 @@ export default function SurveyDashboard() {
   return (
     <div style={{ minHeight: "100vh", background: "#f9fafb", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
 
-      {/* Header */}
+      {/* Header — CHANGED: added Admin Panel link */}
       <div style={{ background: "#0a2e1a", padding: "16px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
         <a href="/" style={{ display: "flex", alignItems: "center", gap: "10px", textDecoration: "none" }}>
           <img src="/gawa-logo-green.png" alt="GAWA Loop" style={{ width: "34px", height: "34px", objectFit: "contain" }} />
@@ -160,6 +152,7 @@ export default function SurveyDashboard() {
         </a>
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           {lastRefresh && <span style={{ fontSize: "12px", color: "#a3c9b0" }}>Updated {lastRefresh.toLocaleTimeString()}</span>}
+          <a href="/admin/business-lookup" style={{ background: "rgba(255,255,255,0.1)", color: "#4ade80", border: "1px solid rgba(74,222,128,0.3)", borderRadius: "8px", padding: "8px 18px", textDecoration: "none", fontSize: "13px", fontWeight: 700 }}>🔑 Admin Panel</a>
           <button onClick={refresh} disabled={loading}
             style={{ background: "#16a34a", color: "#fff", border: "none", borderRadius: "8px", padding: "8px 18px", cursor: "pointer", fontSize: "13px", fontWeight: 700 }}>
             {loading ? "..." : "↻ Refresh"}
@@ -171,7 +164,6 @@ export default function SurveyDashboard() {
         <h1 style={{ margin: "0 0 4px", fontSize: "24px", fontWeight: 800, color: "#0a2e1a" }}>📊 Outreach Dashboard</h1>
         <p style={{ margin: "0 0 24px", fontSize: "14px", color: "#6b7280" }}>Live progress toward investor-ready survey goals — Brooklyn, NY</p>
 
-        {/* Goal cards — always visible */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "24px" }}>
           <div style={card}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -218,16 +210,13 @@ export default function SurveyDashboard() {
           </div>
         </div>
 
-        {/* Tabs */}
         <div style={{ display: "flex", gap: "8px", marginBottom: "20px" }}>
           <button style={tabBtn(activeTab === "business")} onClick={() => setActiveTab("business")}>🏪 Business</button>
           <button style={tabBtn(activeTab === "customer")} onClick={() => setActiveTab("customer")}>🙋 Customers</button>
         </div>
 
-        {/* ─── BUSINESS TAB ─── */}
         {activeTab === "business" && (
           <>
-            {/* Team */}
             <div style={{ ...card, marginBottom: "20px" }}>
               <h2 style={{ margin: "0 0 16px", fontSize: "16px", fontWeight: 800, color: "#0a2e1a" }}>👥 Team Progress</h2>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
@@ -249,7 +238,6 @@ export default function SurveyDashboard() {
               </div>
             </div>
 
-            {/* Insights */}
             {(topMotivations.length > 0 || topBarriers.length > 0) && (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
                 {topMotivations.length > 0 && (
@@ -291,7 +279,6 @@ export default function SurveyDashboard() {
               </div>
             )}
 
-            {/* Business table */}
             <div style={{ ...card, marginBottom: "20px" }}>
               <h2 style={{ margin: "0 0 16px", fontSize: "16px", fontWeight: 800, color: "#0a2e1a" }}>
                 Recent Interviews ({loading ? "..." : bizTotal} total)
@@ -341,7 +328,6 @@ export default function SurveyDashboard() {
           </>
         )}
 
-        {/* ─── CUSTOMER TAB ─── */}
         {activeTab === "customer" && (
           <>
             {custTotal === 0 ? (
@@ -357,7 +343,6 @@ export default function SurveyDashboard() {
               </div>
             ) : (
               <>
-                {/* Customer response breakdown by question */}
                 {custAnalysisCols.length > 0 && (
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
                     {custAnalysisCols.map((col) => {
@@ -385,8 +370,6 @@ export default function SurveyDashboard() {
                     })}
                   </div>
                 )}
-
-                {/* Customer full table */}
                 <div style={card}>
                   <h2 style={{ margin: "0 0 16px", fontSize: "16px", fontWeight: 800, color: "#0a2e1a" }}>
                     All Responses ({custTotal} total)
@@ -421,7 +404,6 @@ export default function SurveyDashboard() {
           </>
         )}
 
-        {/* Investor Summary — always visible */}
         <div style={{ background: "#0a2e1a", borderRadius: "20px", padding: "28px 32px", marginTop: "20px" }}>
           <p style={{ margin: "0 0 16px", fontSize: "13px", fontWeight: 700, color: "#4ade80", textTransform: "uppercase", letterSpacing: "0.6px" }}>📈 Investor Summary</p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px", marginBottom: "20px" }}>
