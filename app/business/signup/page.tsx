@@ -2,6 +2,9 @@
 import { useState, useEffect } from "react";
 import { detectLocale, t, Locale } from "@/lib/i18n";
 
+const BIZ_TYPES = ["Restaurant", "Bakery", "Café", "Grocery / Bodega", "Catering", "Other"];
+const NGO_TYPES = ["NGO", "Food Bank", "Religious Organization", "Other(s)"];
+
 export default function BusinessSignup() {
   const [locale, setLocale] = useState<Locale>("en");
   const [step, setStep]     = useState<"terms" | "form">("terms");
@@ -21,6 +24,12 @@ export default function BusinessSignup() {
   const T     = t[locale];
   const isRTL = locale === "ar";
   const allAccepted = Object.values(accepted).every(Boolean);
+  const isNgo = form.account_type === "ngo";
+
+  // Reset business type when switching account type
+  function switchAccountType(val: string) {
+    setForm(f => ({ ...f, account_type: val, type: val === "ngo" ? "NGO" : "Restaurant" }));
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -147,31 +156,55 @@ export default function BusinessSignup() {
                   {error}
                 </div>
               )}
+
+              {/* ACCOUNT TYPE — filled toggle matching screenshots */}
               <div style={{ marginBottom: "20px" }}>
                 <label style={lbl}>Account Type *</label>
-                <div style={{ display: "flex", gap: "10px" }}>
-                  {[{ val: "restaurant", label: "🍽️ Restaurant / Business" }, { val: "ngo", label: "🤝 NGO / Food Bank" }].map(opt => (
-                    <button key={opt.val} type="button" onClick={() => setForm(f => ({ ...f, account_type: opt.val }))}
-                      style={{ flex: 1, padding: "12px", borderRadius: "10px", border: `2px solid ${form.account_type === opt.val ? "#16a34a" : "#e5e7eb"}`, background: form.account_type === opt.val ? "#f0fdf4" : "#fff", color: form.account_type === opt.val ? "#15803d" : "#374151", fontWeight: form.account_type === opt.val ? 700 : 400, cursor: "pointer", fontSize: "13px" }}>
-                      {opt.label}
-                    </button>
-                  ))}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                  <button type="button" onClick={() => switchAccountType("restaurant")}
+                    style={{ padding: "12px 8px", borderRadius: "10px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", transition: "all 0.15s",
+                      background: !isNgo ? "#16a34a" : "#f3f4f6",
+                      color: !isNgo ? "#fff" : "#374151",
+                    }}>
+                    🏪 Restaurant / Business
+                  </button>
+                  <button type="button" onClick={() => switchAccountType("ngo")}
+                    style={{ padding: "12px 8px", borderRadius: "10px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", transition: "all 0.15s",
+                      background: isNgo ? "#f59e0b" : "#f3f4f6",
+                      color: isNgo ? "#fff" : "#374151",
+                    }}>
+                    🏛️ Community Organization
+                  </button>
                 </div>
-                {form.account_type === "ngo" && (
-                  <div style={{ marginTop: "10px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "8px", padding: "10px 14px" }}>
-                    <p style={{ margin: 0, fontSize: "12px", color: "#1d4ed8" }}>ℹ️ As an NGO or Food Bank, you can both <b>post surplus food</b> and <b>claim food</b> from other businesses on GAWA Loop.</p>
+
+                {/* NGO info banner — only shows for Community Organization */}
+                {isNgo && (
+                  <div style={{ marginTop: "10px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "8px", padding: "10px 14px", display: "flex", gap: "8px", alignItems: "flex-start" }}>
+                    <span style={{ flexShrink: 0, fontSize: "16px" }}>🏛️</span>
+                    <p style={{ margin: 0, fontSize: "12px", color: "#1d4ed8", lineHeight: 1.6 }}>
+                      As a Community Organization, you can both <b>post surplus food</b> and <b>claim food</b> from other businesses on GAWA Loop.
+                    </p>
                   </div>
                 )}
               </div>
+
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                {/* NAME — label changes based on account type */}
                 <div style={{ gridColumn: "1/-1" }}>
-                  <label style={lbl}>{T.signup_name} *</label>
-                  <input style={inp} required value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Mami's Kitchen / Brooklyn Food Bank"/>
+                  <label style={lbl}>
+                    {isNgo ? "Community Organization Name *" : T.signup_name + " *"}
+                  </label>
+                  <input style={inp} required value={form.name}
+                    onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                    placeholder={isNgo ? "e.g. Brooklyn Food Bank" : "e.g. Mami's Kitchen"}/>
                 </div>
+
                 <div>
                   <label style={lbl}>{T.signup_email} *</label>
-                  <input style={inp} type="email" required value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}/>
+                  <input style={inp} type="email" required value={form.email}
+                    onChange={e => setForm(f => ({ ...f, email: e.target.value }))}/>
                 </div>
+
                 <div>
                   <label style={lbl}>📱 Phone Number *</label>
                   <input
@@ -184,34 +217,53 @@ export default function BusinessSignup() {
                     <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#ef4444" }}>Phone number is required</p>
                   )}
                 </div>
+
                 <div style={{ gridColumn: "1/-1" }}>
                   <label style={lbl}>{T.signup_address} *</label>
-                  <input style={inp} required value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} placeholder="Full street address"/>
+                  <input style={inp} required value={form.address}
+                    onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
+                    placeholder="Full street address"/>
                 </div>
+
+                {/* TYPE DROPDOWN — options change based on account type */}
                 <div>
-                  <label style={lbl}>{T.signup_type}</label>
-                  <select style={{ ...inp, cursor: "pointer" }} value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
-                    <option>Restaurant</option><option>Bakery</option><option>Café</option>
-                    <option>Grocery / Bodega</option><option>Catering</option>
-                    <option>Food Bank</option><option>NGO</option><option>Other</option>
+                  <label style={lbl}>
+                    {isNgo ? "Community Organization Type" : T.signup_type}
+                  </label>
+                  <select style={{ ...inp, cursor: "pointer" }} value={form.type}
+                    onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
+                    {(isNgo ? NGO_TYPES : BIZ_TYPES).map(opt => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
                   </select>
                 </div>
+
                 <div style={{ gridColumn: "1/-1" }}>
                   <label style={lbl}>Short Description</label>
-                  <textarea style={{ ...inp, height: "70px", resize: "vertical" }} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Tell us briefly about your business or organization"/>
+                  <textarea style={{ ...inp, height: "70px", resize: "vertical" }}
+                    value={form.description}
+                    onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                    placeholder={isNgo ? "Tell us briefly about your organization" : "Tell us briefly about your business or organization"}/>
                 </div>
+
                 <div>
                   <label style={lbl}>{T.signup_password} *</label>
-                  <input style={inp} type="password" required minLength={8} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder="Min. 8 characters"/>
+                  <input style={inp} type="password" required minLength={8} value={form.password}
+                    onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                    placeholder="Min. 8 characters"/>
                 </div>
+
                 <div>
                   <label style={lbl}>Confirm Password *</label>
-                  <input style={inp} type="password" required value={form.confirmPassword} onChange={e => setForm(f => ({ ...f, confirmPassword: e.target.value }))}/>
+                  <input style={inp} type="password" required value={form.confirmPassword}
+                    onChange={e => setForm(f => ({ ...f, confirmPassword: e.target.value }))}/>
                 </div>
               </div>
+
               <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "10px", padding: "12px 14px", marginTop: "20px", marginBottom: "20px" }}>
                 <p style={{ margin: 0, fontSize: "13px", color: "#92400e" }}>⏳ <b>Manual review:</b> All accounts are manually reviewed. You'll receive an email within 24–48 hours.</p>
               </div>
+
               <div style={{ display: "flex", gap: "10px" }}>
                 <button type="button" onClick={() => setStep("terms")}
                   style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "13px 20px", borderRadius: "10px", cursor: "pointer", fontSize: "14px", fontWeight: 600 }}>
@@ -222,6 +274,7 @@ export default function BusinessSignup() {
                   {submitting ? "Submitting..." : T.signup_btn}
                 </button>
               </div>
+
               <p style={{ textAlign: "center", marginTop: "16px", fontSize: "13px", color: "#6b7280" }}>
                 {T.signup_have_account}{" "}
                 <a href="/business/login" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>{T.signup_login}</a>
