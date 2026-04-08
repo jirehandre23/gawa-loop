@@ -117,10 +117,8 @@ export default function BusinessDashboard() {
     }
 
     const { data: biz } = await supabase
-      .from("businesses")
-      .select("id, name, address, logo_url, status")
-      .eq("email", email)
-      .single();
+      .from("businesses").select("id, name, address, logo_url, status")
+      .eq("email", email).single();
 
     if (biz && biz.status === "pending" && !admin) { window.location.href = "/business/pending"; return; }
     if (biz && biz.status === "rejected" && !admin) { await supabase.auth.signOut(); window.location.href = "/business/login"; return; }
@@ -133,8 +131,7 @@ export default function BusinessDashboard() {
 
     if (bName) {
       const { data } = await supabase
-        .from("listings")
-        .select("*, claims(*)")
+        .from("listings").select("*, claims(*)")
         .eq("business_name", bName)
         .order("created_at", { ascending: false });
       setListings(data || []);
@@ -170,21 +167,14 @@ export default function BusinessDashboard() {
   });
   const yearlyL    = listings.filter(l => new Date(l.created_at).getFullYear() === thisYear);
 
-  // Impact stats — all statuses
   const mPickups   = monthlyL.filter(l => l.status === "PICKED_UP").length;
   const yPickups   = yearlyL.filter(l => l.status === "PICKED_UP").length;
   const mCancelled = monthlyL.filter(l => l.status === "CANCELLED").length;
   const yCancelled = yearlyL.filter(l => l.status === "CANCELLED").length;
   const mExpired   = monthlyL.filter(l => l.status === "EXPIRED").length;
   const yExpired   = yearlyL.filter(l => l.status === "EXPIRED").length;
-  const mNoshow    = monthlyL.filter(l => {
-    const noshowClaim = l.claims?.find(c => c.noshow === true);
-    return !!noshowClaim;
-  }).length;
-  const yNoshow    = yearlyL.filter(l => {
-    const noshowClaim = l.claims?.find(c => c.noshow === true);
-    return !!noshowClaim;
-  }).length;
+  const mNoshow    = monthlyL.filter(l => l.claims?.some(c => c.noshow)).length;
+  const yNoshow    = yearlyL.filter(l => l.claims?.some(c => c.noshow)).length;
 
   const totalWeightLbs = listings
     .filter(l => l.status === "PICKED_UP")
@@ -199,12 +189,7 @@ export default function BusinessDashboard() {
 
   async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file) return;
-    if (!businessId) {
-      setLogoMsg("Error: business not loaded. Please refresh and try again.");
-      setTimeout(() => setLogoMsg(""), 4000);
-      return;
-    }
+    if (!file || !businessId) { setLogoMsg("Error: business not loaded."); return; }
     setLogoMsg("Uploading...");
     const url = await uploadImage(file, "business-logos", businessId);
     if (url) {
@@ -331,6 +316,7 @@ export default function BusinessDashboard() {
     const isTerminal  = TERMINAL.includes(listing.status);
     const isReserved  = listing.status === "RESERVED";
     const isAvailable = listing.status === "AVAILABLE";
+    const isPickedUp  = listing.status === "PICKED_UP";
     const sc          = STATUS_COLOR[listing.status] || { bg: "#6b7280", text: "#fff" };
     const activeClaim = listing.claims?.find(c => c.status === "active");
     const noshowClaim = listing.claims?.find(c => c.noshow === true);
@@ -339,10 +325,9 @@ export default function BusinessDashboard() {
     const claimerAvatar = activeClaim ? claimerAvatars[activeClaim.id] : undefined;
 
     return (
-      <div key={listing.id} style={{
-        background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px",
-        padding: "24px", marginBottom: "16px", opacity: isTerminal ? 0.85 : 1,
-      }}>
+      <div key={listing.id} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "24px", marginBottom: "16px", opacity: isTerminal ? 0.88 : 1 }}>
+
+        {/* HEADER ROW */}
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "14px", gap: "12px" }}>
           <div style={{ display: "flex", gap: "12px", alignItems: "flex-start", flex: 1 }}>
             {listing.image_url && (
@@ -358,6 +343,7 @@ export default function BusinessDashboard() {
           </span>
         </div>
 
+        {/* EDIT FORM */}
         {isEditing ? (
           <div style={{ background: "#f9fafb", borderRadius: "12px", padding: "16px", marginBottom: "16px" }}>
             <p style={{ margin: "0 0 12px", fontSize: "13px", fontWeight: 700, color: "#0a2e1a" }}>✏️ Editing listing</p>
@@ -389,14 +375,14 @@ export default function BusinessDashboard() {
           </div>
         )}
 
-        {/* RESERVED — customer photo + details */}
+        {/* RESERVED — full customer details visible to business */}
         {isReserved && activeClaim && (
           <div style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: "12px", padding: "16px 20px", marginTop: "16px" }}>
             <p style={{ margin: "0 0 12px", fontWeight: 700, color: "#1d4ed8", fontSize: "14px" }}>Reserved by Customer</p>
             <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "12px" }}>
               {claimerAvatar
-                ? <img src={claimerAvatar} alt="Customer" style={{ width: "56px", height: "56px", borderRadius: "50%", objectFit: "cover", border: "2px solid #bfdbfe", flexShrink: 0 }}/>
-                : <div style={{ width: "56px", height: "56px", borderRadius: "50%", background: "#dbeafe", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "24px", flexShrink: 0 }}>🙋</div>
+                ? <img src={claimerAvatar} alt="Customer" style={{ width: "52px", height: "52px", borderRadius: "50%", objectFit: "cover", border: "2px solid #bfdbfe", flexShrink: 0 }}/>
+                : <div style={{ width: "52px", height: "52px", borderRadius: "50%", background: "#dbeafe", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "24px", flexShrink: 0 }}>🙋</div>
               }
               <div style={{ fontSize: "14px", color: "#1e3a5f", lineHeight: 2 }}>
                 <p style={{ margin: "2px 0" }}><b>Name:</b> {activeClaim.first_name}</p>
@@ -408,12 +394,12 @@ export default function BusinessDashboard() {
           </div>
         )}
 
-        {/* PICKED_UP — name + code only, no photo */}
-        {listing.status === "PICKED_UP" && activeClaim && (
+        {/* PICKED UP — first name ONLY, contact info hidden */}
+        {isPickedUp && activeClaim && (
           <div style={{ background: "#f5f3ff", border: "1.5px solid #ddd6fe", borderRadius: "12px", padding: "16px 20px", marginTop: "16px" }}>
-            <p style={{ margin: "0 0 6px", fontWeight: 700, color: "#6d28d9", fontSize: "14px" }}>Picked Up By</p>
-            <p style={{ margin: "0 0 4px", fontSize: "15px", color: "#2e1065", fontWeight: 600 }}>{activeClaim.first_name} · Code: {activeClaim.confirmation_code}</p>
-            <p style={{ margin: 0, fontSize: "12px", color: "#9ca3af", fontStyle: "italic" }}>🔒 Contact details hidden after pickup.</p>
+            <p style={{ margin: "0 0 6px", fontWeight: 700, color: "#6d28d9", fontSize: "14px" }}>✅ Picked Up By</p>
+            <p style={{ margin: "0 0 4px", fontSize: "16px", color: "#2e1065", fontWeight: 700 }}>{activeClaim.first_name}</p>
+            <p style={{ margin: 0, fontSize: "12px", color: "#9ca3af", fontStyle: "italic" }}>🔒 Contact details are hidden after pickup to protect customer privacy.</p>
           </div>
         )}
 
@@ -422,11 +408,12 @@ export default function BusinessDashboard() {
           <div style={{ background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: "12px", padding: "14px 20px", marginTop: "16px" }}>
             <p style={{ margin: "0 0 4px", fontWeight: 700, color: "#92400e", fontSize: "14px" }}>⏰ No-Show</p>
             <p style={{ margin: 0, fontSize: "13px", color: "#78350f" }}>
-              {noshowClaim ? `${noshowClaim.first_name} (${noshowClaim.email}) did not arrive within the claim window.` : "Customer did not arrive within the claim window."}
+              {noshowClaim ? `${noshowClaim.first_name} did not arrive within the claim window.` : "Customer did not arrive within the claim window."}
             </p>
           </div>
         )}
 
+        {/* ACTION BUTTONS */}
         {!isTerminal && !isEditing && (
           <div style={{ display: "flex", gap: "10px", marginTop: "20px", flexWrap: "wrap" }}>
             {isReserved && (
@@ -456,6 +443,7 @@ export default function BusinessDashboard() {
           </div>
         )}
 
+        {/* TERMINAL STATUS NOTE */}
         {isTerminal && (
           <p style={{ marginTop: "14px", fontSize: "13px", color: "#6b7280", fontStyle: "italic" }}>
             {listing.status === "PICKED_UP" && "✅ Successfully picked up."}
@@ -595,23 +583,23 @@ export default function BusinessDashboard() {
               {
                 label: `This Month (${now.toLocaleString("default", { month: "long" })})`,
                 items: [
-                  { k: "Listings Posted",   v: monthlyL.length },
-                  { k: "✅ Picked Up",      v: mPickups },
-                  { k: "❌ Cancelled",      v: mCancelled },
-                  { k: "⏰ Expired",        v: mExpired },
-                  { k: "👻 No-Shows",       v: mNoshow },
-                  { k: "Food Saved",         v: `${monthlyL.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.weight_kg || 0) * 2.205, 0).toFixed(1)} lbs` },
+                  { k: "Listings Posted", v: monthlyL.length },
+                  { k: "✅ Picked Up",    v: mPickups },
+                  { k: "❌ Cancelled",    v: mCancelled },
+                  { k: "⏰ Expired",      v: mExpired },
+                  { k: "👻 No-Shows",     v: mNoshow },
+                  { k: "Food Saved", v: `${monthlyL.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.weight_kg || 0) * 2.205, 0).toFixed(1)} lbs` },
                 ],
               },
               {
                 label: `This Year (${thisYear})`,
                 items: [
-                  { k: "Listings Posted",   v: yearlyL.length },
-                  { k: "✅ Picked Up",      v: yPickups },
-                  { k: "❌ Cancelled",      v: yCancelled },
-                  { k: "⏰ Expired",        v: yExpired },
-                  { k: "👻 No-Shows",       v: yNoshow },
-                  { k: "Total Donated",      v: `${totalWeightLbs.toFixed(1)} lbs` },
+                  { k: "Listings Posted", v: yearlyL.length },
+                  { k: "✅ Picked Up",    v: yPickups },
+                  { k: "❌ Cancelled",    v: yCancelled },
+                  { k: "⏰ Expired",      v: yExpired },
+                  { k: "👻 No-Shows",     v: yNoshow },
+                  { k: "Total Donated",   v: `${totalWeightLbs.toFixed(1)} lbs` },
                 ],
               },
             ].map(section => (
