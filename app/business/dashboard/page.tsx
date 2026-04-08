@@ -256,9 +256,23 @@ export default function BusinessDashboard() {
     if (data.success) setListings(prev => prev.map(l => l.id === id ? { ...l, status: "PICKED_UP" } : l));
   }
 
+  // FIXED: now also cancels the active claim so it disappears from the customer profile
   async function handleCancelReservation(id: string) {
+    const listing = listings.find(l => l.id === id);
+    const activeClaim = listing?.claims?.find(c => c.status === "active");
+
+    // Cancel the active claim
+    if (activeClaim) {
+      await supabase.from("claims")
+        .update({ status: "cancelled" })
+        .eq("id", activeClaim.id);
+    }
+
+    // Return listing to AVAILABLE
     await supabase.from("listings")
-      .update({ status: "AVAILABLE", reserved_until: null, claim_code: null }).eq("id", id);
+      .update({ status: "AVAILABLE", reserved_until: null, claim_code: null })
+      .eq("id", id);
+
     setListings(prev => prev.map(l =>
       l.id === id ? { ...l, status: "AVAILABLE", reserved_until: null as any, claim_code: null as any } : l
     ));
@@ -327,7 +341,6 @@ export default function BusinessDashboard() {
     return (
       <div key={listing.id} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "24px", marginBottom: "16px", opacity: isTerminal ? 0.88 : 1 }}>
 
-        {/* HEADER ROW */}
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "14px", gap: "12px" }}>
           <div style={{ display: "flex", gap: "12px", alignItems: "flex-start", flex: 1 }}>
             {listing.image_url && (
@@ -343,7 +356,6 @@ export default function BusinessDashboard() {
           </span>
         </div>
 
-        {/* EDIT FORM */}
         {isEditing ? (
           <div style={{ background: "#f9fafb", borderRadius: "12px", padding: "16px", marginBottom: "16px" }}>
             <p style={{ margin: "0 0 12px", fontSize: "13px", fontWeight: 700, color: "#0a2e1a" }}>✏️ Editing listing</p>
@@ -375,7 +387,6 @@ export default function BusinessDashboard() {
           </div>
         )}
 
-        {/* RESERVED — full customer details visible to business */}
         {isReserved && activeClaim && (
           <div style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: "12px", padding: "16px 20px", marginTop: "16px" }}>
             <p style={{ margin: "0 0 12px", fontWeight: 700, color: "#1d4ed8", fontSize: "14px" }}>Reserved by Customer</p>
@@ -394,7 +405,6 @@ export default function BusinessDashboard() {
           </div>
         )}
 
-        {/* PICKED UP — first name ONLY, contact info hidden */}
         {isPickedUp && activeClaim && (
           <div style={{ background: "#f5f3ff", border: "1.5px solid #ddd6fe", borderRadius: "12px", padding: "16px 20px", marginTop: "16px" }}>
             <p style={{ margin: "0 0 6px", fontWeight: 700, color: "#6d28d9", fontSize: "14px" }}>✅ Picked Up By</p>
@@ -403,7 +413,6 @@ export default function BusinessDashboard() {
           </div>
         )}
 
-        {/* NO-SHOW */}
         {(listing.status === "NOSHOW" || noshowClaim) && (
           <div style={{ background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: "12px", padding: "14px 20px", marginTop: "16px" }}>
             <p style={{ margin: "0 0 4px", fontWeight: 700, color: "#92400e", fontSize: "14px" }}>⏰ No-Show</p>
@@ -413,7 +422,6 @@ export default function BusinessDashboard() {
           </div>
         )}
 
-        {/* ACTION BUTTONS */}
         {!isTerminal && !isEditing && (
           <div style={{ display: "flex", gap: "10px", marginTop: "20px", flexWrap: "wrap" }}>
             {isReserved && (
@@ -443,7 +451,6 @@ export default function BusinessDashboard() {
           </div>
         )}
 
-        {/* TERMINAL STATUS NOTE */}
         {isTerminal && (
           <p style={{ marginTop: "14px", fontSize: "13px", color: "#6b7280", fontStyle: "italic" }}>
             {listing.status === "PICKED_UP" && "✅ Successfully picked up."}
@@ -466,7 +473,6 @@ export default function BusinessDashboard() {
     <div style={{ minHeight: "100vh", background: "#f9fafb", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", padding: "24px 16px" }}>
       <div style={{ maxWidth: "780px", margin: "0 auto" }}>
 
-        {/* HEADER */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "28px", flexWrap: "wrap", gap: "12px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <div style={{ position: "relative" }}>
@@ -508,7 +514,6 @@ export default function BusinessDashboard() {
           </div>
         </div>
 
-        {/* TREE BANNER */}
         <div style={{ background: "linear-gradient(135deg,#0a2e1a,#166534)", borderRadius: "16px", padding: "20px 24px", marginBottom: "20px", display: "flex", alignItems: "center", gap: "16px" }}>
           <div style={{ fontSize: "48px", lineHeight: 1 }}>{tree.emoji}</div>
           <div>
@@ -522,7 +527,6 @@ export default function BusinessDashboard() {
           </div>
         </div>
 
-        {/* NEW LISTING FORM */}
         {showForm && (
           <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "28px", marginBottom: "24px", boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
@@ -575,7 +579,6 @@ export default function BusinessDashboard() {
           </div>
         )}
 
-        {/* IMPACT SUMMARY */}
         <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "24px 28px", marginBottom: "24px" }}>
           <h2 style={{ margin: "0 0 16px", fontSize: "17px", fontWeight: 800, color: "#0a2e1a" }}>Your Impact</h2>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
@@ -616,7 +619,6 @@ export default function BusinessDashboard() {
           </div>
         </div>
 
-        {/* TABS */}
         <div style={{ display: "flex", gap: "4px", background: "#fff", borderRadius: "12px", padding: "4px", border: "1px solid #e5e7eb", marginBottom: "20px" }}>
           {[
             { key: "active",  label: `📋 Active Listings (${activeListings.length})` },
@@ -629,7 +631,6 @@ export default function BusinessDashboard() {
           ))}
         </div>
 
-        {/* ACTIVE TAB */}
         {activeTab === "active" && (
           <>
             {activeListings.length === 0 ? (
@@ -641,7 +642,6 @@ export default function BusinessDashboard() {
           </>
         )}
 
-        {/* PAST ORDERS TAB */}
         {activeTab === "history" && (
           <>
             {historyListings.length === 0 ? (
