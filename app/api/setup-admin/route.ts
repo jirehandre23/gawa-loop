@@ -8,21 +8,16 @@ export async function GET() {
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
 
-  const { data, error } = await supabase.auth.admin.createUser({
-    email: "admin@gawaloop.com",
+  const USER_ID = "5431cf6d-7524-489e-9d05-e3f7610cff23";
+
+  const { data, error } = await supabase.auth.admin.updateUserById(USER_ID, {
     password: "GawaAdmin2026!",
     email_confirm: true,
-    user_metadata: { name: "GAWA Admin" },
   });
 
   if (error) {
     return NextResponse.json({ success: false, error: error.message });
   }
 
-  await supabase.from("businesses").upsert(
-    { name: "GAWA Admin", email: "admin@gawaloop.com", status: "approved", account_type: "restaurant" },
-    { onConflict: "email" }
-  );
-
-  return NextResponse.json({ success: true, id: data.user.id, email: data.user.email });
+  return NextResponse.json({ success: true, email: data.user.email });
 }
