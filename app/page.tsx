@@ -16,18 +16,17 @@ export default function HomePage() {
   const [locale, setLocaleState]      = useState<Locale>("en");
   const [langOpen, setLangOpen]       = useState(false);
   const [openFaq, setOpenFaq]         = useState<number | null>(null);
-  const [liveStats, setLiveStats]     = useState({ total_pickups: 0, co2_saved_kg: 0 });
+  // CHANGED: co2_saved_kg → co2_saved_lbs
+  const [liveStats, setLiveStats]     = useState({ total_pickups: 0, co2_saved_lbs: 0 });
   const [statsLoaded, setStatsLoaded] = useState(false);
   const [user, setUser]               = useState<any>(null);
 
-  // Customer sign-in state
   const [signinEmail, setSigninEmail]       = useState("");
   const [signinPassword, setSigninPassword] = useState("");
   const [signinLoading, setSigninLoading]   = useState(false);
   const [signinError, setSigninError]       = useState("");
   const [signinMode, setSigninMode]         = useState<"signin" | "signup">("signin");
 
-  // Contact form state
   const [contactName, setContactName]       = useState("");
   const [contactEmail, setContactEmail]     = useState("");
   const [contactMsg, setContactMsg]         = useState("");
@@ -309,12 +308,13 @@ export default function HomePage() {
                   🤲 {locale==="ar"?"وجبات مجانية محجوزة":locale==="fr"?"Repas offerts":locale==="es"?"Comidas reclamadas":locale==="pt"?"Refeições resgatadas":"Free meals claimed"}
                 </p>
               </div>
+              <!-- CHANGED: co2_saved_kg → co2_saved_lbs, label updated in all languages -->
               <div style={{ background:"rgba(255,255,255,0.08)", borderRadius:"20px", padding:"36px 24px" }}>
                 <p style={{ margin:"0 0 8px", fontSize:"56px", fontWeight:900, color:"#4ade80", lineHeight:1 }}>
-                  {statsLoaded ? liveStats.co2_saved_kg.toLocaleString() : "—"}
+                  {statsLoaded ? liveStats.co2_saved_lbs.toLocaleString() : "—"}
                 </p>
                 <p style={{ margin:0, fontSize:"16px", color:"#a3c9b0", fontWeight:600 }}>
-                  🌱 {locale==="ar"?"كغ CO₂ تم توفيرها":locale==="fr"?"kg de CO₂ économisés":locale==="es"?"kg CO₂ ahorrados":locale==="pt"?"kg CO₂ salvos":"kg CO₂ saved"}
+                  🌱 {locale==="ar"?"رطل CO₂e تم توفيرها":locale==="fr"?"lbs CO₂e économisées":locale==="es"?"lbs CO₂e ahorradas":locale==="pt"?"lbs CO₂e salvas":"lbs CO₂e saved"}
                 </p>
               </div>
             </div>
@@ -419,7 +419,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── NEW: CUSTOMER SIGN-IN ── */}
+        {/* CUSTOMER SIGN-IN */}
         <section style={{ background:"#f0fdf4", padding:"80px 24px", borderTop:"1px solid #bbf7d0" }}>
           <div style={{ maxWidth:"480px", margin:"0 auto" }}>
             <p style={{ margin:"0 0 8px", fontSize:"13px", fontWeight:700, color:"#16a34a", textTransform:"uppercase", letterSpacing:"0.8px", textAlign:"center" }}>
@@ -497,7 +497,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── NEW: CONTACT US ── */}
+        {/* CONTACT US */}
         <section style={{ background:"#fff", padding:"80px 24px", borderTop:"1px solid #e5e7eb" }}>
           <div style={{ maxWidth:"560px", margin:"0 auto" }}>
             <p style={{ margin:"0 0 8px", fontSize:"13px", fontWeight:700, color:"#16a34a", textTransform:"uppercase", letterSpacing:"0.8px", textAlign:"center" }}>
