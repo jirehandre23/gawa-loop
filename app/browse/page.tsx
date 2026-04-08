@@ -28,22 +28,25 @@ type Listing = {
   business_logo_url: string;
 };
 
+type BizInfo = { address: string; phone: string | null; email: string };
+
 export default function BrowsePage() {
-  const [locale, setLocale]           = useState<Locale>("en");
-  const [listings, setListings]       = useState<Listing[]>([]);
-  const [filtered, setFiltered]       = useState<Listing[]>([]);
-  const [search, setSearch]           = useState("");
-  const [loading, setLoading]         = useState(true);
-  const [user, setUser]               = useState<any>(null);
-  const [userEmail, setUserEmail]     = useState<string | null>(null);
-  const [isBusiness, setIsBusiness]   = useState(false); // is the logged-in user a business account?
-  const [selectedId, setSelectedId]   = useState<string | null>(null);
-  const [claimForm, setClaimForm]     = useState({ first_name: "", email: "", phone: "", eta_minutes: 15 });
+  const [locale, setLocale]             = useState<Locale>("en");
+  const [listings, setListings]         = useState<Listing[]>([]);
+  const [filtered, setFiltered]         = useState<Listing[]>([]);
+  const [search, setSearch]             = useState("");
+  const [loading, setLoading]           = useState(true);
+  const [user, setUser]                 = useState<any>(null);
+  const [userEmail, setUserEmail]       = useState<string | null>(null);
+  const [isBusiness, setIsBusiness]     = useState(false);
+  const [bizInfoMap, setBizInfoMap]     = useState<Record<string, BizInfo>>({});
+  const [selectedId, setSelectedId]     = useState<string | null>(null);
+  const [claimForm, setClaimForm]       = useState({ first_name: "", email: "", phone: "", eta_minutes: 15 });
   const [claimLoading, setClaimLoading] = useState(false);
-  const [claimMsg, setClaimMsg]       = useState("");
+  const [claimMsg, setClaimMsg]         = useState("");
   const [claimSuccess, setClaimSuccess] = useState(false);
-  const [lastCode, setLastCode]       = useState("");
-  const intervalRef                   = useRef<NodeJS.Timeout | null>(null);
+  const [lastCode, setLastCode]         = useState("");
+  const intervalRef                     = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => { setLocale(detectLocale()); }, []);
 
@@ -54,12 +57,9 @@ export default function BrowsePage() {
       if (user?.email) {
         setUserEmail(user.email);
         setClaimForm(f => ({ ...f, email: user.email! }));
-        // Check if this user is a business account
         const { data: biz } = await supabase
-          .from("businesses")
-          .select("id, account_type")
-          .eq("email", user.email)
-          .single();
+          .from("businesses").select("id, account_type")
+          .eq("email", user.email).single();
         if (biz) setIsBusiness(true);
       }
     })();
@@ -67,21 +67,34 @@ export default function BrowsePage() {
 
   async function fetchListings() {
     const { data } = await supabase
-      .from("listings")
-      .select("*")
+      .from("listings").select("*")
       .eq("status", "AVAILABLE")
       .order("created_at", { ascending: false });
     const all = data || [];
     setListings(all);
     applySearch(all, search);
     setLoading(false);
+
+    // fetch business info for signed-in non-business users
+    if (user && !isBusiness && all.length > 0) {
+      const names = [...new Set(all.map((l: Listing) => l.business_name).filter(Boolean))];
+      const { data: bizData } = await supabase
+        .from("businesses")
+        .select("name, address, phone, email")
+        .in("name", names);
+      if (bizData) {
+        const map: Record<string, BizInfo> = {};
+        for (const b of bizData) map[b.name] = { address: b.address, phone: b.phone, email: b.email };
+        setBizInfoMap(map);
+      }
+    }
   }
 
   useEffect(() => {
     fetchListings();
     intervalRef.current = setInterval(fetchListings, 30000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, []);
+  }, [user, isBusiness]);
 
   function applySearch(all: Listing[], q: string) {
     if (!q.trim()) { setFiltered(all); return; }
@@ -93,40 +106,24 @@ export default function BrowsePage() {
     ));
   }
 
-  function handleSearch(q: string) {
-    setSearch(q);
-    applySearch(listings, q);
-  }
-
-  function openClaim(id: string) {
-    setSelectedId(id);
-    setClaimMsg("");
-    setClaimSuccess(false);
-  }
+  function handleSearch(q: string) { setSearch(q); applySearch(listings, q); }
+  function openClaim(id: string) { setSelectedId(id); setClaimMsg(""); setClaimSuccess(false); }
 
   async function handleClaim(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedId) return;
+    if (isBusiness) { setClaimMsg("Business accounts cannot claim food."); return; }
     setClaimLoading(true); setClaimMsg("");
-
-    const listing = listings.find(l => l.id === selectedId);
-    if (!listing) { setClaimMsg("Listing not found."); setClaimLoading(false); return; }
-
-    // SECURITY: block any business account from claiming food
-    if (isBusiness) {
-      setClaimMsg("Business accounts cannot claim food. Please use a customer account.");
-      setClaimLoading(false); return;
-    }
 
     const res = await fetch("/api/claim", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        listingId: selectedId,
-        first_name: claimForm.first_name.trim(),
-        email: claimForm.email.trim().toLowerCase(),
-        phone: claimForm.phone.trim() || null,
-        eta_minutes: claimForm.eta_minutes,
+        listingId:        selectedId,
+        first_name:       claimForm.first_name.trim(),
+        email:            claimForm.email.trim().toLowerCase(),
+        phone:            claimForm.phone.trim(),
+        eta_minutes:      claimForm.eta_minutes,
         customer_user_id: user?.id || null,
       }),
     });
@@ -142,16 +139,8 @@ export default function BrowsePage() {
     setClaimLoading(false);
   }
 
-  const T = t[locale];
+  const T   = t[locale];
   const isRTL = locale === "ar";
-
-  // Determine if a listing was posted by the currently logged-in business
-  function isOwnListing(listing: Listing): boolean {
-    if (!isBusiness || !userEmail) return false;
-    // We cannot directly compare listing.business_name to user email easily,
-    // but we can check via the businesses table. For now block all business accounts.
-    return isBusiness;
-  }
 
   const inp: React.CSSProperties = {
     width: "100%", padding: "11px 14px", borderRadius: "8px",
@@ -195,50 +184,39 @@ export default function BrowsePage() {
         {/* SEARCH */}
         <div style={{ position: "relative", marginBottom: "24px" }}>
           <span style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", fontSize: "16px" }}>🔍</span>
-          <input
-            style={{ ...inp, paddingLeft: "40px", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}
-            placeholder={locale==="fr"?"Chercher nourriture, restaurant...":locale==="es"?"Buscar comida, restaurante...":locale==="ar"?"ابحث عن طعام...":"Search food, restaurant, category..."}
-            value={search} onChange={e => handleSearch(e.target.value)}
-          />
+          <input style={{ ...inp, paddingLeft: "40px", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}
+            placeholder="Search food, restaurant, category..."
+            value={search} onChange={e => handleSearch(e.target.value)}/>
         </div>
 
-        {/* LISTINGS */}
         {loading ? (
           <div style={{ textAlign: "center", padding: "60px 0", color: "#9ca3af" }}>Loading...</div>
         ) : filtered.length === 0 ? (
           <div style={{ background: "#fff", borderRadius: "16px", border: "1px solid #e5e7eb", padding: "60px 24px", textAlign: "center" }}>
             <p style={{ fontSize: "40px", marginBottom: "12px" }}>🌱</p>
-            <p style={{ color: "#6b7280", fontSize: "15px" }}>
-              {locale==="fr"?"Aucune nourriture disponible pour le moment. Revenez bientôt !":
-               locale==="es"?"No hay comida disponible ahora. ¡Vuelve pronto!":
-               locale==="ar"?"لا يوجد طعام متاح الآن. عد قريباً!":
-               "No food available right now. Check back soon!"}
-            </p>
+            <p style={{ color: "#6b7280", fontSize: "15px" }}>No food available right now. Check back soon!</p>
           </div>
         ) : filtered.map(listing => {
-          const mapsQ  = encodeURIComponent(listing.address || "");
-          const isOwn  = isOwnListing(listing);
-          const canClaim = !isBusiness; // only non-business users can claim
+          const mapsQ     = encodeURIComponent(listing.address || "");
+          const canClaim  = !isBusiness;
+          const bizInfo   = bizInfoMap[listing.business_name];
+
           return (
             <div key={listing.id} style={{ background: "#fff", borderRadius: "20px", border: "1px solid #e5e7eb", overflow: "hidden", marginBottom: "20px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
 
-              {/* FOOD IMAGE — always visible, no login required */}
+              {/* FOOD IMAGE */}
               {listing.image_url ? (
-                <div style={{ width: "100%", height: "200px", overflow: "hidden" }}>
-                  <img
-                    src={listing.image_url}
-                    alt={listing.food_name}
+                <div style={{ width: "100%", height: "220px", overflow: "hidden" }}>
+                  <img src={listing.image_url} alt={listing.food_name}
                     style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                    onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-                  />
+                    onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}/>
                 </div>
               ) : (
-                <div style={{ width: "100%", height: "120px", background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "40px" }}>
-                  🍽️
-                </div>
+                <div style={{ width: "100%", height: "100px", background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "40px" }}>🍽️</div>
               )}
 
               <div style={{ padding: "20px 24px" }}>
+                {/* TITLE + FREE badge */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px" }}>
                   <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>{listing.food_name}</h2>
                   <span style={{ background: "#f0fdf4", color: "#16a34a", fontSize: "12px", fontWeight: 700, padding: "4px 12px", borderRadius: "20px", border: "1px solid #bbf7d0", flexShrink: 0 }}>FREE</span>
@@ -248,59 +226,66 @@ export default function BrowsePage() {
                   {listing.category} · {listing.quantity}
                   {listing.weight_kg && listing.weight_kg > 0 && ` · ${(listing.weight_kg * 2.205).toFixed(1)} lbs`}
                 </p>
-
                 {listing.allergy_note && (
-                  <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "6px", padding: "4px 10px", display: "inline-block" }}>
-                    ⚠️ {listing.allergy_note}
-                  </p>
+                  <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "6px", padding: "4px 10px", display: "inline-block" }}>⚠️ {listing.allergy_note}</p>
                 )}
-
-                {listing.note && (
-                  <p style={{ margin: "6px 0", fontSize: "13px", color: "#374151" }}>📝 {listing.note}</p>
-                )}
-
+                {listing.note && <p style={{ margin: "6px 0", fontSize: "13px", color: "#374151" }}>📝 {listing.note}</p>}
                 <p style={{ margin: "6px 0", fontSize: "13px", color: "#6b7280" }}>
-                  ⏰ {locale==="fr"?"Expire":locale==="es"?"Expira":locale==="ar"?"ينتهي":"Expires"}: {new Date(listing.expires_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  ⏰ Expires: {new Date(listing.expires_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </p>
 
-                {/* BUSINESS INFO */}
-                <div style={{ background: "#f9fafb", borderRadius: "12px", padding: "12px 16px", marginTop: "12px", display: "flex", alignItems: "flex-start", gap: "12px" }}>
-                  {listing.business_logo_url ? (
-                    <img src={listing.business_logo_url} alt={listing.business_name}
-                      style={{ width: "36px", height: "36px", borderRadius: "8px", objectFit: "cover", flexShrink: 0 }}/>
-                  ) : (
-                    <div style={{ width: "36px", height: "36px", borderRadius: "8px", background: "#e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px", flexShrink: 0 }}>🏪</div>
-                  )}
-                  <div>
-                    <p style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: 700, color: "#0a2e1a" }}>{listing.business_name}</p>
-                    <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#6b7280" }}>📍 {listing.address}</p>
-                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                      <a href={`https://maps.google.com/?q=${mapsQ}`} target="_blank" rel="noreferrer"
-                        style={{ background: "#e8f0fe", color: "#1a73e8", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🗺️ Google Maps</a>
-                      <a href={`https://maps.apple.com/?q=${mapsQ}`} target="_blank" rel="noreferrer"
-                        style={{ background: "#f3f4f6", color: "#374151", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🍎 Apple Maps</a>
-                      <a href={`https://waze.com/ul?q=${mapsQ}`} target="_blank" rel="noreferrer"
-                        style={{ background: "#e8f8ff", color: "#0099cc", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🚗 Waze</a>
+                {/* BUSINESS CARD */}
+                <div style={{ background: "#f9fafb", borderRadius: "12px", padding: "14px 16px", marginTop: "12px" }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", marginBottom: bizInfo ? "12px" : "0" }}>
+                    {listing.business_logo_url ? (
+                      <img src={listing.business_logo_url} alt={listing.business_name}
+                        style={{ width: "36px", height: "36px", borderRadius: "8px", objectFit: "cover", flexShrink: 0 }}/>
+                    ) : (
+                      <div style={{ width: "36px", height: "36px", borderRadius: "8px", background: "#e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px", flexShrink: 0 }}>🏪</div>
+                    )}
+                    <div>
+                      <p style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: 700, color: "#0a2e1a" }}>{listing.business_name}</p>
+                      <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#6b7280" }}>📍 {listing.address}</p>
+                      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                        <a href={`https://maps.google.com/?q=${mapsQ}`} target="_blank" rel="noreferrer"
+                          style={{ background: "#e8f0fe", color: "#1a73e8", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🗺️ Google Maps</a>
+                        <a href={`https://maps.apple.com/?q=${mapsQ}`} target="_blank" rel="noreferrer"
+                          style={{ background: "#f3f4f6", color: "#374151", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🍎 Apple Maps</a>
+                        <a href={`https://waze.com/ul?q=${mapsQ}`} target="_blank" rel="noreferrer"
+                          style={{ background: "#e8f8ff", color: "#0099cc", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🚗 Waze</a>
+                      </div>
                     </div>
                   </div>
+
+                  {/* FULL BUSINESS INFO — only for signed-in customers */}
+                  {user && !isBusiness && bizInfo && (
+                    <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "12px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                      <p style={{ margin: 0, fontSize: "12px", fontWeight: 700, color: "#16a34a" }}>🔓 Full contact info (visible to signed-in members)</p>
+                      <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>📍 <strong>Address:</strong> {bizInfo.address}</p>
+                      {bizInfo.phone && <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>📞 <strong>Phone:</strong> <a href={`tel:${bizInfo.phone}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>{bizInfo.phone}</a></p>}
+                      <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>✉️ <strong>Email:</strong> <a href={`mailto:${bizInfo.email}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>{bizInfo.email}</a></p>
+                    </div>
+                  )}
+
+                  {/* CTA to sign in to see full info */}
+                  {!user && (
+                    <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "10px", marginTop: "2px" }}>
+                      <p style={{ margin: 0, fontSize: "12px", color: "#9ca3af" }}>
+                        🔒 <a href="/" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>Sign in</a> to see full address, phone & email
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* RESERVE BUTTON */}
                 {canClaim ? (
                   <button onClick={() => openClaim(listing.id)}
-                    style={{ marginTop: "16px", width: "100%", background: "#16a34a", color: "#fff", border: "none", padding: "14px", borderRadius: "10px", cursor: "pointer", fontSize: "15px", fontWeight: 800, letterSpacing: "0.2px" }}>
-                    {locale==="fr"?"Réserver maintenant — C'est gratuit":
-                     locale==="es"?"Reservar ahora — Es gratis":
-                     locale==="ar"?"احجز الآن — مجاني":
-                     "Reserve Now — It is Free"}
+                    style={{ marginTop: "16px", width: "100%", background: "#16a34a", color: "#fff", border: "none", padding: "14px", borderRadius: "10px", cursor: "pointer", fontSize: "15px", fontWeight: 800 }}>
+                    Reserve Now — It is Free
                   </button>
                 ) : (
                   <div style={{ marginTop: "16px", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
-                    <p style={{ margin: 0, fontSize: "13px", color: "#6b7280" }}>
-                      {isOwn
-                        ? "You cannot claim food you posted."
-                        : "Business accounts cannot claim food. Use a customer account to reserve."}
-                    </p>
+                    <p style={{ margin: 0, fontSize: "13px", color: "#6b7280" }}>Business accounts cannot claim food. Use a customer account to reserve.</p>
                   </div>
                 )}
               </div>
@@ -308,12 +293,7 @@ export default function BrowsePage() {
           );
         })}
 
-        <p style={{ textAlign: "center", fontSize: "13px", color: "#9ca3af", marginTop: "24px" }}>
-          {locale==="fr"?"Les annonces se renouvellent toutes les 30 secondes — Toute la nourriture est gratuite":
-           locale==="es"?"Los listados se actualizan cada 30 segundos — Toda la comida es gratis":
-           locale==="ar"?"تتحدث القوائم كل 30 ثانية — جميع الطعام مجاني":
-           "Listings refresh every 30 seconds — All food is free"}
-        </p>
+        <p style={{ textAlign: "center", fontSize: "13px", color: "#9ca3af", marginTop: "24px" }}>Listings refresh every 30 seconds — All food is free</p>
         <p style={{ textAlign: "center", marginTop: "8px" }}>
           <a href="/" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none", fontSize: "14px" }}>← Back to Home</a>
         </p>
@@ -326,32 +306,19 @@ export default function BrowsePage() {
             {claimSuccess ? (
               <div style={{ textAlign: "center" }}>
                 <div style={{ fontSize: "56px", marginBottom: "12px" }}>🎉</div>
-                <h2 style={{ margin: "0 0 8px", fontSize: "22px", fontWeight: 800, color: "#0a2e1a" }}>
-                  {locale==="fr"?"Réservation confirmée !":locale==="es"?"¡Reserva confirmada!":locale==="ar"?"تم تأكيد الحجز!":"Reservation Confirmed!"}
-                </h2>
-                <p style={{ margin: "0 0 16px", color: "#6b7280", fontSize: "14px" }}>
-                  {locale==="fr"?"Votre code de retrait :":locale==="es"?"Tu código de recogida:":locale==="ar"?"رمز الاستلام:":"Your pickup code:"}
-                </p>
+                <h2 style={{ margin: "0 0 8px", fontSize: "22px", fontWeight: 800, color: "#0a2e1a" }}>Reservation Confirmed!</h2>
+                <p style={{ margin: "0 0 16px", color: "#6b7280", fontSize: "14px" }}>Your pickup code:</p>
                 <div style={{ background: "#f0fdf4", border: "2px solid #16a34a", borderRadius: "12px", padding: "20px", marginBottom: "16px" }}>
                   <p style={{ margin: 0, fontSize: "48px", fontWeight: 900, letterSpacing: "8px", color: "#0a2e1a", fontFamily: "monospace" }}>{lastCode}</p>
                 </div>
-                <p style={{ color: "#6b7280", fontSize: "13px", marginBottom: "20px" }}>
-                  {locale==="fr"?"Vérifiez votre email pour les détails. Montrez ce code au restaurant.":
-                   locale==="es"?"Revisa tu email. Muestra este código en el restaurante.":
-                   locale==="ar"?"تحقق من بريدك. أظهر هذا الرمز للمطعم.":
-                   "Check your email for details. Show this code when you arrive."}
-                </p>
+                <p style={{ color: "#6b7280", fontSize: "13px", marginBottom: "20px" }}>Check your email for details. Show this code when you arrive.</p>
                 <button onClick={() => { setSelectedId(null); setClaimSuccess(false); }}
-                  style={{ background: "#16a34a", color: "#fff", border: "none", padding: "12px 28px", borderRadius: "10px", cursor: "pointer", fontWeight: 700, fontSize: "15px" }}>
-                  Done
-                </button>
+                  style={{ background: "#16a34a", color: "#fff", border: "none", padding: "12px 28px", borderRadius: "10px", cursor: "pointer", fontWeight: 700, fontSize: "15px" }}>Done</button>
               </div>
             ) : (
               <>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
-                  <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>
-                    {locale==="fr"?"Réserver ce repas":locale==="es"?"Reservar esta comida":locale==="ar"?"احجز هذا الطعام":"Reserve This Food"}
-                  </h2>
+                  <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>Reserve This Food</h2>
                   <button onClick={() => setSelectedId(null)} style={{ background: "none", border: "none", fontSize: "22px", cursor: "pointer", color: "#9ca3af" }}>✕</button>
                 </div>
                 <form onSubmit={handleClaim}>
@@ -361,12 +328,10 @@ export default function BrowsePage() {
                     </div>
                   )}
                   <div style={{ marginBottom: "14px" }}>
-                    <label style={lbl}>
-                      {locale==="fr"?"Votre prénom *":locale==="es"?"Tu nombre *":locale==="ar"?"اسمك الأول *":"Your First Name *"}
-                    </label>
+                    <label style={lbl}>Your First Name *</label>
                     <input style={inp} required value={claimForm.first_name}
                       onChange={e => setClaimForm(f => ({ ...f, first_name: e.target.value }))}
-                      placeholder={locale==="ar"?"اسمك":locale==="fr"?"Votre prénom":locale==="es"?"Tu nombre":"Your first name"}/>
+                      placeholder="Your first name"/>
                   </div>
                   <div style={{ marginBottom: "14px" }}>
                     <label style={lbl}>Email *</label>
@@ -374,17 +339,14 @@ export default function BrowsePage() {
                       onChange={e => setClaimForm(f => ({ ...f, email: e.target.value }))}/>
                   </div>
                   <div style={{ marginBottom: "14px" }}>
-                    <label style={lbl}>
-                      {locale==="fr"?"Téléphone (optionnel)":locale==="es"?"Teléfono (opcional)":locale==="ar"?"الهاتف (اختياري)":"Phone Number (with country code)"}
-                    </label>
-                    <input style={inp} type="tel" value={claimForm.phone}
+                    <label style={lbl}>Phone Number *</label>
+                    <input style={inp} type="tel" required value={claimForm.phone}
                       onChange={e => setClaimForm(f => ({ ...f, phone: e.target.value }))}
-                      placeholder={locale==="ar"?"اختياري":"Optional"}/>
+                      placeholder="e.g. 3478015325"/>
+                    <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#9ca3af" }}>So the business can reach you if needed</p>
                   </div>
                   <div style={{ marginBottom: "20px" }}>
-                    <label style={lbl}>
-                      {locale==="fr"?"Heure d'arrivée":locale==="es"?"Hora de llegada":locale==="ar"?"وقت وصولك":"Your Arrival Time"}
-                    </label>
+                    <label style={lbl}>Your Arrival Time</label>
                     <select style={{ ...inp, cursor: "pointer" }} value={claimForm.eta_minutes}
                       onChange={e => setClaimForm(f => ({ ...f, eta_minutes: Number(e.target.value) }))}>
                       <option value={10}>10 minutes</option>
@@ -397,11 +359,7 @@ export default function BrowsePage() {
                   </div>
                   <button type="submit" disabled={claimLoading}
                     style={{ width: "100%", background: claimLoading ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "14px", borderRadius: "10px", cursor: claimLoading ? "not-allowed" : "pointer", fontSize: "15px", fontWeight: 800 }}>
-                    {claimLoading ? "..." :
-                     locale==="fr"?"Réserver maintenant — C'est gratuit":
-                     locale==="es"?"Reservar ahora — Es gratis":
-                     locale==="ar"?"احجز الآن — مجاني":
-                     "Reserve Now — It is Free"}
+                    {claimLoading ? "..." : "Reserve Now — It is Free"}
                   </button>
                 </form>
               </>
