@@ -256,23 +256,15 @@ export default function BusinessDashboard() {
     if (data.success) setListings(prev => prev.map(l => l.id === id ? { ...l, status: "PICKED_UP" } : l));
   }
 
-  // FIXED: now also cancels the active claim so it disappears from the customer profile
   async function handleCancelReservation(id: string) {
     const listing = listings.find(l => l.id === id);
     const activeClaim = listing?.claims?.find(c => c.status === "active");
-
-    // Cancel the active claim
     if (activeClaim) {
-      await supabase.from("claims")
-        .update({ status: "cancelled" })
-        .eq("id", activeClaim.id);
+      await supabase.from("claims").update({ status: "cancelled" }).eq("id", activeClaim.id);
     }
-
-    // Return listing to AVAILABLE
     await supabase.from("listings")
       .update({ status: "AVAILABLE", reserved_until: null, claim_code: null })
       .eq("id", id);
-
     setListings(prev => prev.map(l =>
       l.id === id ? { ...l, status: "AVAILABLE", reserved_until: null as any, claim_code: null as any } : l
     ));
@@ -340,7 +332,6 @@ export default function BusinessDashboard() {
 
     return (
       <div key={listing.id} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "24px", marginBottom: "16px", opacity: isTerminal ? 0.88 : 1 }}>
-
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "14px", gap: "12px" }}>
           <div style={{ display: "flex", gap: "12px", alignItems: "flex-start", flex: 1 }}>
             {listing.image_url && (
@@ -363,8 +354,8 @@ export default function BusinessDashboard() {
               <div style={{ gridColumn: "1/-1" }}><label style={lbl}>Food name</label><input style={inp} value={editForm.food_name || ""} onChange={e => setEditForm(f => ({ ...f, food_name: e.target.value }))}/></div>
               <div><label style={lbl}>Category</label><input style={inp} value={editForm.category || ""} onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))}/></div>
               <div><label style={lbl}>Quantity</label><input style={inp} value={editForm.quantity || ""} onChange={e => setEditForm(f => ({ ...f, quantity: e.target.value }))}/></div>
-              <div><label style={lbl}>⚖️ Weight (lbs)</label><input style={inp} type="number" step="0.1" value={editForm.weight_lbs || ""} onChange={e => setEditForm(f => ({ ...f, weight_lbs: e.target.value }))}/></div>
-              <div><label style={lbl}>💰 Est. Value ($)</label><input style={inp} type="number" step="0.01" value={editForm.estimated_value || ""} onChange={e => setEditForm(f => ({ ...f, estimated_value: e.target.value }))}/></div>
+              <div><label style={lbl}>Weight (lbs)</label><input style={inp} type="number" step="0.1" value={editForm.weight_lbs || ""} onChange={e => setEditForm(f => ({ ...f, weight_lbs: e.target.value }))}/></div>
+              <div><label style={lbl}>Est. Value ($)</label><input style={inp} type="number" step="0.01" value={editForm.estimated_value || ""} onChange={e => setEditForm(f => ({ ...f, estimated_value: e.target.value }))}/></div>
               <div style={{ gridColumn: "1/-1" }}><label style={lbl}>Allergy info</label><input style={inp} value={editForm.allergy_note || ""} onChange={e => setEditForm(f => ({ ...f, allergy_note: e.target.value }))}/></div>
               <div style={{ gridColumn: "1/-1" }}><label style={lbl}>Note</label><input style={inp} value={editForm.note || ""} onChange={e => setEditForm(f => ({ ...f, note: e.target.value }))}/></div>
             </div>
@@ -378,10 +369,10 @@ export default function BusinessDashboard() {
             <p style={{ margin: "2px 0" }}><b>Category:</b> {listing.category || "N/A"}</p>
             <p style={{ margin: "2px 0" }}><b>Quantity:</b> {listing.quantity || "N/A"}</p>
             <p style={{ margin: "2px 0" }}><b>Address:</b> {listing.address || "N/A"}</p>
-            {weightLbs && weightLbs > 0 && <p style={{ margin: "2px 0" }}><b>⚖️ Weight:</b> {weightLbs.toFixed(1)} lbs</p>}
-            {listing.estimated_value && listing.estimated_value > 0 && <p style={{ margin: "2px 0" }}><b>💰 Est. Value:</b> ${Number(listing.estimated_value).toFixed(2)}</p>}
-            {listing.allergy_note && <p style={{ margin: "2px 0" }}><b>⚠️ Allergy:</b> {listing.allergy_note}</p>}
-            {listing.note && <p style={{ margin: "2px 0" }}><b>📝 Note:</b> {listing.note}</p>}
+            {weightLbs && weightLbs > 0 && <p style={{ margin: "2px 0" }}><b>Weight:</b> {weightLbs.toFixed(1)} lbs</p>}
+            {listing.estimated_value && listing.estimated_value > 0 && <p style={{ margin: "2px 0" }}><b>Est. Value:</b> ${Number(listing.estimated_value).toFixed(2)}</p>}
+            {listing.allergy_note && <p style={{ margin: "2px 0" }}><b>Allergy:</b> {listing.allergy_note}</p>}
+            {listing.note && <p style={{ margin: "2px 0" }}><b>Note:</b> {listing.note}</p>}
             <p style={{ margin: "2px 0" }}><b>Expires:</b> {listing.expires_at ? new Date(listing.expires_at).toLocaleString() : "N/A"}</p>
             <p style={{ margin: "2px 0" }}><b>Posted:</b> {new Date(listing.created_at).toLocaleString()}</p>
           </div>
@@ -409,13 +400,13 @@ export default function BusinessDashboard() {
           <div style={{ background: "#f5f3ff", border: "1.5px solid #ddd6fe", borderRadius: "12px", padding: "16px 20px", marginTop: "16px" }}>
             <p style={{ margin: "0 0 6px", fontWeight: 700, color: "#6d28d9", fontSize: "14px" }}>✅ Picked Up By</p>
             <p style={{ margin: "0 0 4px", fontSize: "16px", color: "#2e1065", fontWeight: 700 }}>{activeClaim.first_name}</p>
-            <p style={{ margin: 0, fontSize: "12px", color: "#9ca3af", fontStyle: "italic" }}>🔒 Contact details are hidden after pickup to protect customer privacy.</p>
+            <p style={{ margin: 0, fontSize: "12px", color: "#9ca3af", fontStyle: "italic" }}>Contact details hidden after pickup to protect customer privacy.</p>
           </div>
         )}
 
         {(listing.status === "NOSHOW" || noshowClaim) && (
           <div style={{ background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: "12px", padding: "14px 20px", marginTop: "16px" }}>
-            <p style={{ margin: "0 0 4px", fontWeight: 700, color: "#92400e", fontSize: "14px" }}>⏰ No-Show</p>
+            <p style={{ margin: "0 0 4px", fontWeight: 700, color: "#92400e", fontSize: "14px" }}>No-Show</p>
             <p style={{ margin: 0, fontSize: "13px", color: "#78350f" }}>
               {noshowClaim ? `${noshowClaim.first_name} did not arrive within the claim window.` : "Customer did not arrive within the claim window."}
             </p>
@@ -427,7 +418,7 @@ export default function BusinessDashboard() {
             {isReserved && (
               <button onClick={() => handlePickedUp(listing.id)}
                 style={{ background: "#16a34a", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "14px" }}>
-                ✅ Mark as Picked Up
+                Mark as Picked Up
               </button>
             )}
             {isReserved && (
@@ -439,7 +430,7 @@ export default function BusinessDashboard() {
             {isAvailable && (
               <button onClick={() => startEdit(listing)}
                 style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "10px 20px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "14px" }}>
-                ✏️ Edit
+                Edit
               </button>
             )}
             {(isAvailable || isReserved) && (
@@ -453,10 +444,10 @@ export default function BusinessDashboard() {
 
         {isTerminal && (
           <p style={{ marginTop: "14px", fontSize: "13px", color: "#6b7280", fontStyle: "italic" }}>
-            {listing.status === "PICKED_UP" && "✅ Successfully picked up."}
-            {listing.status === "EXPIRED"   && "⏰ This listing expired without being claimed."}
-            {listing.status === "CANCELLED" && "❌ This listing was cancelled."}
-            {(listing.status === "NOSHOW" || noshowClaim) && "👻 Customer did not show up — listing was returned to available."}
+            {listing.status === "PICKED_UP" && "Successfully picked up."}
+            {listing.status === "EXPIRED"   && "This listing expired without being claimed."}
+            {listing.status === "CANCELLED" && "This listing was cancelled."}
+            {(listing.status === "NOSHOW" || noshowClaim) && "Customer did not show up."}
           </p>
         )}
       </div>
@@ -496,6 +487,7 @@ export default function BusinessDashboard() {
             <LanguageSwitcher/>
             <a href="/" style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "8px 14px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 600 }}>🏠 Home</a>
             <a href="/browse" style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "8px 14px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 600 }}>🍽️ Browse</a>
+            {isAdmin && <a href="/admin/business-lookup" style={{ background: "#0a2e1a", color: "#4ade80", border: "1px solid #166534", padding: "8px 14px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 700 }}>🔑 Admin Panel</a>}
             {isAdmin && allBizNames.length > 0 && (
               <select value={adminView || ""} onChange={e => setAdminView(e.target.value || null)}
                 style={{ padding: "8px 12px", borderRadius: "8px", border: "2px solid #0a2e1a", fontSize: "14px", background: "#f0fdf4", cursor: "pointer", fontWeight: 600, color: "#0a2e1a" }}>
@@ -548,11 +540,11 @@ export default function BusinessDashboard() {
                   </select>
                 </div>
                 <div><label style={lbl}>Quantity *</label><input style={inp} required value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} placeholder="e.g. 10 portions"/></div>
-                <div><label style={lbl}>⚖️ Weight (lbs)</label><input style={inp} type="number" min="0" step="0.1" value={form.weight_lbs} onChange={e => setForm(f => ({ ...f, weight_lbs: e.target.value }))} placeholder="e.g. 8"/></div>
-                <div><label style={lbl}>💰 Est. Value ($)</label><input style={inp} type="number" min="0" step="0.01" value={form.estimated_value} onChange={e => setForm(f => ({ ...f, estimated_value: e.target.value }))} placeholder="e.g. 25"/></div>
+                <div><label style={lbl}>Weight (lbs)</label><input style={inp} type="number" min="0" step="0.1" value={form.weight_lbs} onChange={e => setForm(f => ({ ...f, weight_lbs: e.target.value }))} placeholder="e.g. 8"/></div>
+                <div><label style={lbl}>Est. Value ($)</label><input style={inp} type="number" min="0" step="0.01" value={form.estimated_value} onChange={e => setForm(f => ({ ...f, estimated_value: e.target.value }))} placeholder="e.g. 25"/></div>
                 <div style={{ gridColumn: "1/-1" }}><label style={lbl}>Allergy / Dietary Info</label><input style={inp} value={form.allergy_note} onChange={e => setForm(f => ({ ...f, allergy_note: e.target.value }))} placeholder="e.g. Contains nuts, halal"/></div>
                 <div style={{ gridColumn: "1/-1" }}>
-                  <label style={lbl}>📷 Food Photo (optional)</label>
+                  <label style={lbl}>Food Photo (optional)</label>
                   <input ref={listingFileRef} type="file" accept="image/*" capture="environment" style={{ fontSize: "13px", color: "#374151", width: "100%" }}/>
                   {uploadingImg && <p style={{ margin: "6px 0 0", fontSize: "13px", color: "#16a34a", fontWeight: 600 }}>Uploading photo...</p>}
                 </div>
