@@ -32,7 +32,6 @@ export default function BrowsePage() {
   const [claimMsg, setClaimMsg]         = useState("");
   const [claimSuccess, setClaimSuccess] = useState(false);
   const [lastCode, setLastCode]         = useState("");
-  // NEW: inline sign-in modal state
   const [signinModal, setSigninModal]   = useState(false);
   const [signinEmail, setSigninEmail]   = useState("");
   const [signinPassword, setSigninPassword] = useState("");
@@ -43,7 +42,6 @@ export default function BrowsePage() {
 
   useEffect(() => { setLocale(detectLocale()); }, []);
 
-  // CHANGED: onAuthStateChange instead of getUser() — detects auth after sign-in without reload
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const u = session?.user ?? null;
@@ -53,7 +51,7 @@ export default function BrowsePage() {
         const { data: biz } = await supabase
           .from("businesses").select("id").eq("email", u.email).single();
         setIsBusiness(!!biz);
-        if (biz) setSigninModal(false); // close modal if business owner signs in
+        if (biz) setSigninModal(false);
       } else {
         setIsBusiness(false);
         setClaimForm(f => ({ ...f, email: "" }));
@@ -93,7 +91,6 @@ export default function BrowsePage() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
 
-  // Load biz info only when user is a signed-in non-business customer
   useEffect(() => {
     if (user && !isBusiness && listings.length > 0) fetchBizInfo(listings);
   }, [user, isBusiness, listings]);
@@ -111,7 +108,6 @@ export default function BrowsePage() {
   function handleSearch(q: string) { setSearch(q); applySearch(listings, q); }
   function openClaim(id: string) { setSelectedId(id); setClaimMsg(""); setClaimSuccess(false); }
 
-  // NEW: handle sign-in inside the browse page modal
   async function handleSignin(e: React.FormEvent) {
     e.preventDefault();
     setSigninLoading(true); setSigninError("");
@@ -129,7 +125,6 @@ export default function BrowsePage() {
       });
       if (error) { setSigninError(error.message); setSigninLoading(false); return; }
     }
-    // onAuthStateChange will fire automatically and update user state + close modal
     setSigninModal(false);
     setSigninLoading(false);
   }
@@ -138,7 +133,7 @@ export default function BrowsePage() {
     e.preventDefault();
     if (!selectedId || isBusiness) return;
     setClaimLoading(true); setClaimMsg("");
-   const res = await fetch("/api/claim-submit", {
+    const res = await fetch("/api/claim-submit", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         listingId:        selectedId,
@@ -152,7 +147,8 @@ export default function BrowsePage() {
     const data = await res.json();
     if (data.success) {
       setClaimSuccess(true);
-      setLastCode(data.confirmation_code);
+      // CHANGED: try all possible field names the API might return the code under
+      setLastCode(data.confirmation_code || data.code || data.claim?.confirmation_code || "");
       setListings(prev => prev.filter(l => l.id !== selectedId));
       setFiltered(prev => prev.filter(l => l.id !== selectedId));
     } else {
@@ -228,7 +224,6 @@ export default function BrowsePage() {
           return (
             <div key={listing.id} style={{ background: "#fff", borderRadius: "20px", border: "1px solid #e5e7eb", overflow: "hidden", marginBottom: "20px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
 
-              {/* FOOD IMAGE — always visible */}
               {listing.image_url ? (
                 <div style={{ width: "100%", height: "220px", overflow: "hidden" }}>
                   <img src={listing.image_url} alt={listing.food_name}
@@ -242,13 +237,11 @@ export default function BrowsePage() {
               )}
 
               <div style={{ padding: "20px 24px" }}>
-                {/* TITLE + FREE */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px" }}>
                   <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>{listing.food_name}</h2>
                   <span style={{ background: "#f0fdf4", color: "#16a34a", fontSize: "12px", fontWeight: 700, padding: "4px 12px", borderRadius: "20px", border: "1px solid #bbf7d0", flexShrink: 0 }}>FREE</span>
                 </div>
 
-                {/* FOOD DETAILS — always visible */}
                 <p style={{ margin: "0 0 6px", fontSize: "14px", color: "#6b7280" }}>
                   {listing.category} · {listing.quantity}
                   {listing.weight_kg && listing.weight_kg > 0 && ` · ${(listing.weight_kg * 2.205).toFixed(1)} lbs`}
@@ -263,7 +256,6 @@ export default function BrowsePage() {
                   ⏰ Expires: {new Date(listing.expires_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </p>
 
-                {/* BUSINESS INFO — only for signed-in customers */}
                 {isSignedIn ? (
                   <div style={{ background: "#f9fafb", borderRadius: "12px", padding: "14px 16px", marginBottom: "16px" }}>
                     <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", marginBottom: bizInfo ? "12px" : 0 }}>
@@ -300,7 +292,6 @@ export default function BrowsePage() {
                     )}
                   </div>
                 ) : (
-                  /* NOT SIGNED IN — opens modal instead of redirecting away */
                   <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "12px", padding: "14px 16px", marginBottom: "16px", textAlign: "center" }}>
                     <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#374151", fontWeight: 600 }}>
                       🔒 Sign in to see the restaurant details & claim this food
@@ -312,7 +303,6 @@ export default function BrowsePage() {
                   </div>
                 )}
 
-                {/* RESERVE BUTTON — only signed-in non-business users */}
                 {isSignedIn && (
                   <button onClick={() => openClaim(listing.id)}
                     style={{ width: "100%", background: "#16a34a", color: "#fff", border: "none", padding: "14px", borderRadius: "10px", cursor: "pointer", fontSize: "15px", fontWeight: 800 }}>
@@ -320,7 +310,6 @@ export default function BrowsePage() {
                   </button>
                 )}
 
-                {/* BUSINESS ACCOUNT — cannot claim */}
                 {isBusiness && (
                   <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
                     <p style={{ margin: 0, fontSize: "13px", color: "#6b7280" }}>Business accounts cannot claim food. Use a customer account to reserve.</p>
@@ -339,7 +328,7 @@ export default function BrowsePage() {
         </p>
       </div>
 
-      {/* SIGN-IN MODAL — opens inline, no redirect away from browse */}
+      {/* SIGN-IN MODAL */}
       {signinModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "20px", padding: "32px", width: "100%", maxWidth: "420px", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}>
