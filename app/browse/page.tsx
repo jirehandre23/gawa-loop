@@ -38,7 +38,6 @@ export default function BrowsePage() {
   const [signinLoading, setSigninLoading]   = useState(false);
   const [signinError, setSigninError]       = useState("");
   const [signinMode, setSigninMode]         = useState<"signin" | "signup">("signin");
-  // NEW: shows "check your email" screen after signup
   const [signinDone, setSigninDone]         = useState(false);
   const intervalRef                     = useRef<NodeJS.Timeout | null>(null);
 
@@ -54,7 +53,6 @@ export default function BrowsePage() {
           .from("businesses").select("id").eq("email", u.email).single();
         setIsBusiness(!!biz);
         if (biz) setSigninModal(false);
-        // Auto-close modal once confirmed and signed in
         setSigninModal(false);
         setSigninDone(false);
       } else {
@@ -125,10 +123,7 @@ export default function BrowsePage() {
         setSigninLoading(false);
         return;
       }
-      // onAuthStateChange will fire and close the modal automatically
-
     } else {
-      // SIGNUP — show clear "check your email" screen after submitting
       const { error } = await supabase.auth.signUp({
         email: signinEmail.trim().toLowerCase(),
         password: signinPassword,
@@ -139,7 +134,6 @@ export default function BrowsePage() {
         setSigninLoading(false);
         return;
       }
-      // Don't close modal — show confirmation screen instead
       setSigninDone(true);
     }
     setSigninLoading(false);
@@ -225,12 +219,21 @@ export default function BrowsePage() {
             value={search} onChange={e => handleSearch(e.target.value)}/>
         </div>
 
+        {/* CHANGED: spinner while loading, friendly empty state when done */}
         {loading ? (
-          <div style={{ textAlign: "center", padding: "60px 0", color: "#9ca3af" }}>Loading...</div>
+          <div style={{ textAlign: "center", padding: "80px 0" }}>
+            <div style={{ display: "inline-block", width: "36px", height: "36px", border: "3px solid #e5e7eb", borderTopColor: "#16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            <p style={{ marginTop: "16px", color: "#9ca3af", fontSize: "14px" }}>Finding available food near you...</p>
+          </div>
         ) : filtered.length === 0 ? (
-          <div style={{ background: "#fff", borderRadius: "16px", border: "1px solid #e5e7eb", padding: "60px 24px", textAlign: "center" }}>
-            <p style={{ fontSize: "40px", marginBottom: "12px" }}>🌱</p>
-            <p style={{ color: "#6b7280", fontSize: "15px" }}>No food available right now. Check back soon!</p>
+          <div style={{ background: "#fff", borderRadius: "20px", border: "1px solid #e5e7eb", padding: "60px 24px", textAlign: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+            <p style={{ fontSize: "48px", margin: "0 0 16px" }}>🍽️</p>
+            <p style={{ fontSize: "18px", fontWeight: 800, color: "#0a2e1a", margin: "0 0 8px" }}>No food available right now</p>
+            <p style={{ fontSize: "14px", color: "#6b7280", margin: "0 0 20px", lineHeight: 1.6 }}>
+              Listings refresh automatically every 30 seconds.<br/>Check back soon — new food gets posted daily!
+            </p>
+            <a href="/" style={{ background: "#16a34a", color: "#fff", padding: "10px 24px", borderRadius: "8px", textDecoration: "none", fontSize: "14px", fontWeight: 700 }}>← Back to Home</a>
           </div>
         ) : filtered.map(listing => {
           const bizInfo = bizInfoMap[listing.business_name];
@@ -332,20 +335,22 @@ export default function BrowsePage() {
           );
         })}
 
-        <p style={{ textAlign: "center", fontSize: "13px", color: "#9ca3af", marginTop: "24px" }}>
-          Listings refresh every 30 seconds — All food is free
-        </p>
-        <p style={{ textAlign: "center", marginTop: "8px" }}>
-          <a href="/" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none", fontSize: "14px" }}>← Back to Home</a>
-        </p>
+        {!loading && filtered.length > 0 && (
+          <>
+            <p style={{ textAlign: "center", fontSize: "13px", color: "#9ca3af", marginTop: "24px" }}>
+              Listings refresh every 30 seconds — All food is free
+            </p>
+            <p style={{ textAlign: "center", marginTop: "8px" }}>
+              <a href="/" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none", fontSize: "14px" }}>← Back to Home</a>
+            </p>
+          </>
+        )}
       </div>
 
       {/* SIGN-IN MODAL */}
       {signinModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "20px", padding: "32px", width: "100%", maxWidth: "420px", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}>
-
-            {/* CHANGED: After signup show this screen instead of closing */}
             {signinDone ? (
               <div style={{ textAlign: "center" }}>
                 <div style={{ fontSize: "52px", marginBottom: "16px" }}>📬</div>
