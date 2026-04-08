@@ -10,24 +10,11 @@ const supabase = createClient(
 );
 
 type Listing = {
-  id: string;
-  business_name: string;
-  food_name: string;
-  category: string;
-  quantity: string;
-  allergy_note: string;
-  estimated_value: number;
-  note: string;
-  status: string;
-  expires_at: string;
-  claim_hold_minutes: number;
-  address: string;
-  maps_url: string;
-  image_url: string;
-  weight_kg: number;
-  business_logo_url: string;
+  id: string; business_name: string; food_name: string; category: string;
+  quantity: string; allergy_note: string; estimated_value: number; note: string;
+  status: string; expires_at: string; claim_hold_minutes: number; address: string;
+  maps_url: string; image_url: string; weight_kg: number; business_logo_url: string;
 };
-
 type BizInfo = { address: string; phone: string | null; email: string };
 
 export default function BrowsePage() {
@@ -37,7 +24,6 @@ export default function BrowsePage() {
   const [search, setSearch]             = useState("");
   const [loading, setLoading]           = useState(true);
   const [user, setUser]                 = useState<any>(null);
-  const [userEmail, setUserEmail]       = useState<string | null>(null);
   const [isBusiness, setIsBusiness]     = useState(false);
   const [bizInfoMap, setBizInfoMap]     = useState<Record<string, BizInfo>>({});
   const [selectedId, setSelectedId]     = useState<string | null>(null);
@@ -55,11 +41,9 @@ export default function BrowsePage() {
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
       if (user?.email) {
-        setUserEmail(user.email);
         setClaimForm(f => ({ ...f, email: user.email! }));
         const { data: biz } = await supabase
-          .from("businesses").select("id, account_type")
-          .eq("email", user.email).single();
+          .from("businesses").select("id").eq("email", user.email).single();
         if (biz) setIsBusiness(true);
       }
     })();
@@ -74,27 +58,32 @@ export default function BrowsePage() {
     setListings(all);
     applySearch(all, search);
     setLoading(false);
+  }
 
-    // fetch business info for signed-in non-business users
-    if (user && !isBusiness && all.length > 0) {
-      const names = [...new Set(all.map((l: Listing) => l.business_name).filter(Boolean))];
-      const { data: bizData } = await supabase
-        .from("businesses")
-        .select("name, address, phone, email")
-        .in("name", names);
-      if (bizData) {
-        const map: Record<string, BizInfo> = {};
-        for (const b of bizData) map[b.name] = { address: b.address, phone: b.phone, email: b.email };
-        setBizInfoMap(map);
-      }
+  async function fetchBizInfo(all: Listing[]) {
+    if (!all.length) return;
+    const names = [...new Set(all.map((l: Listing) => l.business_name).filter(Boolean))];
+    const { data: bizData } = await supabase
+      .from("businesses").select("name, address, phone, email").in("name", names);
+    if (bizData) {
+      const map: Record<string, BizInfo> = {};
+      for (const b of bizData) map[b.name] = { address: b.address, phone: b.phone, email: b.email };
+      setBizInfoMap(map);
     }
   }
 
   useEffect(() => {
-    fetchListings();
+    (async () => {
+      await fetchListings();
+    })();
     intervalRef.current = setInterval(fetchListings, 30000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [user, isBusiness]);
+  }, []);
+
+  // Load biz info only when user is a signed-in non-business customer
+  useEffect(() => {
+    if (user && !isBusiness && listings.length > 0) fetchBizInfo(listings);
+  }, [user, isBusiness, listings]);
 
   function applySearch(all: Listing[], q: string) {
     if (!q.trim()) { setFiltered(all); return; }
@@ -111,13 +100,10 @@ export default function BrowsePage() {
 
   async function handleClaim(e: React.FormEvent) {
     e.preventDefault();
-    if (!selectedId) return;
-    if (isBusiness) { setClaimMsg("Business accounts cannot claim food."); return; }
+    if (!selectedId || isBusiness) return;
     setClaimLoading(true); setClaimMsg("");
-
     const res = await fetch("/api/claim", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         listingId:        selectedId,
         first_name:       claimForm.first_name.trim(),
@@ -139,9 +125,8 @@ export default function BrowsePage() {
     setClaimLoading(false);
   }
 
-  const T   = t[locale];
+  const T     = t[locale];
   const isRTL = locale === "ar";
-
   const inp: React.CSSProperties = {
     width: "100%", padding: "11px 14px", borderRadius: "8px",
     border: "1px solid #d1d5db", fontSize: "14px", color: "#111827",
@@ -176,7 +161,9 @@ export default function BrowsePage() {
       </nav>
 
       <div style={{ maxWidth: "760px", margin: "0 auto", padding: "32px 16px" }}>
-        <h1 style={{ fontSize: "28px", fontWeight: 900, color: "#0a2e1a", margin: "0 0 4px" }}>{T.browse || "Browse Free Food"}</h1>
+        <h1 style={{ fontSize: "28px", fontWeight: 900, color: "#0a2e1a", margin: "0 0 4px" }}>
+          {T.browse || "Browse Free Food"}
+        </h1>
         <p style={{ color: "#6b7280", fontSize: "14px", margin: "0 0 24px" }}>
           {filtered.length} {filtered.length === 1 ? "item" : "items"} available now · refreshes every 30s
         </p>
@@ -185,7 +172,7 @@ export default function BrowsePage() {
         <div style={{ position: "relative", marginBottom: "24px" }}>
           <span style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", fontSize: "16px" }}>🔍</span>
           <input style={{ ...inp, paddingLeft: "40px", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}
-            placeholder="Search food, restaurant, category..."
+            placeholder="Search food, category..."
             value={search} onChange={e => handleSearch(e.target.value)}/>
         </div>
 
@@ -197,14 +184,14 @@ export default function BrowsePage() {
             <p style={{ color: "#6b7280", fontSize: "15px" }}>No food available right now. Check back soon!</p>
           </div>
         ) : filtered.map(listing => {
-          const mapsQ     = encodeURIComponent(listing.address || "");
-          const canClaim  = !isBusiness;
-          const bizInfo   = bizInfoMap[listing.business_name];
+          const bizInfo  = bizInfoMap[listing.business_name];
+          const canClaim = !isBusiness;
+          const isSignedIn = !!user && !isBusiness;
 
           return (
             <div key={listing.id} style={{ background: "#fff", borderRadius: "20px", border: "1px solid #e5e7eb", overflow: "hidden", marginBottom: "20px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
 
-              {/* FOOD IMAGE */}
+              {/* FOOD IMAGE — always visible */}
               {listing.image_url ? (
                 <div style={{ width: "100%", height: "220px", overflow: "hidden" }}>
                   <img src={listing.image_url} alt={listing.food_name}
@@ -212,79 +199,92 @@ export default function BrowsePage() {
                     onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}/>
                 </div>
               ) : (
-                <div style={{ width: "100%", height: "100px", background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "40px" }}>🍽️</div>
+                <div style={{ width: "100%", height: "100px", background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "40px" }}>
+                  🍽️
+                </div>
               )}
 
               <div style={{ padding: "20px 24px" }}>
-                {/* TITLE + FREE badge */}
+                {/* TITLE + FREE */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px" }}>
                   <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>{listing.food_name}</h2>
                   <span style={{ background: "#f0fdf4", color: "#16a34a", fontSize: "12px", fontWeight: 700, padding: "4px 12px", borderRadius: "20px", border: "1px solid #bbf7d0", flexShrink: 0 }}>FREE</span>
                 </div>
 
+                {/* FOOD DETAILS — always visible */}
                 <p style={{ margin: "0 0 6px", fontSize: "14px", color: "#6b7280" }}>
                   {listing.category} · {listing.quantity}
                   {listing.weight_kg && listing.weight_kg > 0 && ` · ${(listing.weight_kg * 2.205).toFixed(1)} lbs`}
                 </p>
                 {listing.allergy_note && (
-                  <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "6px", padding: "4px 10px", display: "inline-block" }}>⚠️ {listing.allergy_note}</p>
+                  <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "6px", padding: "4px 10px", display: "inline-block" }}>
+                    ⚠️ {listing.allergy_note}
+                  </p>
                 )}
                 {listing.note && <p style={{ margin: "6px 0", fontSize: "13px", color: "#374151" }}>📝 {listing.note}</p>}
-                <p style={{ margin: "6px 0", fontSize: "13px", color: "#6b7280" }}>
+                <p style={{ margin: "6px 0 14px", fontSize: "13px", color: "#6b7280" }}>
                   ⏰ Expires: {new Date(listing.expires_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </p>
 
-                {/* BUSINESS CARD */}
-                <div style={{ background: "#f9fafb", borderRadius: "12px", padding: "14px 16px", marginTop: "12px" }}>
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", marginBottom: bizInfo ? "12px" : "0" }}>
-                    {listing.business_logo_url ? (
-                      <img src={listing.business_logo_url} alt={listing.business_name}
-                        style={{ width: "36px", height: "36px", borderRadius: "8px", objectFit: "cover", flexShrink: 0 }}/>
-                    ) : (
-                      <div style={{ width: "36px", height: "36px", borderRadius: "8px", background: "#e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px", flexShrink: 0 }}>🏪</div>
-                    )}
-                    <div>
-                      <p style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: 700, color: "#0a2e1a" }}>{listing.business_name}</p>
-                      <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#6b7280" }}>📍 {listing.address}</p>
-                      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                        <a href={`https://maps.google.com/?q=${mapsQ}`} target="_blank" rel="noreferrer"
-                          style={{ background: "#e8f0fe", color: "#1a73e8", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🗺️ Google Maps</a>
-                        <a href={`https://maps.apple.com/?q=${mapsQ}`} target="_blank" rel="noreferrer"
-                          style={{ background: "#f3f4f6", color: "#374151", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🍎 Apple Maps</a>
-                        <a href={`https://waze.com/ul?q=${mapsQ}`} target="_blank" rel="noreferrer"
-                          style={{ background: "#e8f8ff", color: "#0099cc", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🚗 Waze</a>
+                {/* BUSINESS INFO — only for signed-in customers */}
+                {isSignedIn ? (
+                  <div style={{ background: "#f9fafb", borderRadius: "12px", padding: "14px 16px", marginBottom: "16px" }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", marginBottom: bizInfo ? "12px" : 0 }}>
+                      {listing.business_logo_url ? (
+                        <img src={listing.business_logo_url} alt={listing.business_name}
+                          style={{ width: "36px", height: "36px", borderRadius: "8px", objectFit: "cover", flexShrink: 0 }}/>
+                      ) : (
+                        <div style={{ width: "36px", height: "36px", borderRadius: "8px", background: "#e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px", flexShrink: 0 }}>🏪</div>
+                      )}
+                      <div style={{ flex: 1 }}>
+                        <p style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: 700, color: "#0a2e1a" }}>{listing.business_name}</p>
+                        <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#6b7280" }}>📍 {listing.address}</p>
+                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                          <a href={`https://maps.google.com/?q=${encodeURIComponent(listing.address || "")}`} target="_blank" rel="noreferrer"
+                            style={{ background: "#e8f0fe", color: "#1a73e8", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🗺️ Google Maps</a>
+                          <a href={`https://maps.apple.com/?q=${encodeURIComponent(listing.address || "")}`} target="_blank" rel="noreferrer"
+                            style={{ background: "#f3f4f6", color: "#374151", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🍎 Apple Maps</a>
+                          <a href={`https://waze.com/ul?q=${encodeURIComponent(listing.address || "")}`} target="_blank" rel="noreferrer"
+                            style={{ background: "#e8f8ff", color: "#0099cc", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🚗 Waze</a>
+                        </div>
                       </div>
                     </div>
+                    {bizInfo && (
+                      <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "10px", display: "flex", flexDirection: "column", gap: "5px" }}>
+                        {bizInfo.phone && (
+                          <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>
+                            📞 <a href={`tel:${bizInfo.phone}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>{bizInfo.phone}</a>
+                          </p>
+                        )}
+                        <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>
+                          ✉️ <a href={`mailto:${bizInfo.email}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>{bizInfo.email}</a>
+                        </p>
+                      </div>
+                    )}
                   </div>
+                ) : (
+                  /* NOT SIGNED IN — show sign-in prompt, no restaurant info */
+                  <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "12px", padding: "14px 16px", marginBottom: "16px", textAlign: "center" }}>
+                    <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#374151", fontWeight: 600 }}>
+                      🔒 Sign in to see the restaurant details & claim this food
+                    </p>
+                    <a href="/" style={{ background: "#16a34a", color: "#fff", padding: "8px 20px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 700, display: "inline-block" }}>
+                      Sign In — It's Free
+                    </a>
+                  </div>
+                )}
 
-                  {/* FULL BUSINESS INFO — only for signed-in customers */}
-                  {user && !isBusiness && bizInfo && (
-                    <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "12px", display: "flex", flexDirection: "column", gap: "6px" }}>
-                      <p style={{ margin: 0, fontSize: "12px", fontWeight: 700, color: "#16a34a" }}>🔓 Full contact info (visible to signed-in members)</p>
-                      <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>📍 <strong>Address:</strong> {bizInfo.address}</p>
-                      {bizInfo.phone && <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>📞 <strong>Phone:</strong> <a href={`tel:${bizInfo.phone}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>{bizInfo.phone}</a></p>}
-                      <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>✉️ <strong>Email:</strong> <a href={`mailto:${bizInfo.email}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>{bizInfo.email}</a></p>
-                    </div>
-                  )}
-
-                  {/* CTA to sign in to see full info */}
-                  {!user && (
-                    <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "10px", marginTop: "2px" }}>
-                      <p style={{ margin: 0, fontSize: "12px", color: "#9ca3af" }}>
-                        🔒 <a href="/" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>Sign in</a> to see full address, phone & email
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* RESERVE BUTTON */}
-                {canClaim ? (
+                {/* RESERVE BUTTON — only signed-in non-business users */}
+                {isSignedIn && (
                   <button onClick={() => openClaim(listing.id)}
-                    style={{ marginTop: "16px", width: "100%", background: "#16a34a", color: "#fff", border: "none", padding: "14px", borderRadius: "10px", cursor: "pointer", fontSize: "15px", fontWeight: 800 }}>
+                    style={{ width: "100%", background: "#16a34a", color: "#fff", border: "none", padding: "14px", borderRadius: "10px", cursor: "pointer", fontSize: "15px", fontWeight: 800 }}>
                     Reserve Now — It is Free
                   </button>
-                ) : (
-                  <div style={{ marginTop: "16px", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
+                )}
+
+                {/* BUSINESS ACCOUNT — cannot claim */}
+                {isBusiness && (
+                  <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
                     <p style={{ margin: 0, fontSize: "13px", color: "#6b7280" }}>Business accounts cannot claim food. Use a customer account to reserve.</p>
                   </div>
                 )}
@@ -293,7 +293,9 @@ export default function BrowsePage() {
           );
         })}
 
-        <p style={{ textAlign: "center", fontSize: "13px", color: "#9ca3af", marginTop: "24px" }}>Listings refresh every 30 seconds — All food is free</p>
+        <p style={{ textAlign: "center", fontSize: "13px", color: "#9ca3af", marginTop: "24px" }}>
+          Listings refresh every 30 seconds — All food is free
+        </p>
         <p style={{ textAlign: "center", marginTop: "8px" }}>
           <a href="/" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none", fontSize: "14px" }}>← Back to Home</a>
         </p>
@@ -313,7 +315,9 @@ export default function BrowsePage() {
                 </div>
                 <p style={{ color: "#6b7280", fontSize: "13px", marginBottom: "20px" }}>Check your email for details. Show this code when you arrive.</p>
                 <button onClick={() => { setSelectedId(null); setClaimSuccess(false); }}
-                  style={{ background: "#16a34a", color: "#fff", border: "none", padding: "12px 28px", borderRadius: "10px", cursor: "pointer", fontWeight: 700, fontSize: "15px" }}>Done</button>
+                  style={{ background: "#16a34a", color: "#fff", border: "none", padding: "12px 28px", borderRadius: "10px", cursor: "pointer", fontWeight: 700, fontSize: "15px" }}>
+                  Done
+                </button>
               </div>
             ) : (
               <>
@@ -343,7 +347,7 @@ export default function BrowsePage() {
                     <input style={inp} type="tel" required value={claimForm.phone}
                       onChange={e => setClaimForm(f => ({ ...f, phone: e.target.value }))}
                       placeholder="e.g. 3478015325"/>
-                    <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#9ca3af" }}>So the business can reach you if needed</p>
+                    <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#9ca3af" }}>So the business can contact you if needed</p>
                   </div>
                   <div style={{ marginBottom: "20px" }}>
                     <label style={lbl}>Your Arrival Time</label>
