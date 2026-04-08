@@ -10,24 +10,22 @@ const supabase = createClient(
 );
 
 const ADMIN_EMAIL = "admin@gawaloop.com";
-
-const CATEGORIES = ["All", "Food", "Bakery", "Beverages", "Prepared Meals", "Produce", "Other"];
 const SORT_OPTIONS = ["Newest", "Expiring Soon"];
 
-// Translations for filter UI
 const FILTER_T: Record<string, Record<string, string>> = {
-  en: { all: "All", newest: "Newest", expiring: "Expiring Soon", filter_label: "Category", sort_label: "Sort" },
-  fr: { all: "Tout", newest: "Plus récent", expiring: "Expire bientôt", filter_label: "Catégorie", sort_label: "Trier" },
-  es: { all: "Todo", newest: "Más reciente", expiring: "Por vencer", filter_label: "Categoría", sort_label: "Ordenar" },
-  pt: { all: "Tudo", newest: "Mais recente", expiring: "A vencer", filter_label: "Categoria", sort_label: "Ordenar" },
-  ar: { all: "الكل", newest: "الأحدث", expiring: "ينتهي قريباً", filter_label: "الفئة", sort_label: "ترتيب" },
+  en: { all: "All", newest: "Newest", expiring: "Expiring Soon", sort_label: "Sort" },
+  fr: { all: "Tout", newest: "Plus récent", expiring: "Expire bientôt", sort_label: "Trier" },
+  es: { all: "Todo", newest: "Más reciente", expiring: "Por vencer", sort_label: "Ordenar" },
+  pt: { all: "Tudo", newest: "Mais recente", expiring: "A vencer", sort_label: "Ordenar" },
+  ar: { all: "الكل", newest: "الأحدث", expiring: "ينتهي قريباً", sort_label: "ترتيب" },
 };
 
 type Listing = {
   id: string; business_name: string; food_name: string; category: string;
   quantity: string; allergy_note: string; estimated_value: number; note: string;
-  status: string; expires_at: string; claim_hold_minutes: number; address: string;
-  maps_url: string; image_url: string; weight_kg: number; business_logo_url: string;
+  status: string; expires_at: string; created_at: string; claim_hold_minutes: number;
+  address: string; maps_url: string; image_url: string; weight_kg: number;
+  business_logo_url: string;
 };
 type BizInfo = { address: string; phone: string | null; email: string };
 
@@ -93,7 +91,7 @@ export default function BrowsePage() {
         .eq("status", "AVAILABLE")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      const all = data || [];
+      const all = (data || []) as Listing[];
       setListings(all);
       applyFilters(all, search, activeCategory, sortBy);
     } catch (e) {
@@ -107,7 +105,7 @@ export default function BrowsePage() {
 
   async function fetchBizInfo(all: Listing[]) {
     if (!all.length) return;
-    const names = [...new Set(all.map((l: Listing) => l.business_name).filter(Boolean))];
+    const names = [...new Set(all.map((l) => l.business_name).filter(Boolean))];
     const { data: bizData } = await supabase
       .from("businesses").select("name, address, phone, email").in("name", names);
     if (bizData) {
@@ -133,7 +131,6 @@ export default function BrowsePage() {
 
   function applyFilters(all: Listing[], q: string, cat: string, sort: string) {
     let result = [...all];
-    // Search filter
     if (q.trim()) {
       const lower = q.toLowerCase();
       result = result.filter(l =>
@@ -142,34 +139,18 @@ export default function BrowsePage() {
         l.category?.toLowerCase().includes(lower)
       );
     }
-    // Category filter
-    if (cat !== "All") {
-      result = result.filter(l => l.category === cat);
-    }
-    // Sort
+    if (cat !== "All") result = result.filter(l => l.category === cat);
     if (sort === "Expiring Soon") {
       result.sort((a, b) => new Date(a.expires_at).getTime() - new Date(b.expires_at).getTime());
     } else {
-      result.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+      result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     }
     setFiltered(result);
   }
 
-  function handleSearch(q: string) {
-    setSearch(q);
-    applyFilters(listings, q, activeCategory, sortBy);
-  }
-
-  function handleCategory(cat: string) {
-    setCategory(cat);
-    applyFilters(listings, search, cat, sortBy);
-  }
-
-  function handleSort(sort: string) {
-    setSortBy(sort);
-    applyFilters(listings, search, activeCategory, sort);
-  }
-
+  function handleSearch(q: string) { setSearch(q); applyFilters(listings, q, activeCategory, sortBy); }
+  function handleCategory(cat: string) { setCategory(cat); applyFilters(listings, search, cat, sortBy); }
+  function handleSort(sort: string) { setSortBy(sort); applyFilters(listings, search, activeCategory, sort); }
   function openClaim(id: string) { setSelectedId(id); setClaimMsg(""); setClaimSuccess(false); }
 
   async function handleSignin(e: React.FormEvent) {
@@ -177,14 +158,12 @@ export default function BrowsePage() {
     setSigninLoading(true); setSigninError("");
     if (signinMode === "signin") {
       const { error } = await supabase.auth.signInWithPassword({
-        email: signinEmail.trim().toLowerCase(),
-        password: signinPassword,
+        email: signinEmail.trim().toLowerCase(), password: signinPassword,
       });
       if (error) { setSigninError("Invalid email or password."); setSigninLoading(false); return; }
     } else {
       const { error } = await supabase.auth.signUp({
-        email: signinEmail.trim().toLowerCase(),
-        password: signinPassword,
+        email: signinEmail.trim().toLowerCase(), password: signinPassword,
         options: { emailRedirectTo: "https://gawaloop.com/browse" },
       });
       if (error) { setSigninError(error.message); setSigninLoading(false); return; }
@@ -200,12 +179,9 @@ export default function BrowsePage() {
     const res = await fetch("/api/claim-submit", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        listingId:        selectedId,
-        first_name:       claimForm.first_name.trim(),
-        email:            claimForm.email.trim().toLowerCase(),
-        phone:            claimForm.phone.trim(),
-        eta_minutes:      claimForm.eta_minutes,
-        customer_user_id: user?.id || null,
+        listingId: selectedId, first_name: claimForm.first_name.trim(),
+        email: claimForm.email.trim().toLowerCase(), phone: claimForm.phone.trim(),
+        eta_minutes: claimForm.eta_minutes, customer_user_id: user?.id || null,
       }),
     });
     const data = await res.json();
@@ -224,9 +200,15 @@ export default function BrowsePage() {
   const FT     = FILTER_T[locale] || FILTER_T.en;
   const isRTL  = locale === "ar";
   const isSignedIn = !!user && (!isBusiness || isAdmin);
-
-  // Get live categories from current listings
   const liveCats = ["All", ...Array.from(new Set(listings.map(l => l.category).filter(Boolean)))];
+
+  function minsLeft(expires_at: string) {
+    const diff = new Date(expires_at).getTime() - Date.now();
+    if (diff <= 0) return null;
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return `${mins}m left`;
+    return `${Math.floor(mins / 60)}h ${mins % 60}m left`;
+  }
 
   const inp: React.CSSProperties = {
     width: "100%", padding: "11px 14px", borderRadius: "8px",
@@ -237,19 +219,9 @@ export default function BrowsePage() {
     display: "block", fontSize: "13px", fontWeight: 600, color: "#374151", marginBottom: "5px",
   };
 
-  // Minutes until expiry
-  function minsLeft(expires_at: string) {
-    const diff = new Date(expires_at).getTime() - Date.now();
-    if (diff <= 0) return null;
-    const mins = Math.floor(diff / 60000);
-    if (mins < 60) return `${mins}m left`;
-    return `${Math.floor(mins / 60)}h ${mins % 60}m left`;
-  }
-
   return (
     <div dir={isRTL ? "rtl" : "ltr"} style={{ minHeight: "100vh", background: "#f9fafb", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
 
-      {/* NAV */}
       <nav style={{ background: "#0a2e1a", padding: "0 24px", height: "56px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 50 }}>
         <a href="/" style={{ display: "flex", alignItems: "center", gap: "8px", textDecoration: "none" }}>
           <img src="/gawa-logo-green.png" alt="GAWA Loop" style={{ width: "28px", height: "28px", objectFit: "contain" }}/>
@@ -287,16 +259,16 @@ export default function BrowsePage() {
             value={search} onChange={e => handleSearch(e.target.value)}/>
         </div>
 
-        {/* CATEGORY TABS — only show categories that exist in current listings */}
+        {/* CATEGORY TABS */}
         {!loading && listings.length > 0 && (
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "14px" }}>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "12px" }}>
             {liveCats.map(cat => (
               <button key={cat} onClick={() => handleCategory(cat)}
-                style={{ padding: "7px 16px", borderRadius: "20px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 700, transition: "all 0.15s",
+                style={{ padding: "7px 16px", borderRadius: "20px", cursor: "pointer", fontSize: "13px", fontWeight: 700, transition: "all 0.15s",
                   background: activeCategory === cat ? "#0a2e1a" : "#fff",
                   color: activeCategory === cat ? "#4ade80" : "#374151",
-                  boxShadow: activeCategory === cat ? "none" : "0 1px 3px rgba(0,0,0,0.08)",
                   border: activeCategory === cat ? "none" : "1px solid #e5e7eb",
+                  boxShadow: activeCategory === cat ? "none" : "0 1px 3px rgba(0,0,0,0.06)",
                 }}>
                 {cat === "All" ? FT.all : cat}
               </button>
@@ -310,7 +282,7 @@ export default function BrowsePage() {
             <span style={{ fontSize: "13px", color: "#6b7280", fontWeight: 600 }}>{FT.sort_label}:</span>
             {SORT_OPTIONS.map(opt => (
               <button key={opt} onClick={() => handleSort(opt)}
-                style={{ padding: "5px 14px", borderRadius: "20px", border: "none", cursor: "pointer", fontSize: "12px", fontWeight: 700, transition: "all 0.15s",
+                style={{ padding: "5px 14px", borderRadius: "20px", border: "none", cursor: "pointer", fontSize: "12px", fontWeight: 700,
                   background: sortBy === opt ? "#16a34a" : "#f3f4f6",
                   color: sortBy === opt ? "#fff" : "#374151",
                 }}>
@@ -334,15 +306,15 @@ export default function BrowsePage() {
             <p style={{ fontSize: "48px", margin: "0 0 16px" }}>🍽️</p>
             <p style={{ fontSize: "18px", fontWeight: 800, color: "#0a2e1a", margin: "0 0 8px" }}>
               {activeCategory !== "All"
-                ? (locale === "fr" ? `Aucune nourriture dans "${activeCategory}"` : locale === "es" ? `Sin comida en "${activeCategory}"` : locale === "pt" ? `Sem comida em "${activeCategory}"` : locale === "ar" ? `لا طعام في "${activeCategory}"` : `No food in "${activeCategory}"`)
+                ? `${locale === "fr" ? "Aucun résultat dans" : locale === "es" ? "Sin resultados en" : locale === "pt" ? "Sem resultados em" : locale === "ar" ? "لا نتائج في" : "No results in"} "${activeCategory}"`
                 : (locale === "fr" ? "Aucune nourriture disponible" : locale === "es" ? "Sin comida disponible" : locale === "pt" ? "Sem comida disponível" : locale === "ar" ? "لا طعام متاح الآن" : "No food available right now")}
             </p>
             <p style={{ fontSize: "14px", color: "#6b7280", margin: "0 0 20px", lineHeight: 1.6 }}>
-              {activeCategory !== "All"
-                ? <button onClick={() => handleCategory("All")} style={{ background: "none", border: "none", color: "#16a34a", fontWeight: 700, cursor: "pointer", fontSize: "14px", padding: 0 }}>
-                    {locale === "fr" ? "Voir toutes les catégories →" : locale === "es" ? "Ver todas las categorías →" : locale === "pt" ? "Ver todas as categorias →" : locale === "ar" ? "← عرض كل الفئات" : "View all categories →"}
-                  </button>
-                : (locale === "fr" ? "Les annonces se rafraîchissent toutes les 30 secondes." : locale === "es" ? "Los anuncios se actualizan cada 30 segundos." : locale === "pt" ? "Os anúncios atualizam a cada 30 segundos." : locale === "ar" ? "تتجدد الإعلانات كل 30 ثانية." : "Listings refresh automatically every 30 seconds.")}
+              {activeCategory !== "All" ? (
+                <button onClick={() => handleCategory("All")} style={{ background: "none", border: "none", color: "#16a34a", fontWeight: 700, cursor: "pointer", fontSize: "14px", padding: 0 }}>
+                  {locale === "fr" ? "Voir toutes les catégories →" : locale === "es" ? "Ver todas →" : locale === "pt" ? "Ver todas →" : locale === "ar" ? "← عرض الكل" : "View all categories →"}
+                </button>
+              ) : (locale === "fr" ? "Les annonces se rafraîchissent toutes les 30 secondes." : locale === "es" ? "Los anuncios se actualizan cada 30 segundos." : locale === "pt" ? "Anúncios atualizam a cada 30 segundos." : locale === "ar" ? "تتجدد الإعلانات كل 30 ثانية." : "Listings refresh automatically every 30 seconds.")}
             </p>
             {activeCategory === "All" && (
               <a href="/" style={{ background: "#16a34a", color: "#fff", padding: "10px 24px", borderRadius: "8px", textDecoration: "none", fontSize: "14px", fontWeight: 700 }}>← Back to Home</a>
@@ -351,8 +323,7 @@ export default function BrowsePage() {
         ) : filtered.map(listing => {
           const bizInfo = bizInfoMap[listing.business_name];
           const timeLeft = minsLeft(listing.expires_at);
-          const isUrgent = timeLeft && timeLeft.includes("m left") && parseInt(timeLeft) <= 30;
-
+          const isUrgent = timeLeft !== null && timeLeft.includes("m left") && parseInt(timeLeft) <= 30;
           return (
             <div key={listing.id} style={{ background: "#fff", borderRadius: "20px", border: `1px solid ${isUrgent ? "#fde68a" : "#e5e7eb"}`, overflow: "hidden", marginBottom: "20px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
 
@@ -429,7 +400,7 @@ export default function BrowsePage() {
                 ) : (
                   <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "12px", padding: "14px 16px", marginBottom: "16px", textAlign: "center" }}>
                     <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#374151", fontWeight: 600 }}>
-                      🔒 {locale === "fr" ? "Connectez-vous pour voir les détails et réserver" : locale === "es" ? "Inicia sesión para ver detalles y reservar" : locale === "pt" ? "Entre para ver detalhes e reservar" : locale === "ar" ? "سجّل للدخول لرؤية التفاصيل والحجز" : "Sign in to see details & claim this food"}
+                      🔒 {locale === "fr" ? "Connectez-vous pour voir les détails et réserver" : locale === "es" ? "Inicia sesión para ver detalles y reservar" : locale === "pt" ? "Entre para ver detalhes e reservar" : locale === "ar" ? "سجّل للدخول لرؤية التفاصيل والحجز" : "Sign in to see the restaurant details & claim this food"}
                     </p>
                     <button onClick={() => { setSigninModal(true); setSigninError(""); setSigninDone(false); }}
                       style={{ background: "#16a34a", color: "#fff", padding: "8px 20px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 700 }}>
@@ -441,7 +412,7 @@ export default function BrowsePage() {
                 {isSignedIn && !isAdmin && (
                   <button onClick={() => openClaim(listing.id)}
                     style={{ width: "100%", background: "#16a34a", color: "#fff", border: "none", padding: "14px", borderRadius: "10px", cursor: "pointer", fontSize: "15px", fontWeight: 800 }}>
-                    {locale === "fr" ? "Réserver — C'est gratuit" : locale === "es" ? "Reservar — Es gratis" : locale === "pt" ? "Reservar — É grátis" : locale === "ar" ? "احجز الآن — مجاناً" : "Reserve Now — It's Free"}
+                    {locale === "fr" ? "Réserver — Gratuit" : locale === "es" ? "Reservar — Gratis" : locale === "pt" ? "Reservar — Grátis" : locale === "ar" ? "احجز الآن — مجاناً" : "Reserve Now — It's Free"}
                   </button>
                 )}
 
@@ -465,7 +436,7 @@ export default function BrowsePage() {
 
         {!loading && filtered.length > 0 && (
           <p style={{ textAlign: "center", fontSize: "13px", color: "#9ca3af", marginTop: "8px", marginBottom: "24px" }}>
-            {locale === "fr" ? "Les annonces se rafraîchissent toutes les 30 secondes — Toute la nourriture est gratuite" : locale === "es" ? "Los anuncios se actualizan cada 30 segundos — Toda la comida es gratis" : locale === "pt" ? "Anúncios atualizam a cada 30 segundos — Toda comida é grátis" : locale === "ar" ? "تتجدد الإعلانات كل 30 ثانية — كل الطعام مجاني" : "Listings refresh every 30 seconds — All food is free"}
+            {locale === "fr" ? "Actualisation toutes les 30s — Tout est gratuit" : locale === "es" ? "Actualización cada 30s — Todo gratis" : locale === "pt" ? "Atualiza a cada 30s — Tudo grátis" : locale === "ar" ? "تحديث كل 30 ثانية — كل الطعام مجاني" : "Listings refresh every 30 seconds — All food is free"}
           </p>
         )}
       </div>
@@ -481,19 +452,19 @@ export default function BrowsePage() {
                   {locale === "fr" ? "Vérifiez votre email !" : locale === "es" ? "¡Revisa tu email!" : locale === "pt" ? "Verifique seu email!" : locale === "ar" ? "تحقق من بريدك!" : "Check your email!"}
                 </h2>
                 <p style={{ margin: "0 0 16px", fontSize: "15px", color: "#374151", lineHeight: 1.6 }}>
-                  {locale === "fr" ? "Nous avons envoyé un lien à" : locale === "es" ? "Enviamos un enlace a" : locale === "pt" ? "Enviamos um link para" : locale === "ar" ? "أرسلنا رابطاً إلى" : "We sent a confirmation link to"} <b>{signinEmail}</b>
+                  {locale === "fr" ? "Lien envoyé à" : locale === "es" ? "Enlace enviado a" : locale === "pt" ? "Link enviado para" : locale === "ar" ? "أرسلنا رابطاً إلى" : "We sent a confirmation link to"} <b>{signinEmail}</b>
                 </p>
                 <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "12px", padding: "16px", marginBottom: "20px", textAlign: "left" }}>
-                  <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#374151" }}>1. {locale === "fr" ? "Ouvrez votre boîte mail" : locale === "es" ? "Abre tu bandeja de entrada" : locale === "pt" ? "Abra sua caixa de entrada" : locale === "ar" ? "افتح صندوق بريدك" : "Open your email inbox"}</p>
-                  <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#374151" }}>2. {locale === "fr" ? "Cliquez sur le lien de confirmation" : locale === "es" ? "Haz clic en el enlace de confirmación" : locale === "pt" ? "Clique no link de confirmação" : locale === "ar" ? "انقر على رابط التأكيد" : "Click the confirmation link"}</p>
-                  <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>3. {locale === "fr" ? "Vous serez connecté automatiquement" : locale === "es" ? "Serás conectado automáticamente" : locale === "pt" ? "Você será conectado automaticamente" : locale === "ar" ? "ستُوقّع دخولك تلقائياً" : "You'll be signed in automatically"}</p>
+                  <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#374151" }}>1. {locale === "fr" ? "Ouvrez votre boîte mail" : locale === "es" ? "Abre tu bandeja" : locale === "pt" ? "Abra sua caixa" : locale === "ar" ? "افتح بريدك" : "Open your email inbox"}</p>
+                  <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#374151" }}>2. {locale === "fr" ? "Cliquez sur le lien de confirmation" : locale === "es" ? "Haz clic en el enlace" : locale === "pt" ? "Clique no link" : locale === "ar" ? "انقر على الرابط" : "Click the confirmation link"}</p>
+                  <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>3. {locale === "fr" ? "Vous serez connecté automatiquement" : locale === "es" ? "Serás conectado automáticamente" : locale === "pt" ? "Você será conectado" : locale === "ar" ? "ستُوقّع دخولك تلقائياً" : "You'll be signed in automatically"}</p>
                 </div>
                 <p style={{ margin: "0 0 16px", fontSize: "12px", color: "#9ca3af" }}>
-                  {locale === "fr" ? "Vous ne le voyez pas ? Vérifiez vos spams." : locale === "es" ? "¿No lo ves? Revisa spam." : locale === "pt" ? "Não viu? Verifique o spam." : locale === "ar" ? "لا تجده? تحقق من البريد المزعج." : "Don't see it? Check your spam folder."}
+                  {locale === "fr" ? "Vérifiez vos spams si absent." : locale === "es" ? "¿No lo ves? Revisa spam." : locale === "pt" ? "Não viu? Verifique spam." : locale === "ar" ? "تحقق من البريد المزعج." : "Don't see it? Check your spam folder."}
                 </p>
                 <button onClick={() => { setSigninModal(false); setSigninDone(false); }}
                   style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "10px 24px", borderRadius: "8px", cursor: "pointer", fontSize: "14px", fontWeight: 600 }}>
-                  {locale === "fr" ? "OK, compris" : locale === "es" ? "OK, entendido" : locale === "pt" ? "OK, entendi" : locale === "ar" ? "حسناً، فهمت" : "OK, got it"}
+                  {locale === "fr" ? "OK, compris" : locale === "es" ? "OK, entendido" : locale === "pt" ? "OK, entendi" : locale === "ar" ? "حسناً" : "OK, got it"}
                 </button>
               </div>
             ) : (
@@ -563,7 +534,7 @@ export default function BrowsePage() {
                   {locale === "fr" ? "Réservation confirmée !" : locale === "es" ? "¡Reserva confirmada!" : locale === "pt" ? "Reserva confirmada!" : locale === "ar" ? "تم تأكيد الحجز!" : "Reservation Confirmed!"}
                 </h2>
                 <p style={{ margin: "0 0 16px", color: "#6b7280", fontSize: "14px" }}>
-                  {locale === "fr" ? "Votre code de retrait :" : locale === "es" ? "Tu código de recogida:" : locale === "pt" ? "Seu código de retirada:" : locale === "ar" ? "رمز الاستلام:" : "Your pickup code:"}
+                  {locale === "fr" ? "Votre code de retrait :" : locale === "es" ? "Tu código:" : locale === "pt" ? "Seu código:" : locale === "ar" ? "رمز الاستلام:" : "Your pickup code:"}
                 </p>
                 <div style={{ background: "#f0fdf4", border: "2px solid #16a34a", borderRadius: "12px", padding: "20px", marginBottom: "16px" }}>
                   <p style={{ margin: 0, fontSize: "48px", fontWeight: 900, letterSpacing: "8px", color: "#0a2e1a", fontFamily: "monospace" }}>{lastCode}</p>
@@ -594,7 +565,7 @@ export default function BrowsePage() {
                     <label style={lbl}>{locale === "fr" ? "Votre prénom *" : locale === "es" ? "Tu nombre *" : locale === "pt" ? "Seu nome *" : locale === "ar" ? "اسمك الأول *" : "Your First Name *"}</label>
                     <input style={inp} required value={claimForm.first_name}
                       onChange={e => setClaimForm(f => ({ ...f, first_name: e.target.value }))}
-                      placeholder={locale === "fr" ? "Votre prénom" : locale === "es" ? "Tu nombre" : locale === "pt" ? "Seu nome" : locale === "ar" ? "اسمك الأول" : "Your first name"}/>
+                      placeholder={locale === "fr" ? "Votre prénom" : locale === "es" ? "Tu nombre" : locale === "pt" ? "Seu nome" : locale === "ar" ? "اسمك" : "Your first name"}/>
                   </div>
                   <div style={{ marginBottom: "14px" }}>
                     <label style={lbl}>Email *</label>
@@ -602,7 +573,7 @@ export default function BrowsePage() {
                       onChange={e => setClaimForm(f => ({ ...f, email: e.target.value }))}/>
                   </div>
                   <div style={{ marginBottom: "14px" }}>
-                    <label style={lbl}>{locale === "fr" ? "Numéro de téléphone *" : locale === "es" ? "Número de teléfono *" : locale === "pt" ? "Número de telefone *" : locale === "ar" ? "رقم الهاتف *" : "Phone Number *"}</label>
+                    <label style={lbl}>{locale === "fr" ? "Téléphone *" : locale === "es" ? "Teléfono *" : locale === "pt" ? "Telefone *" : locale === "ar" ? "الهاتف *" : "Phone Number *"}</label>
                     <input style={inp} type="tel" required value={claimForm.phone}
                       onChange={e => setClaimForm(f => ({ ...f, phone: e.target.value }))} placeholder="e.g. 3478015325"/>
                   </div>
@@ -610,17 +581,17 @@ export default function BrowsePage() {
                     <label style={lbl}>{locale === "fr" ? "Heure d'arrivée" : locale === "es" ? "Hora de llegada" : locale === "pt" ? "Horário de chegada" : locale === "ar" ? "وقت الوصول" : "Your Arrival Time"}</label>
                     <select style={{ ...inp, cursor: "pointer" }} value={claimForm.eta_minutes}
                       onChange={e => setClaimForm(f => ({ ...f, eta_minutes: Number(e.target.value) }))}>
-                      <option value={10}>10 {locale === "fr" ? "minutes" : locale === "ar" ? "دقائق" : "minutes"}</option>
-                      <option value={15}>15 {locale === "fr" ? "minutes" : locale === "ar" ? "دقائق" : "minutes"}</option>
-                      <option value={20}>20 {locale === "fr" ? "minutes" : locale === "ar" ? "دقائق" : "minutes"}</option>
-                      <option value={30}>30 {locale === "fr" ? "minutes" : locale === "ar" ? "دقائق" : "minutes"}</option>
-                      <option value={45}>45 {locale === "fr" ? "minutes" : locale === "ar" ? "دقائق" : "minutes"}</option>
+                      <option value={10}>10 {locale === "ar" ? "دقائق" : "minutes"}</option>
+                      <option value={15}>15 {locale === "ar" ? "دقائق" : "minutes"}</option>
+                      <option value={20}>20 {locale === "ar" ? "دقائق" : "minutes"}</option>
+                      <option value={30}>30 {locale === "ar" ? "دقائق" : "minutes"}</option>
+                      <option value={45}>45 {locale === "ar" ? "دقائق" : "minutes"}</option>
                       <option value={60}>1 {locale === "fr" ? "heure" : locale === "es" ? "hora" : locale === "pt" ? "hora" : locale === "ar" ? "ساعة" : "hour"}</option>
                     </select>
                   </div>
                   <button type="submit" disabled={claimLoading}
                     style={{ width: "100%", background: claimLoading ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "14px", borderRadius: "10px", cursor: claimLoading ? "not-allowed" : "pointer", fontSize: "15px", fontWeight: 800 }}>
-                    {claimLoading ? "..." : (locale === "fr" ? "Réserver — C'est gratuit" : locale === "es" ? "Reservar — Es gratis" : locale === "pt" ? "Reservar — É grátis" : locale === "ar" ? "احجز الآن — مجاناً" : "Reserve Now — It's Free")}
+                    {claimLoading ? "..." : (locale === "fr" ? "Réserver — Gratuit" : locale === "es" ? "Reservar — Gratis" : locale === "pt" ? "Reservar — Grátis" : locale === "ar" ? "احجز — مجاناً" : "Reserve Now — It's Free")}
                   </button>
                 </form>
               </>
