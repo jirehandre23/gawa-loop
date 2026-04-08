@@ -39,6 +39,7 @@ export default function BrowsePage() {
   const [loading, setLoading]           = useState(true);
   const [user, setUser]                 = useState<any>(null);
   const [isBusiness, setIsBusiness]     = useState(false);
+  const [isNgo, setIsNgo]               = useState(false);
   const [isAdmin, setIsAdmin]           = useState(false);
   const [bizInfoMap, setBizInfoMap]     = useState<Record<string, BizInfo>>({});
   const [selectedId, setSelectedId]     = useState<string | null>(null);
@@ -54,6 +55,7 @@ export default function BrowsePage() {
   const [signinError, setSigninError]       = useState("");
   const [signinMode, setSigninMode]         = useState<"signin" | "signup">("signin");
   const [signinDone, setSigninDone]         = useState(false);
+  const [termsAccepted, setTermsAccepted]   = useState(false);
   const intervalRef                     = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => { setLocale(detectLocale()); }, []);
@@ -67,16 +69,23 @@ export default function BrowsePage() {
         if (u.email === ADMIN_EMAIL) {
           setIsAdmin(true);
           setIsBusiness(false);
+          setIsNgo(false);
         } else {
           const { data: biz } = await supabase
-            .from("businesses").select("id").eq("email", u.email).single();
-          setIsBusiness(!!biz);
-          if (biz) setSigninModal(false);
+            .from("businesses").select("id, account_type").eq("email", u.email).single();
+          if (biz) {
+            setIsBusiness(true);
+            setIsNgo(biz.account_type === "ngo");
+          } else {
+            setIsBusiness(false);
+            setIsNgo(false);
+          }
         }
         setSigninModal(false);
         setSigninDone(false);
       } else {
         setIsBusiness(false);
+        setIsNgo(false);
         setIsAdmin(false);
         setClaimForm(f => ({ ...f, email: "" }));
       }
@@ -126,8 +135,9 @@ export default function BrowsePage() {
   }, []);
 
   useEffect(() => {
-    if (user && !isBusiness && listings.length > 0) fetchBizInfo(listings);
-  }, [user, isBusiness, listings]);
+    // Show biz info for signed-in customers, NGOs, and admin
+    if (user && (!isBusiness || isNgo || isAdmin) && listings.length > 0) fetchBizInfo(listings);
+  }, [user, isBusiness, isNgo, isAdmin, listings]);
 
   function applyFilters(all: Listing[], q: string, cat: string, sort: string) {
     let result = [...all];
@@ -174,7 +184,7 @@ export default function BrowsePage() {
 
   async function handleClaim(e: React.FormEvent) {
     e.preventDefault();
-    if (!selectedId || isBusiness) return;
+    if (!selectedId || (isBusiness && !isNgo)) return;
     setClaimLoading(true); setClaimMsg("");
     const res = await fetch("/api/claim-submit", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -199,7 +209,9 @@ export default function BrowsePage() {
   const T      = t[locale];
   const FT     = FILTER_T[locale] || FILTER_T.en;
   const isRTL  = locale === "ar";
-  const isSignedIn = !!user && (!isBusiness || isAdmin);
+  // NGOs and regular customers can claim; pure restaurants cannot
+  const canClaim = !!user && (!isBusiness || isNgo || isAdmin);
+  const isSignedIn = canClaim;
   const liveCats = ["All", ...Array.from(new Set(listings.map(l => l.category).filter(Boolean)))];
 
   function minsLeft(expires_at: string) {
@@ -235,7 +247,7 @@ export default function BrowsePage() {
               {isAdmin ? "🔑 Admin" : isBusiness ? "Dashboard" : "My Profile"}
             </a>
           ) : (
-            <button onClick={() => { setSigninModal(true); setSigninError(""); setSigninDone(false); }}
+            <button onClick={() => { setSigninModal(true); setSigninError(""); setSigninDone(false); setTermsAccepted(false); }}
               style={{ background: "rgba(255,255,255,0.1)", color: "#fff", padding: "7px 14px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 600 }}>
               Sign In
             </button>
@@ -402,13 +414,14 @@ export default function BrowsePage() {
                     <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#374151", fontWeight: 600 }}>
                       🔒 {locale === "fr" ? "Connectez-vous pour voir les détails et réserver" : locale === "es" ? "Inicia sesión para ver detalles y reservar" : locale === "pt" ? "Entre para ver detalhes e reservar" : locale === "ar" ? "سجّل للدخول لرؤية التفاصيل والحجز" : "Sign in to see the restaurant details & claim this food"}
                     </p>
-                    <button onClick={() => { setSigninModal(true); setSigninError(""); setSigninDone(false); }}
+                    <button onClick={() => { setSigninModal(true); setSigninError(""); setSigninDone(false); setTermsAccepted(false); }}
                       style={{ background: "#16a34a", color: "#fff", padding: "8px 20px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 700 }}>
                       {locale === "fr" ? "Se connecter — Gratuit" : locale === "es" ? "Iniciar sesión — Gratis" : locale === "pt" ? "Entrar — Grátis" : locale === "ar" ? "تسجيل الدخول — مجاني" : "Sign In — It's Free"}
                     </button>
                   </div>
                 )}
 
+                {/* Reserve button: customers, NGOs, but NOT admin and NOT pure restaurants */}
                 {isSignedIn && !isAdmin && (
                   <button onClick={() => openClaim(listing.id)}
                     style={{ width: "100%", background: "#16a34a", color: "#fff", border: "none", padding: "14px", borderRadius: "10px", cursor: "pointer", fontSize: "15px", fontWeight: 800 }}>
@@ -422,7 +435,8 @@ export default function BrowsePage() {
                   </div>
                 )}
 
-                {isBusiness && !isAdmin && (
+                {/* Pure restaurant accounts cannot claim */}
+                {isBusiness && !isNgo && !isAdmin && (
                   <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
                     <p style={{ margin: 0, fontSize: "13px", color: "#6b7280" }}>
                       {locale === "fr" ? "Les comptes professionnels ne peuvent pas réserver." : locale === "es" ? "Las cuentas de negocios no pueden reservar." : locale === "pt" ? "Contas empresariais não podem reservar." : locale === "ar" ? "حسابات الأعمال لا يمكنها الحجز." : "Business accounts cannot claim food."}
@@ -488,13 +502,35 @@ export default function BrowsePage() {
                     <input style={inp} type="email" required value={signinEmail}
                       onChange={e => setSigninEmail(e.target.value)} placeholder="you@email.com"/>
                   </div>
-                  <div style={{ marginBottom: "20px" }}>
+                  <div style={{ marginBottom: signinMode === "signup" ? "16px" : "20px" }}>
                     <label style={lbl}>{locale === "fr" ? "Mot de passe *" : locale === "es" ? "Contraseña *" : locale === "pt" ? "Senha *" : locale === "ar" ? "كلمة المرور *" : "Password *"}</label>
                     <input style={inp} type="password" required value={signinPassword}
                       onChange={e => setSigninPassword(e.target.value)} placeholder="••••••••" minLength={6}/>
                   </div>
-                  <button type="submit" disabled={signinLoading}
-                    style={{ width: "100%", background: signinLoading ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "13px", borderRadius: "10px", cursor: signinLoading ? "not-allowed" : "pointer", fontSize: "15px", fontWeight: 700, marginBottom: "14px" }}>
+
+                  {/* TERMS CHECKBOX — only shown on signup */}
+                  {signinMode === "signup" && (
+                    <label style={{ display: "flex", gap: "10px", alignItems: "flex-start", marginBottom: "16px", cursor: "pointer" }}
+                      onClick={() => setTermsAccepted(v => !v)}>
+                      <div style={{ width: "20px", height: "20px", borderRadius: "5px", border: `2px solid ${termsAccepted ? "#16a34a" : "#d1d5db"}`, background: termsAccepted ? "#16a34a" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: "1px", transition: "all 0.15s" }}>
+                        {termsAccepted && <span style={{ color: "#fff", fontSize: "12px", fontWeight: 900 }}>✓</span>}
+                      </div>
+                      <p style={{ margin: 0, fontSize: "13px", color: "#374151", lineHeight: 1.5 }}>
+                        {locale === "fr" ? "J'accepte les " : locale === "es" ? "Acepto los " : locale === "pt" ? "Aceito os " : locale === "ar" ? "أوافق على " : "I agree to the "}
+                        <a href="/terms" target="_blank" onClick={e => e.stopPropagation()} style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>
+                          {locale === "fr" ? "Conditions d'utilisation" : locale === "es" ? "Términos de uso" : locale === "pt" ? "Termos de uso" : locale === "ar" ? "شروط الاستخدام" : "Terms of Use"}
+                        </a>
+                        {" "}{locale === "fr" ? "et la " : locale === "es" ? "y la " : locale === "pt" ? "e a " : locale === "ar" ? "و" : "and "}
+                        <a href="/privacy" target="_blank" onClick={e => e.stopPropagation()} style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>
+                          {locale === "fr" ? "Politique de confidentialité" : locale === "es" ? "Política de privacidad" : locale === "pt" ? "Política de privacidade" : locale === "ar" ? "سياسة الخصوصية" : "Privacy Policy"}
+                        </a>
+                        {" *"}
+                      </p>
+                    </label>
+                  )}
+
+                  <button type="submit" disabled={signinLoading || (signinMode === "signup" && !termsAccepted)}
+                    style={{ width: "100%", background: (signinLoading || (signinMode === "signup" && !termsAccepted)) ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "13px", borderRadius: "10px", cursor: (signinLoading || (signinMode === "signup" && !termsAccepted)) ? "not-allowed" : "pointer", fontSize: "15px", fontWeight: 700, marginBottom: "14px" }}>
                     {signinLoading ? "..." : signinMode === "signin"
                       ? (locale === "fr" ? "Se connecter" : locale === "es" ? "Iniciar sesión" : locale === "pt" ? "Entrar" : locale === "ar" ? "دخول" : "Sign In")
                       : (locale === "fr" ? "Créer le compte" : locale === "es" ? "Crear cuenta" : locale === "pt" ? "Criar conta" : locale === "ar" ? "إنشاء حساب" : "Create Account")}
@@ -503,7 +539,7 @@ export default function BrowsePage() {
                     {signinMode === "signin"
                       ? (locale === "fr" ? "Pas de compte ?" : locale === "es" ? "¿Sin cuenta?" : locale === "pt" ? "Sem conta?" : locale === "ar" ? "ليس لديك حساب؟" : "No account?")
                       : (locale === "fr" ? "Déjà un compte ?" : locale === "es" ? "¿Ya tienes cuenta?" : locale === "pt" ? "Já tem conta?" : locale === "ar" ? "لديك حساب؟" : "Already have one?")}{" "}
-                    <button type="button" onClick={() => { setSigninMode(signinMode === "signin" ? "signup" : "signin"); setSigninError(""); }}
+                    <button type="button" onClick={() => { setSigninMode(signinMode === "signin" ? "signup" : "signin"); setSigninError(""); setTermsAccepted(false); }}
                       style={{ background: "none", border: "none", color: "#16a34a", fontWeight: 700, cursor: "pointer", fontSize: "13px", padding: 0 }}>
                       {signinMode === "signin"
                         ? (locale === "fr" ? "Créer un compte" : locale === "es" ? "Crear cuenta" : locale === "pt" ? "Criar conta" : locale === "ar" ? "إنشاء حساب" : "Create one free")
