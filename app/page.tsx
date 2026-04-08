@@ -16,7 +16,6 @@ export default function HomePage() {
   const [locale, setLocaleState]      = useState<Locale>("en");
   const [langOpen, setLangOpen]       = useState(false);
   const [openFaq, setOpenFaq]         = useState<number | null>(null);
-  // CHANGED: co2_saved_kg → co2_saved_lbs
   const [liveStats, setLiveStats]     = useState({ total_pickups: 0, co2_saved_lbs: 0 });
   const [statsLoaded, setStatsLoaded] = useState(false);
   const [user, setUser]               = useState<any>(null);
@@ -136,7 +135,6 @@ export default function HomePage() {
       <main dir={isRTL ? "rtl" : "ltr"} className="min-h-screen bg-white text-slate-900"
         style={{ fontFamily: isRTL ? "'Noto Sans Arabic', sans-serif" : undefined }}>
 
-        {/* NAV */}
         <nav className="sticky top-0 z-50 border-b border-slate-100 bg-white/95 backdrop-blur-sm">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
             <a href="/" className="flex items-center gap-3">
@@ -175,7 +173,6 @@ export default function HomePage() {
           </div>
         </nav>
 
-        {/* VIDEO HERO */}
         <section style={{ position:"relative", width:"100%", height:"480px", overflow:"hidden" }}>
           <video autoPlay muted loop playsInline
             style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }}>
@@ -211,7 +208,6 @@ export default function HomePage() {
           <style>{`@keyframes pulse { 0%,100%{opacity:1;}50%{opacity:0.4;} }`}</style>
         </section>
 
-        {/* TRUST BAR */}
         <section style={{ borderBottom:"1px solid #e5e7eb", background:"#fff" }}>
           <div style={{ maxWidth:"900px", margin:"0 auto", padding:"18px 24px", display:"flex", flexWrap:"wrap", justifyContent:"center", gap:"32px" }}>
             {[
@@ -227,7 +223,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* PHOTO GRID */}
         <section style={{ padding:0 }}>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gridTemplateRows:"220px 220px", gap:"3px" }}>
             <div style={{ gridColumn:"1/3", overflow:"hidden" }}>
@@ -254,7 +249,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* HOW IT WORKS */}
         <section className="mx-auto max-w-6xl px-6 py-20">
           <div className="mb-4 text-center text-sm font-semibold uppercase tracking-widest text-green-500">
             {locale==="ar"?"للباحثين عن طعام":locale==="fr"?"Pour les chercheurs de nourriture":locale==="es"?"Para buscadores de comida":locale==="pt"?"Para quem procura comida":"For food seekers"}
@@ -287,7 +281,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* LIVE IMPACT COUNTER */}
         <section style={{ background:"#0a2e1a", padding:"72px 24px" }}>
           <div style={{ maxWidth:"820px", margin:"0 auto", textAlign:"center" }}>
             <p style={{ margin:"0 0 8px", fontSize:"13px", fontWeight:700, color:"#4ade80", textTransform:"uppercase", letterSpacing:"0.8px" }}>
@@ -308,7 +301,6 @@ export default function HomePage() {
                   🤲 {locale==="ar"?"وجبات مجانية محجوزة":locale==="fr"?"Repas offerts":locale==="es"?"Comidas reclamadas":locale==="pt"?"Refeições resgatadas":"Free meals claimed"}
                 </p>
               </div>
-              <!-- CHANGED: co2_saved_kg → co2_saved_lbs, label updated in all languages -->
               <div style={{ background:"rgba(255,255,255,0.08)", borderRadius:"20px", padding:"36px 24px" }}>
                 <p style={{ margin:"0 0 8px", fontSize:"56px", fontWeight:900, color:"#4ade80", lineHeight:1 }}>
                   {statsLoaded ? liveStats.co2_saved_lbs.toLocaleString() : "—"}
@@ -321,7 +313,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* FOR BUSINESSES */}
         <section className="bg-slate-900 text-white">
           <div className="mx-auto max-w-6xl px-6 py-20">
             <div className="grid items-center gap-12 md:grid-cols-2">
@@ -359,7 +350,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* WHY GAWA LOOP */}
         <section className="mx-auto max-w-6xl px-6 py-20">
           <h2 className="mb-4 text-center text-4xl font-extrabold text-slate-900">
             {locale==="ar"?"لماذا GAWA Loop؟":locale==="fr"?"Pourquoi GAWA Loop ?":locale==="es"?"¿Por qué GAWA Loop?":locale==="pt"?"Por que GAWA Loop?":"Why GAWA Loop?"}
@@ -391,7 +381,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* FAQ ACCORDION */}
         <section style={{ background:"#f8fafc", padding:"80px 24px" }}>
           <div style={{ maxWidth:"720px", margin:"0 auto" }}>
             <h2 style={{ margin:"0 0 8px", fontSize:"36px", fontWeight:800, color:"#0f172a", textAlign:"center" }}>
@@ -419,7 +408,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* CUSTOMER SIGN-IN */}
         <section style={{ background:"#f0fdf4", padding:"80px 24px", borderTop:"1px solid #bbf7d0" }}>
           <div style={{ maxWidth:"480px", margin:"0 auto" }}>
             <p style={{ margin:"0 0 8px", fontSize:"13px", fontWeight:700, color:"#16a34a", textTransform:"uppercase", letterSpacing:"0.8px", textAlign:"center" }}>
@@ -497,7 +485,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* CONTACT US */}
         <section style={{ background:"#fff", padding:"80px 24px", borderTop:"1px solid #e5e7eb" }}>
           <div style={{ maxWidth:"560px", margin:"0 auto" }}>
             <p style={{ margin:"0 0 8px", fontSize:"13px", fontWeight:700, color:"#16a34a", textTransform:"uppercase", letterSpacing:"0.8px", textAlign:"center" }}>
@@ -561,7 +548,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* CTA */}
         <section className="bg-gradient-to-br from-green-500 to-emerald-600">
           <div className="mx-auto max-w-4xl px-6 py-20 text-center">
             <div className="mb-8 flex justify-center">
@@ -582,7 +568,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* FOOTER */}
         <footer className="border-t border-slate-100 bg-white">
           <div className="mx-auto max-w-6xl px-6 py-10">
             <div className="flex flex-col items-center justify-between gap-6 md:flex-row">
