@@ -38,6 +38,8 @@ export default function BrowsePage() {
   const [signinLoading, setSigninLoading]   = useState(false);
   const [signinError, setSigninError]       = useState("");
   const [signinMode, setSigninMode]         = useState<"signin" | "signup">("signin");
+  // NEW: shows "check your email" screen after signup
+  const [signinDone, setSigninDone]         = useState(false);
   const intervalRef                     = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => { setLocale(detectLocale()); }, []);
@@ -52,6 +54,9 @@ export default function BrowsePage() {
           .from("businesses").select("id").eq("email", u.email).single();
         setIsBusiness(!!biz);
         if (biz) setSigninModal(false);
+        // Auto-close modal once confirmed and signed in
+        setSigninModal(false);
+        setSigninDone(false);
       } else {
         setIsBusiness(false);
         setClaimForm(f => ({ ...f, email: "" }));
@@ -84,9 +89,7 @@ export default function BrowsePage() {
   }
 
   useEffect(() => {
-    (async () => {
-      await fetchListings();
-    })();
+    (async () => { await fetchListings(); })();
     intervalRef.current = setInterval(fetchListings, 30000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
@@ -111,21 +114,34 @@ export default function BrowsePage() {
   async function handleSignin(e: React.FormEvent) {
     e.preventDefault();
     setSigninLoading(true); setSigninError("");
+
     if (signinMode === "signin") {
       const { error } = await supabase.auth.signInWithPassword({
         email: signinEmail.trim().toLowerCase(),
         password: signinPassword,
       });
-      if (error) { setSigninError("Invalid email or password."); setSigninLoading(false); return; }
+      if (error) {
+        setSigninError("Invalid email or password.");
+        setSigninLoading(false);
+        return;
+      }
+      // onAuthStateChange will fire and close the modal automatically
+
     } else {
+      // SIGNUP — show clear "check your email" screen after submitting
       const { error } = await supabase.auth.signUp({
         email: signinEmail.trim().toLowerCase(),
         password: signinPassword,
         options: { emailRedirectTo: "https://gawaloop.com/browse" },
       });
-      if (error) { setSigninError(error.message); setSigninLoading(false); return; }
+      if (error) {
+        setSigninError(error.message);
+        setSigninLoading(false);
+        return;
+      }
+      // Don't close modal — show confirmation screen instead
+      setSigninDone(true);
     }
-    setSigninModal(false);
     setSigninLoading(false);
   }
 
@@ -147,7 +163,6 @@ export default function BrowsePage() {
     const data = await res.json();
     if (data.success) {
       setClaimSuccess(true);
-      // CHANGED: try all possible field names the API might return the code under
       setLastCode(data.confirmation_code || data.code || data.claim?.confirmation_code || "");
       setListings(prev => prev.filter(l => l.id !== selectedId));
       setFiltered(prev => prev.filter(l => l.id !== selectedId));
@@ -187,7 +202,7 @@ export default function BrowsePage() {
               {isBusiness ? "Dashboard" : "My Profile"}
             </a>
           ) : (
-            <button onClick={() => { setSigninModal(true); setSigninError(""); }}
+            <button onClick={() => { setSigninModal(true); setSigninError(""); setSigninDone(false); }}
               style={{ background: "rgba(255,255,255,0.1)", color: "#fff", padding: "7px 14px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 600 }}>
               Sign In
             </button>
@@ -203,7 +218,6 @@ export default function BrowsePage() {
           {filtered.length} {filtered.length === 1 ? "item" : "items"} available now · refreshes every 30s
         </p>
 
-        {/* SEARCH */}
         <div style={{ position: "relative", marginBottom: "24px" }}>
           <span style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", fontSize: "16px" }}>🔍</span>
           <input style={{ ...inp, paddingLeft: "40px", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}
@@ -231,9 +245,7 @@ export default function BrowsePage() {
                     onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}/>
                 </div>
               ) : (
-                <div style={{ width: "100%", height: "100px", background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "40px" }}>
-                  🍽️
-                </div>
+                <div style={{ width: "100%", height: "100px", background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "40px" }}>🍽️</div>
               )}
 
               <div style={{ padding: "20px 24px" }}>
@@ -296,7 +308,7 @@ export default function BrowsePage() {
                     <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#374151", fontWeight: 600 }}>
                       🔒 Sign in to see the restaurant details & claim this food
                     </p>
-                    <button onClick={() => { setSigninModal(true); setSigninError(""); }}
+                    <button onClick={() => { setSigninModal(true); setSigninError(""); setSigninDone(false); }}
                       style={{ background: "#16a34a", color: "#fff", padding: "8px 20px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 700 }}>
                       Sign In — It's Free
                     </button>
@@ -332,43 +344,70 @@ export default function BrowsePage() {
       {signinModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "20px", padding: "32px", width: "100%", maxWidth: "420px", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
-              <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>
-                {signinMode === "signin" ? "Sign In" : "Create Account"}
-              </h2>
-              <button onClick={() => setSigninModal(false)} style={{ background: "none", border: "none", fontSize: "22px", cursor: "pointer", color: "#9ca3af" }}>✕</button>
-            </div>
-            <form onSubmit={handleSignin}>
-              {signinError && (
-                <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px", padding: "10px 14px", marginBottom: "16px" }}>
-                  <p style={{ margin: 0, color: "#991b1b", fontSize: "13px" }}>{signinError}</p>
+
+            {/* CHANGED: After signup show this screen instead of closing */}
+            {signinDone ? (
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: "52px", marginBottom: "16px" }}>📬</div>
+                <h2 style={{ margin: "0 0 10px", fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>Check your email!</h2>
+                <p style={{ margin: "0 0 16px", fontSize: "15px", color: "#374151", lineHeight: 1.6 }}>
+                  We sent a confirmation link to <b>{signinEmail}</b>
+                </p>
+                <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "12px", padding: "16px", marginBottom: "20px", textAlign: "left" }}>
+                  <p style={{ margin: "0 0 8px", fontSize: "14px", color: "#166534", fontWeight: 700 }}>What to do next:</p>
+                  <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#374151" }}>1. Open your email inbox</p>
+                  <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#374151" }}>2. Click the confirmation link in the email from GAWA Loop</p>
+                  <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>3. You'll be brought back here and signed in automatically</p>
                 </div>
-              )}
-              <div style={{ marginBottom: "14px" }}>
-                <label style={lbl}>Email *</label>
-                <input style={inp} type="email" required value={signinEmail}
-                  onChange={e => setSigninEmail(e.target.value)} placeholder="you@email.com"/>
-              </div>
-              <div style={{ marginBottom: "20px" }}>
-                <label style={lbl}>Password *</label>
-                <input style={inp} type="password" required value={signinPassword}
-                  onChange={e => setSigninPassword(e.target.value)} placeholder="••••••••" minLength={6}/>
-              </div>
-              <button type="submit" disabled={signinLoading}
-                style={{ width: "100%", background: signinLoading ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "13px", borderRadius: "10px", cursor: signinLoading ? "not-allowed" : "pointer", fontSize: "15px", fontWeight: 700, marginBottom: "14px" }}>
-                {signinLoading ? "..." : signinMode === "signin" ? "Sign In" : "Create Account"}
-              </button>
-              <p style={{ textAlign: "center", fontSize: "13px", color: "#6b7280", margin: 0 }}>
-                {signinMode === "signin" ? "No account?" : "Already have one?"}{" "}
-                <button type="button" onClick={() => { setSigninMode(signinMode === "signin" ? "signup" : "signin"); setSigninError(""); }}
-                  style={{ background: "none", border: "none", color: "#16a34a", fontWeight: 700, cursor: "pointer", fontSize: "13px", padding: 0 }}>
-                  {signinMode === "signin" ? "Create one free" : "Sign in"}
+                <p style={{ margin: "0 0 16px", fontSize: "12px", color: "#9ca3af" }}>
+                  Don't see it? Check your spam folder.
+                </p>
+                <button onClick={() => { setSigninModal(false); setSigninDone(false); }}
+                  style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "10px 24px", borderRadius: "8px", cursor: "pointer", fontSize: "14px", fontWeight: 600 }}>
+                  OK, got it
                 </button>
-              </p>
-            </form>
-            <p style={{ textAlign: "center", marginTop: "14px", fontSize: "12px", color: "#9ca3af" }}>
-              Business? <a href="/business/login" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>Business login →</a>
-            </p>
+              </div>
+            ) : (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
+                  <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>
+                    {signinMode === "signin" ? "Sign In" : "Create Account"}
+                  </h2>
+                  <button onClick={() => setSigninModal(false)} style={{ background: "none", border: "none", fontSize: "22px", cursor: "pointer", color: "#9ca3af" }}>✕</button>
+                </div>
+                <form onSubmit={handleSignin}>
+                  {signinError && (
+                    <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px", padding: "10px 14px", marginBottom: "16px" }}>
+                      <p style={{ margin: 0, color: "#991b1b", fontSize: "13px" }}>{signinError}</p>
+                    </div>
+                  )}
+                  <div style={{ marginBottom: "14px" }}>
+                    <label style={lbl}>Email *</label>
+                    <input style={inp} type="email" required value={signinEmail}
+                      onChange={e => setSigninEmail(e.target.value)} placeholder="you@email.com"/>
+                  </div>
+                  <div style={{ marginBottom: "20px" }}>
+                    <label style={lbl}>Password *</label>
+                    <input style={inp} type="password" required value={signinPassword}
+                      onChange={e => setSigninPassword(e.target.value)} placeholder="••••••••" minLength={6}/>
+                  </div>
+                  <button type="submit" disabled={signinLoading}
+                    style={{ width: "100%", background: signinLoading ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "13px", borderRadius: "10px", cursor: signinLoading ? "not-allowed" : "pointer", fontSize: "15px", fontWeight: 700, marginBottom: "14px" }}>
+                    {signinLoading ? "..." : signinMode === "signin" ? "Sign In" : "Create Account"}
+                  </button>
+                  <p style={{ textAlign: "center", fontSize: "13px", color: "#6b7280", margin: 0 }}>
+                    {signinMode === "signin" ? "No account?" : "Already have one?"}{" "}
+                    <button type="button" onClick={() => { setSigninMode(signinMode === "signin" ? "signup" : "signin"); setSigninError(""); }}
+                      style={{ background: "none", border: "none", color: "#16a34a", fontWeight: 700, cursor: "pointer", fontSize: "13px", padding: 0 }}>
+                      {signinMode === "signin" ? "Create one free" : "Sign in"}
+                    </button>
+                  </p>
+                </form>
+                <p style={{ textAlign: "center", marginTop: "14px", fontSize: "12px", color: "#9ca3af" }}>
+                  Business? <a href="/business/login" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>Business login →</a>
+                </p>
+              </>
+            )}
           </div>
         </div>
       )}
