@@ -37,16 +37,19 @@ export default function BrowsePage() {
   useEffect(() => { setLocale(detectLocale()); }, []);
 
   useEffect(() => {
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
-      if (user?.email) {
-        setClaimForm(f => ({ ...f, email: user.email! }));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const u = session?.user ?? null;
+      setUser(u);
+      if (u?.email) {
+        setClaimForm(f => ({ ...f, email: u.email! }));
         const { data: biz } = await supabase
-          .from("businesses").select("id").eq("email", user.email).single();
-        if (biz) setIsBusiness(true);
+          .from("businesses").select("id").eq("email", u.email).single();
+        setIsBusiness(!!biz);
+      } else {
+        setIsBusiness(false);
       }
-    })();
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
   async function fetchListings() {
@@ -153,7 +156,7 @@ export default function BrowsePage() {
               {isBusiness ? "Dashboard" : "My Profile"}
             </a>
           ) : (
-            <a href="/" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", padding: "7px 14px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 600 }}>
+            <a href="/?returnTo=/browse" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", padding: "7px 14px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 600 }}>
               Sign In
             </a>
           )}
@@ -268,7 +271,7 @@ export default function BrowsePage() {
                     <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#374151", fontWeight: 600 }}>
                       🔒 Sign in to see the restaurant details & claim this food
                     </p>
-                    <a href="/" style={{ background: "#16a34a", color: "#fff", padding: "8px 20px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 700, display: "inline-block" }}>
+                    <a href="/?returnTo=/browse" style={{ background: "#16a34a", color: "#fff", padding: "8px 20px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 700, display: "inline-block" }}>
                       Sign In — It's Free
                     </a>
                   </div>
