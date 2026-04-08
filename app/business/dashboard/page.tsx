@@ -521,7 +521,7 @@ export default function BusinessDashboard() {
             <p style={{ margin: "0 0 2px", fontSize: "20px", fontWeight: 800, color: "#fff" }}>{tree.label}</p>
             <p style={{ margin: 0, fontSize: "13px", color: "#a3c9b0" }}>
               {totalWeightLbs > 0
-                ? `${totalWeightLbs.toFixed(1)} lbs donated · ~${(totalWeightLbs * 0.233).toFixed(1)} lbs CO₂ saved`
+                ? `${totalWeightLbs.toFixed(1)} lbs donated · ~${(totalWeightLbs * 2.5).toFixed(1)} lbs CO₂e saved`
                 : "Start posting food to grow your impact"}
             </p>
           </div>
