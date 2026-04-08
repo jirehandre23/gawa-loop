@@ -25,6 +25,7 @@ export default function HomePage() {
   const [signinLoading, setSigninLoading]   = useState(false);
   const [signinError, setSigninError]       = useState("");
   const [signinMode, setSigninMode]         = useState<"signin" | "signup">("signin");
+  const [termsAccepted, setTermsAccepted]   = useState(false);
 
   const [contactName, setContactName]       = useState("");
   const [contactEmail, setContactEmail]     = useState("");
@@ -450,14 +451,36 @@ export default function HomePage() {
                     </label>
                     <input style={inp} type="email" required value={signinEmail} onChange={e => setSigninEmail(e.target.value)} placeholder="you@email.com" />
                   </div>
-                  <div style={{ marginBottom:"20px" }}>
+                  <div style={{ marginBottom: signinMode === "signup" ? "16px" : "20px" }}>
                     <label style={{ display:"block", fontSize:"13px", fontWeight:600, color:"#374151", marginBottom:"6px" }}>
                       {locale==="ar"?"كلمة المرور":locale==="fr"?"Mot de passe":locale==="es"?"Contraseña":locale==="pt"?"Senha":"Password"}
                     </label>
                     <input style={inp} type="password" required value={signinPassword} onChange={e => setSigninPassword(e.target.value)} placeholder="••••••••" minLength={6} />
                   </div>
-                  <button type="submit" disabled={signinLoading}
-                    style={{ width:"100%", background:signinLoading?"#9ca3af":"#16a34a", color:"#fff", border:"none", padding:"13px", borderRadius:"10px", cursor:signinLoading?"not-allowed":"pointer", fontSize:"15px", fontWeight:700, marginBottom:"16px" }}>
+
+                  {/* TERMS CHECKBOX — only shown on signup */}
+                  {signinMode === "signup" && (
+                    <label style={{ display:"flex", gap:"10px", alignItems:"flex-start", marginBottom:"16px", cursor:"pointer" }}
+                      onClick={() => setTermsAccepted(v => !v)}>
+                      <div style={{ width:"20px", height:"20px", borderRadius:"5px", border:`2px solid ${termsAccepted ? "#16a34a" : "#d1d5db"}`, background:termsAccepted ? "#16a34a" : "#fff", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:"1px", transition:"all 0.15s" }}>
+                        {termsAccepted && <span style={{ color:"#fff", fontSize:"12px", fontWeight:900 }}>✓</span>}
+                      </div>
+                      <p style={{ margin:0, fontSize:"13px", color:"#374151", lineHeight:1.5 }}>
+                        {locale==="fr"?"J'accepte les ":locale==="es"?"Acepto los ":locale==="pt"?"Aceito os ":locale==="ar"?"أوافق على ":"I agree to the "}
+                        <a href="/terms" target="_blank" onClick={e => e.stopPropagation()} style={{ color:"#16a34a", fontWeight:600, textDecoration:"none" }}>
+                          {locale==="fr"?"Conditions d'utilisation":locale==="es"?"Términos de uso":locale==="pt"?"Termos de uso":locale==="ar"?"شروط الاستخدام":"Terms of Use"}
+                        </a>
+                        {" "}{locale==="fr"?"et la ":locale==="es"?"y la ":locale==="pt"?"e a ":locale==="ar"?"و":"and "}
+                        <a href="/privacy" target="_blank" onClick={e => e.stopPropagation()} style={{ color:"#16a34a", fontWeight:600, textDecoration:"none" }}>
+                          {locale==="fr"?"Politique de confidentialité":locale==="es"?"Política de privacidad":locale==="pt"?"Política de privacidade":locale==="ar"?"سياسة الخصوصية":"Privacy Policy"}
+                        </a>
+                        {" *"}
+                      </p>
+                    </label>
+                  )}
+
+                  <button type="submit" disabled={signinLoading || (signinMode === "signup" && !termsAccepted)}
+                    style={{ width:"100%", background:(signinLoading || (signinMode === "signup" && !termsAccepted))?"#9ca3af":"#16a34a", color:"#fff", border:"none", padding:"13px", borderRadius:"10px", cursor:(signinLoading || (signinMode === "signup" && !termsAccepted))?"not-allowed":"pointer", fontSize:"15px", fontWeight:700, marginBottom:"16px" }}>
                     {signinLoading ? "..." : signinMode === "signin"
                       ? (locale==="ar"?"دخول":locale==="fr"?"Se connecter":locale==="es"?"Iniciar sesión":locale==="pt"?"Entrar":"Sign In")
                       : (locale==="ar"?"إنشاء حساب":locale==="fr"?"Créer le compte":locale==="es"?"Crear cuenta":locale==="pt"?"Criar conta":"Create Account")}
@@ -466,7 +489,7 @@ export default function HomePage() {
                     {signinMode === "signin"
                       ? (locale==="ar"?"ليس لديك حساب؟":locale==="fr"?"Pas de compte ?":locale==="es"?"¿Sin cuenta?":locale==="pt"?"Sem conta?":"No account yet?")
                       : (locale==="ar"?"لديك حساب؟":locale==="fr"?"Déjà un compte ?":locale==="es"?"¿Ya tienes cuenta?":locale==="pt"?"Já tem conta?":"Already have an account?")}{" "}
-                    <button type="button" onClick={() => { setSigninMode(signinMode === "signin" ? "signup" : "signin"); setSigninError(""); }}
+                    <button type="button" onClick={() => { setSigninMode(signinMode === "signin" ? "signup" : "signin"); setSigninError(""); setTermsAccepted(false); }}
                       style={{ background:"none", border:"none", color:"#16a34a", fontWeight:700, cursor:"pointer", fontSize:"13px", padding:0 }}>
                       {signinMode === "signin"
                         ? (locale==="ar"?"إنشاء حساب مجاني":locale==="fr"?"Créer un compte":locale==="es"?"Crear cuenta":locale==="pt"?"Criar conta":"Create one free")
