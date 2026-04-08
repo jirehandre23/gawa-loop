@@ -7,8 +7,15 @@ const supabase = createClient(
 );
 
 export async function GET(req: NextRequest) {
-  const secret = req.headers.get("x-cron-secret") || req.nextUrl.searchParams.get("secret");
-  if (secret !== process.env.CRON_SECRET) {
+  // Accept Vercel cron Authorization header OR manual ?secret= param
+  const authHeader = req.headers.get("authorization");
+  const secret     = req.nextUrl.searchParams.get("secret");
+  const cronSecret = process.env.CRON_SECRET;
+
+  const validVercelCron = authHeader === `Bearer ${cronSecret}`;
+  const validManual     = secret === cronSecret;
+
+  if (cronSecret && !validVercelCron && !validManual) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -24,7 +31,6 @@ export async function GET(req: NextRequest) {
   let noshowCount = 0;
   if (noShowListings && noShowListings.length > 0) {
     for (const listing of noShowListings) {
-      // Mark active claim as noshow
       const activeClaim = (listing.claims as any[])?.find((c: any) => c.status === "active");
       if (activeClaim) {
         await supabase
@@ -54,5 +60,6 @@ export async function GET(req: NextRequest) {
     noshows_returned: noshowCount,
     expired: expiredListings?.length ?? 0,
     error: expireError?.message ?? null,
+    ran_at: now,
   });
 }
