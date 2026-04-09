@@ -141,6 +141,7 @@ export default function HomePage() {
     background: "#fff", outline: "none", boxSizing: "border-box",
   };
 
+  // Community Map removed from Explore section
   const navSections = [
     {
       id: "explore",
@@ -148,7 +149,6 @@ export default function HomePage() {
       items: [
         { label: locale==="ar"?"تصفح الطعام المجاني":locale==="fr"?"Voir la nourriture gratuite":locale==="es"?"Ver comida gratis":locale==="pt"?"Ver comida grátis":"Browse Free Food", href: "/browse", icon: "🍽️" },
         { label: locale==="ar"?"كيف يعمل":locale==="fr"?"Comment ça marche":locale==="es"?"Cómo funciona":locale==="pt"?"Como funciona":"How It Works", onClick: () => scrollTo("how-it-works"), icon: "📖" },
-        { label: locale==="ar"?"خريطة المجتمع":locale==="fr"?"Carte communautaire":locale==="es"?"Mapa comunitario":locale==="pt"?"Mapa comunitário":"Community Map", href: "/community-map", icon: "🗺️" },
       ],
     },
     {
@@ -340,35 +340,22 @@ export default function HomePage() {
         </nav>
 
         <section style={{ position:"relative", width:"100%", height:"480px", overflow:"hidden" }}>
-          <video autoPlay muted loop playsInline
-            style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }}>
+          <video autoPlay muted loop playsInline style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }}>
             <source src="/hero-video.mp4" type="video/mp4"/>
           </video>
           <div style={{ position:"absolute", inset:0, background:"linear-gradient(to bottom, rgba(10,46,26,0.55), rgba(10,46,26,0.82))", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", textAlign:"center", padding:"32px" }}>
             <div style={{ marginBottom:"16px", display:"inline-flex", alignItems:"center", gap:"8px", background:"rgba(74,222,128,0.15)", border:"1px solid rgba(74,222,128,0.4)", borderRadius:"999px", padding:"7px 16px" }}>
               <span style={{ width:"8px", height:"8px", borderRadius:"50%", background:"#4ade80", display:"inline-block", animation:"pulse 2s infinite" }}></span>
-              <span style={{ fontSize:"13px", fontWeight:700, color:"#4ade80" }}>
-                {locale==="ar"?"طعام متاح الآن":locale==="fr"?"Nourriture dispo maintenant":locale==="es"?"Comida disponible ahora":locale==="pt"?"Comida disponível agora":"Live food available now"}
-              </span>
+              <span style={{ fontSize:"13px", fontWeight:700, color:"#4ade80" }}>{locale==="ar"?"طعام متاح الآن":locale==="fr"?"Nourriture dispo maintenant":locale==="es"?"Comida disponible ahora":locale==="pt"?"Comida disponível agora":"Live food available now"}</span>
             </div>
             <h1 style={{ margin:"0 0 16px", fontSize:"clamp(36px,6vw,64px)", fontWeight:900, color:"#fff", lineHeight:1.1 }}>
               {locale==="ar"?"طعام مجاني،":locale==="fr"?"Nourriture gratuite,":locale==="es"?"Comida gratis,":locale==="pt"?"Comida grátis,":"Free food,"}<br/>
-              <span style={{ color:"#4ade80" }}>
-                {locale==="ar"?"لا هدر.":locale==="fr"?"zéro gaspillage.":locale==="es"?"cero desperdicio.":locale==="pt"?"zero desperdício.":"zero waste."}
-              </span>
+              <span style={{ color:"#4ade80" }}>{locale==="ar"?"لا هدر.":locale==="fr"?"zéro gaspillage.":locale==="es"?"cero desperdicio.":locale==="pt"?"zero desperdício.":"zero waste."}</span>
             </h1>
-            <p style={{ margin:"0 0 32px", fontSize:"18px", color:"rgba(255,255,255,0.9)", maxWidth:"560px", lineHeight:1.6 }}>
-              {T.hero_subtitle}
-            </p>
+            <p style={{ margin:"0 0 32px", fontSize:"18px", color:"rgba(255,255,255,0.9)", maxWidth:"560px", lineHeight:1.6 }}>{T.hero_subtitle}</p>
             <div style={{ display:"flex", gap:"14px", flexWrap:"wrap", justifyContent:"center" }}>
-              <Link href="/browse"
-                style={{ background:"#16a34a", color:"#fff", fontWeight:700, fontSize:"16px", padding:"14px 36px", borderRadius:"12px", textDecoration:"none", boxShadow:"0 4px 20px rgba(22,163,74,0.5)" }}>
-                {T.hero_cta}
-              </Link>
-              <Link href="/business/signup"
-                style={{ background:"rgba(255,255,255,0.15)", color:"#fff", fontWeight:700, fontSize:"16px", padding:"14px 36px", borderRadius:"12px", textDecoration:"none", border:"2px solid rgba(255,255,255,0.4)" }}>
-                {T.forBusiness}
-              </Link>
+              <Link href="/browse" style={{ background:"#16a34a", color:"#fff", fontWeight:700, fontSize:"16px", padding:"14px 36px", borderRadius:"12px", textDecoration:"none", boxShadow:"0 4px 20px rgba(22,163,74,0.5)" }}>{T.hero_cta}</Link>
+              <Link href="/business/signup" style={{ background:"rgba(255,255,255,0.15)", color:"#fff", fontWeight:700, fontSize:"16px", padding:"14px 36px", borderRadius:"12px", textDecoration:"none", border:"2px solid rgba(255,255,255,0.4)" }}>{T.forBusiness}</Link>
             </div>
           </div>
         </section>
@@ -401,13 +388,9 @@ export default function HomePage() {
         </section>
 
         <section id="how-it-works" className="mx-auto max-w-6xl px-6 py-20">
-          <div className="mb-4 text-center text-sm font-semibold uppercase tracking-widest text-green-500">
-            {locale==="ar"?"للباحثين عن طعام":locale==="fr"?"Pour les chercheurs de nourriture":locale==="es"?"Para buscadores de comida":locale==="pt"?"Para quem procura comida":"For food seekers"}
-          </div>
+          <div className="mb-4 text-center text-sm font-semibold uppercase tracking-widest text-green-500">{locale==="ar"?"للباحثين عن طعام":locale==="fr"?"Pour les chercheurs de nourriture":locale==="es"?"Para buscadores de comida":locale==="pt"?"Para quem procura comida":"For food seekers"}</div>
           <h2 className="mb-4 text-center text-4xl font-extrabold text-slate-900">{T.how_title}</h2>
-          <p className="mx-auto mb-14 max-w-xl text-center text-slate-500">
-            {locale==="ar"?"بدون عضوية، بدون رسوم.":locale==="fr"?"Sans abonnement, sans frais.":locale==="es"?"Sin membresía, sin tarifas.":locale==="pt"?"Sem adesão, sem taxas.":"No membership, no fees. Just browse, claim, and pick up."}
-          </p>
+          <p className="mx-auto mb-14 max-w-xl text-center text-slate-500">{locale==="ar"?"بدون عضوية، بدون رسوم.":locale==="fr"?"Sans abonnement, sans frais.":locale==="es"?"Sin membresía, sin tarifas.":locale==="pt"?"Sem adesão, sem taxas.":"No membership, no fees. Just browse, claim, and pick up."}</p>
           <div className="grid gap-8 md:grid-cols-3">
             {[
               { color:"#16a34a", title:T.step1_title, desc:T.step1_desc, icon:"📱", badge:"60s" },
@@ -431,15 +414,9 @@ export default function HomePage() {
 
         <section style={{ background:"#0a2e1a", padding:"72px 24px" }}>
           <div style={{ maxWidth:"820px", margin:"0 auto", textAlign:"center" }}>
-            <p style={{ margin:"0 0 8px", fontSize:"13px", fontWeight:700, color:"#4ade80", textTransform:"uppercase", letterSpacing:"0.8px" }}>
-              🌍 {locale==="ar"?"تأثير حقيقي":locale==="fr"?"Impact Réel":locale==="es"?"Impacto Real":locale==="pt"?"Impacto Real":"Real Impact, Right Now"}
-            </p>
-            <h2 style={{ margin:"0 0 12px", fontSize:"36px", fontWeight:800, color:"#fff" }}>
-              {locale==="ar"?"مجتمعنا في العمل":locale==="fr"?"Notre Communauté en Action":locale==="es"?"Nuestra Comunidad en Acción":locale==="pt"?"Nossa Comunidade em Ação":"Our Community in Action"}
-            </h2>
-            <p style={{ margin:"0 0 48px", fontSize:"16px", color:"#a3c9b0" }}>
-              {locale==="ar"?"كل وجبة محجوزة هي طعام نُقذ من الهدر.":locale==="fr"?"Chaque repas réclamé est de la nourriture sauvée.":locale==="es"?"Cada comida reclamada es alimento rescatado.":locale==="pt"?"Cada refeição salva vai direto para a comunidade.":"Every meal claimed is food saved from the landfill."}
-            </p>
+            <p style={{ margin:"0 0 8px", fontSize:"13px", fontWeight:700, color:"#4ade80", textTransform:"uppercase", letterSpacing:"0.8px" }}>🌍 {locale==="ar"?"تأثير حقيقي":locale==="fr"?"Impact Réel":locale==="es"?"Impacto Real":locale==="pt"?"Impacto Real":"Real Impact, Right Now"}</p>
+            <h2 style={{ margin:"0 0 12px", fontSize:"36px", fontWeight:800, color:"#fff" }}>{locale==="ar"?"مجتمعنا في العمل":locale==="fr"?"Notre Communauté en Action":locale==="es"?"Nuestra Comunidad en Acción":locale==="pt"?"Nossa Comunidade em Ação":"Our Community in Action"}</h2>
+            <p style={{ margin:"0 0 48px", fontSize:"16px", color:"#a3c9b0" }}>{locale==="ar"?"كل وجبة محجوزة هي طعام نُقذ من الهدر.":locale==="fr"?"Chaque repas réclamé est de la nourriture sauvée.":locale==="es"?"Cada comida reclamada es alimento rescatado.":locale==="pt"?"Cada refeição salva vai direto para a comunidade.":"Every meal claimed is food saved from the landfill."}</p>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"20px" }}>
               <div style={{ background:"rgba(255,255,255,0.08)", borderRadius:"20px", padding:"36px 24px" }}>
                 <p style={{ margin:"0 0 8px", fontSize:"56px", fontWeight:900, color:"#4ade80", lineHeight:1 }}>{statsLoaded ? liveStats.total_pickups.toLocaleString() : "—"}</p>
