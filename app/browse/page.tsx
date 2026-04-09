@@ -42,7 +42,6 @@ export default function BrowsePage() {
   const [isNgo, setIsNgo]               = useState(false);
   const [ngoName, setNgoName]           = useState<string | null>(null);
   const [isAdmin, setIsAdmin]           = useState(false);
-  const [authResolved, setAuthResolved] = useState(false);
   const [bizInfoMap, setBizInfoMap]     = useState<Record<string, BizInfo>>({});
   const [selectedId, setSelectedId]     = useState<string | null>(null);
   const [claimForm, setClaimForm]       = useState({ first_name: "", email: "", phone: "", eta_minutes: 15 });
@@ -60,6 +59,14 @@ export default function BrowsePage() {
   const [termsAccepted, setTermsAccepted]   = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Stable refs for search/category/sort so the interval always uses latest values
+  const searchRef   = useRef(search);
+  const categoryRef = useRef(activeCategory);
+  const sortRef     = useRef(sortBy);
+  useEffect(() => { searchRef.current = search; }, [search]);
+  useEffect(() => { categoryRef.current = activeCategory; }, [activeCategory]);
+  useEffect(() => { sortRef.current = sortBy; }, [sortBy]);
+
   useEffect(() => { setLocale(detectLocale()); }, []);
 
   useEffect(() => {
@@ -69,36 +76,29 @@ export default function BrowsePage() {
       if (u?.email) {
         setClaimForm(f => ({ ...f, email: u.email! }));
         if (u.email === ADMIN_EMAIL) {
-          setIsAdmin(true);
-          setIsBusiness(false);
-          setIsNgo(false);
-          setNgoName(null);
+          setIsAdmin(true); setIsBusiness(false); setIsNgo(false); setNgoName(null);
         } else {
           const { data: biz } = await supabase
             .from("businesses").select("id, name, account_type").eq("email", u.email).single();
           if (biz) {
             const ngoAccount = biz.account_type === "ngo";
-            // Set all business-related state atomically before resolving auth
             setIsBusiness(true);
             setIsNgo(ngoAccount);
             setNgoName(ngoAccount ? (biz.name as string) : null);
           } else {
-            setIsBusiness(false);
-            setIsNgo(false);
-            setNgoName(null);
-            // Auto-fill from last claim for regular customers
+            setIsBusiness(false); setIsNgo(false); setNgoName(null);
+            // Auto-fill from last claim — maybeSingle() returns null (not error) when 0 rows
             if (u.id) {
               const { data: prevClaim } = await supabase
                 .from("claims")
-                .select("first_name, phone, email")
+                .select("first_name, phone")
                 .eq("customer_user_id", u.id)
                 .order("created_at", { ascending: false })
                 .limit(1)
-                .single();
-              if (prevClaim) {
+                .maybeSingle();
+              if (prevClaim?.first_name || prevClaim?.phone) {
                 setClaimForm(f => ({
-                  ...f,
-                  email: u.email!,
+                  ...f, email: u.email!,
                   first_name: prevClaim.first_name || f.first_name,
                   phone: prevClaim.phone || f.phone,
                 }));
@@ -106,65 +106,14 @@ export default function BrowsePage() {
             }
           }
         }
-        setSigninModal(false);
-        setSigninDone(false);
+        setSigninModal(false); setSigninDone(false);
       } else {
-        setIsBusiness(false);
-        setIsNgo(false);
-        setIsAdmin(false);
-        setNgoName(null);
+        setIsBusiness(false); setIsNgo(false); setIsAdmin(false); setNgoName(null);
         setClaimForm(f => ({ ...f, email: "" }));
       }
-      // Auth is fully settled — safe to render now
-      setAuthResolved(true);
     });
     return () => subscription.unsubscribe();
   }, []);
-
-  async function fetchListings() {
-    try {
-      const { data, error } = await supabase
-        .from("listings").select("*")
-        .eq("status", "AVAILABLE")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      const all = (data || []) as Listing[];
-      setListings(all);
-      applyFilters(all, search, activeCategory, sortBy);
-    } catch (e) {
-      console.error("fetchListings error:", e);
-      setListings([]);
-      setFiltered([]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function fetchBizInfo(all: Listing[]) {
-    if (!all.length) return;
-    const names = [...new Set(all.map((l) => l.business_name).filter(Boolean))];
-    const { data: bizData } = await supabase
-      .from("businesses").select("name, address, phone, email").in("name", names);
-    if (bizData) {
-      const map: Record<string, BizInfo> = {};
-      for (const b of bizData) map[b.name] = { address: b.address, phone: b.phone, email: b.email };
-      setBizInfoMap(map);
-    }
-  }
-
-  useEffect(() => {
-    const timeout = setTimeout(() => setLoading(false), 5000);
-    (async () => { await fetchListings(); clearTimeout(timeout); })();
-    intervalRef.current = setInterval(fetchListings, 30000);
-    return () => {
-      clearTimeout(timeout);
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (user && (!isBusiness || isNgo || isAdmin) && listings.length > 0) fetchBizInfo(listings);
-  }, [user, isBusiness, isNgo, isAdmin, listings]);
 
   function applyFilters(all: Listing[], q: string, cat: string, sort: string) {
     let result = [...all];
@@ -185,23 +134,68 @@ export default function BrowsePage() {
     setFiltered(result);
   }
 
+  async function fetchListings() {
+    try {
+      const { data, error } = await supabase
+        .from("listings").select("*")
+        .eq("status", "AVAILABLE")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      const all = (data || []) as Listing[];
+      setListings(all);
+      applyFilters(all, searchRef.current, categoryRef.current, sortRef.current);
+    } catch (e) {
+      console.error("fetchListings error:", e);
+      setListings([]); setFiltered([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function fetchBizInfo(all: Listing[]) {
+    if (!all.length) return;
+    const names = [...new Set(all.map(l => l.business_name).filter(Boolean))];
+    const { data: bizData } = await supabase
+      .from("businesses").select("name, address, phone, email").in("name", names);
+    if (bizData) {
+      const map: Record<string, BizInfo> = {};
+      for (const b of bizData) map[b.name] = { address: b.address, phone: b.phone, email: b.email };
+      setBizInfoMap(map);
+    }
+  }
+
+  // Fetch listings on mount and every 30s
+  useEffect(() => {
+    const timeout = setTimeout(() => setLoading(false), 5000);
+    fetchListings().then(() => clearTimeout(timeout));
+    intervalRef.current = setInterval(fetchListings, 30000);
+    return () => {
+      clearTimeout(timeout);
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
+
+  // Fetch biz contact info for all signed-in users who can see it
+  // (customers, NGOs, admins — not plain restaurant accounts)
+  useEffect(() => {
+    if (user && (!isBusiness || isNgo || isAdmin) && listings.length > 0) {
+      fetchBizInfo(listings);
+    }
+  }, [user, isBusiness, isNgo, isAdmin, listings]);
+
   function handleSearch(q: string) { setSearch(q); applyFilters(listings, q, activeCategory, sortBy); }
   function handleCategory(cat: string) { setCategory(cat); applyFilters(listings, search, cat, sortBy); }
   function handleSort(sort: string) { setSortBy(sort); applyFilters(listings, search, activeCategory, sort); }
 
   function openClaim(id: string) {
-    setSelectedId(id);
-    setClaimMsg("");
-    setClaimSuccess(false);
+    setSelectedId(id); setClaimMsg(""); setClaimSuccess(false);
     const listing = listings.find(l => l.id === id);
     if (listing) {
       const minsUntilExpiry = Math.floor((new Date(listing.expires_at).getTime() - Date.now()) / 60000);
       const maxEta = Math.min(minsUntilExpiry, 600);
-      const currentEta = claimForm.eta_minutes;
-      if (currentEta > maxEta) {
-        const validOptions = [10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 300, 360, 420, 480, 540, 600];
-        const firstValid = validOptions.find(o => o <= maxEta) || Math.min(maxEta, 10);
-        setClaimForm(f => ({ ...f, eta_minutes: firstValid }));
+      if (claimForm.eta_minutes > maxEta) {
+        const opts = [10,15,20,30,45,60,90,120,180,240,300,360,420,480,540,600];
+        setClaimForm(f => ({ ...f, eta_minutes: opts.find(o => o <= maxEta) || Math.min(maxEta, 10) }));
       }
     }
   }
@@ -253,15 +247,13 @@ export default function BrowsePage() {
   const FT    = FILTER_T[locale] || FILTER_T.en;
   const isRTL = locale === "ar";
 
-  // Wait for auth to fully settle before computing permissions
-  // This prevents the race condition where isBusiness=true but isNgo=false momentarily
-  const canClaim   = authResolved && !!user && (!isBusiness || isNgo || isAdmin);
-  const isSignedIn = authResolved && !!user;
+  // canClaim: customers + NGOs + admin (not plain restaurant businesses)
+  // isSignedIn: any logged-in user — controls showing biz contact details
+  const isSignedIn = !!user;
+  const canClaim   = !!user && (!isBusiness || isNgo || isAdmin);
 
-  // NGOs see all listings EXCEPT their own business's food
-  const displayedListings = isNgo && ngoName
-    ? filtered.filter(l => l.business_name !== ngoName)
-    : filtered;
+  // All users see all listings — NGO own-listing handled per card
+  const displayedListings = filtered;
 
   const liveCats = ["All", ...Array.from(new Set(listings.map(l => l.category).filter(Boolean)))];
 
@@ -341,16 +333,6 @@ export default function BrowsePage() {
           {displayedListings.length} {displayedListings.length === 1 ? "item" : "items"} available now · refreshes every 30s
         </p>
 
-        {/* NGO info banner */}
-        {isNgo && ngoName && (
-          <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "12px", padding: "12px 18px", marginBottom: "20px", display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "20px" }}>🏛</span>
-            <p style={{ margin: 0, fontSize: "13px", color: "#1d4ed8", fontWeight: 600 }}>
-              Browsing as <b>{ngoName}</b> — claim food from other businesses for your community. Your own listings are hidden here.
-            </p>
-          </div>
-        )}
-
         {/* SEARCH */}
         <div style={{ position: "relative", marginBottom: "14px" }}>
           <span style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", fontSize: "16px" }}>🔍</span>
@@ -407,9 +389,7 @@ export default function BrowsePage() {
             <p style={{ fontSize: "18px", fontWeight: 800, color: "#0a2e1a", margin: "0 0 8px" }}>
               {activeCategory !== "All"
                 ? `${locale === "fr" ? "Aucun résultat dans" : locale === "es" ? "Sin resultados en" : locale === "pt" ? "Sem resultados em" : locale === "ar" ? "لا نتائج في" : "No results in"} "${activeCategory}"`
-                : isNgo
-                  ? "No food from other businesses available right now"
-                  : (locale === "fr" ? "Aucune nourriture disponible" : locale === "es" ? "Sin comida disponible" : locale === "pt" ? "Sem comida disponível" : locale === "ar" ? "لا طعام متاح الآن" : "No food available right now")}
+                : (locale === "fr" ? "Aucune nourriture disponible" : locale === "es" ? "Sin comida disponible" : locale === "pt" ? "Sem comida disponível" : locale === "ar" ? "لا طعام متاح الآن" : "No food available right now")}
             </p>
             <p style={{ fontSize: "14px", color: "#6b7280", margin: "0 0 20px", lineHeight: 1.6 }}>
               {activeCategory !== "All" ? (
@@ -423,9 +403,10 @@ export default function BrowsePage() {
             )}
           </div>
         ) : displayedListings.map(listing => {
-          const bizInfo  = bizInfoMap[listing.business_name];
-          const timeLeft = minsLeft(listing.expires_at);
-          const isUrgent = timeLeft !== null && timeLeft.includes("m left") && parseInt(timeLeft) <= 30;
+          const bizInfo         = bizInfoMap[listing.business_name];
+          const timeLeft        = minsLeft(listing.expires_at);
+          const isUrgent        = timeLeft !== null && timeLeft.includes("m left") && parseInt(timeLeft) <= 30;
+          const isOwnNgoListing = isNgo && !!ngoName && listing.business_name === ngoName;
           return (
             <div key={listing.id} style={{ background: "#fff", borderRadius: "20px", border: `1px solid ${isUrgent ? "#fde68a" : "#e5e7eb"}`, overflow: "hidden", marginBottom: "20px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
 
@@ -464,8 +445,8 @@ export default function BrowsePage() {
                 )}
                 {listing.note && <p style={{ margin: "6px 0 10px", fontSize: "13px", color: "#374151" }}>📝 {listing.note}</p>}
 
-                {/* Business info block — shown only when signed in AND can claim */}
-                {isSignedIn && canClaim ? (
+                {/* Business info — shown to all signed-in users */}
+                {isSignedIn ? (
                   <div style={{ background: "#f9fafb", borderRadius: "12px", padding: "14px 16px", marginBottom: "16px" }}>
                     <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", marginBottom: bizInfo ? "12px" : 0 }}>
                       {listing.business_logo_url ? (
@@ -500,7 +481,8 @@ export default function BrowsePage() {
                       </div>
                     )}
                   </div>
-                ) : !isSignedIn ? (
+                ) : (
+                  /* Not signed in — show lock prompt */
                   <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "12px", padding: "14px 16px", marginBottom: "16px", textAlign: "center" }}>
                     <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#374151", fontWeight: 600 }}>
                       🔒 {locale === "fr" ? "Connectez-vous pour voir les détails et réserver" : locale === "es" ? "Inicia sesión para ver detalles y reservar" : locale === "pt" ? "Entre para ver detalhes e reservar" : locale === "ar" ? "سجّل للدخول لرؤية التفاصيل والحجز" : "Sign in to see the restaurant details & claim this food"}
@@ -510,23 +492,33 @@ export default function BrowsePage() {
                       {locale === "fr" ? "Se connecter — Gratuit" : locale === "es" ? "Iniciar sesión — Gratis" : locale === "pt" ? "Entrar — Grátis" : locale === "ar" ? "تسجيل الدخول — مجاني" : "Sign In — It's Free"}
                     </button>
                   </div>
-                ) : null}
+                )}
 
-                {/* Reserve button — only for customers and NGOs, not plain restaurant businesses or admin */}
-                {canClaim && !isAdmin && (
+                {/* Reserve button — customers + NGOs (not NGO's own listing, not admin, not plain restaurant) */}
+                {canClaim && !isAdmin && !isOwnNgoListing && (
                   <button onClick={() => openClaim(listing.id)}
                     style={{ width: "100%", background: "#16a34a", color: "#fff", border: "none", padding: "14px", borderRadius: "10px", cursor: "pointer", fontSize: "15px", fontWeight: 800 }}>
                     {locale === "fr" ? "Réserver — Gratuit" : locale === "es" ? "Reservar — Gratis" : locale === "pt" ? "Reservar — Grátis" : locale === "ar" ? "احجز الآن — مجاناً" : "Reserve Now — It's Free"}
                   </button>
                 )}
 
+                {/* NGO viewing their own listing */}
+                {isOwnNgoListing && (
+                  <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
+                    <p style={{ margin: 0, fontSize: "13px", color: "#166534", fontWeight: 600 }}>
+                      🏛 This is your listing — other businesses and customers can claim it
+                    </p>
+                  </div>
+                )}
+
+                {/* Admin view */}
                 {isAdmin && isSignedIn && (
                   <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
                     <p style={{ margin: 0, fontSize: "13px", color: "#166534", fontWeight: 600 }}>👁️ Admin view — claims disabled for admin account</p>
                   </div>
                 )}
 
-                {/* Plain restaurant business — signed in but can't claim */}
+                {/* Plain restaurant business — can't claim any food */}
                 {isSignedIn && isBusiness && !isNgo && !isAdmin && (
                   <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
                     <p style={{ margin: 0, fontSize: "13px", color: "#6b7280" }}>
@@ -598,7 +590,6 @@ export default function BrowsePage() {
                     <input style={inp} type="password" required value={signinPassword}
                       onChange={e => setSigninPassword(e.target.value)} placeholder="••••••••" minLength={6}/>
                   </div>
-
                   {signinMode === "signup" && (
                     <label style={{ display: "flex", gap: "10px", alignItems: "flex-start", marginBottom: "16px", cursor: "pointer" }}
                       onClick={() => setTermsAccepted(v => !v)}>
@@ -618,7 +609,6 @@ export default function BrowsePage() {
                       </p>
                     </label>
                   )}
-
                   <button type="submit" disabled={signinLoading || (signinMode === "signup" && !termsAccepted)}
                     style={{ width: "100%", background: (signinLoading || (signinMode === "signup" && !termsAccepted)) ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "13px", borderRadius: "10px", cursor: (signinLoading || (signinMode === "signup" && !termsAccepted)) ? "not-allowed" : "pointer", fontSize: "15px", fontWeight: 700, marginBottom: "14px" }}>
                     {signinLoading ? "..." : signinMode === "signin"
