@@ -79,7 +79,7 @@ export default function BrowsePage() {
           setIsAdmin(true); setIsBusiness(false); setIsNgo(false); setNgoName(null);
         } else {
           const { data: biz } = await supabase
-            .from("businesses").select("id, name, account_type").eq("email", u.email).single();
+             .from("businesses").select("id, name, account_type").eq("email", u.email).maybeSingle();
           if (biz) {
             const ngoAccount = biz.account_type === "ngo";
             setIsBusiness(true);
