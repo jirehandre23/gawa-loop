@@ -57,17 +57,19 @@ export default function BrowsePage() {
   const [signinMode, setSigninMode]         = useState<"signin" | "signup">("signin");
   const [signinDone, setSigninDone]         = useState(false);
   const [termsAccepted, setTermsAccepted]   = useState(false);
-  const intervalRef     = useRef<NodeJS.Timeout | null>(null);
-  const searchRef       = useRef("");
-  const categoryRef     = useRef("All");
-  const sortRef         = useRef("Newest");
-  const didInitialFetch = useRef(false);
+  const intervalRef  = useRef<NodeJS.Timeout | null>(null);
+  const searchRef    = useRef("");
+  const categoryRef  = useRef("All");
+  const sortRef      = useRef("Newest");
+  // Tracks whether the very first fetch has completed — used to decide
+  // whether a user-change triggered re-fetch is needed.
+  const fetchedOnceRef = useRef(false);
 
   // Map state
-  const [mapOpen, setMapOpen]   = useState(false);
-  const mapContainerRef         = useRef<HTMLDivElement>(null);
-  const mapInstanceRef          = useRef<any>(null);
-  const mapLoadedRef            = useRef(false);
+  const [mapOpen, setMapOpen]  = useState(false);
+  const mapContainerRef        = useRef<HTMLDivElement>(null);
+  const mapInstanceRef         = useRef<any>(null);
+  const mapLoadedRef           = useRef(false);
 
   useEffect(() => { setLocale(detectLocale()); }, []);
   useEffect(() => { searchRef.current = search; },           [search]);
@@ -170,16 +172,27 @@ export default function BrowsePage() {
     }
   }
 
+  // Initial fetch on mount + 30s refresh interval
   useEffect(() => {
     const timeout = setTimeout(() => setLoading(false), 5000);
-    (async () => { await fetchListings(); didInitialFetch.current = true; clearTimeout(timeout); })();
+    fetchListings().then(() => {
+      fetchedOnceRef.current = true;
+      clearTimeout(timeout);
+    });
     intervalRef.current = setInterval(fetchListings, 30000);
-    return () => { clearTimeout(timeout); if (intervalRef.current) clearInterval(intervalRef.current); };
+    return () => {
+      clearTimeout(timeout);
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
   }, []);
 
+  // Re-fetch when auth resolves — fixes dashboard→browse and customer→browse
+  // showing 0 listings. Supabase fires INITIAL_SESSION on every navigation,
+  // which can arrive before or after the mount fetch. We always re-fetch once
+  // user is known (null = signed out, anything else = signed in). No guard
+  // needed: fetchListings is idempotent and cheap.
   useEffect(() => {
-    if (user === undefined) return;
-    if (!didInitialFetch.current) return;
+    if (user === undefined) return; // still resolving, do nothing
     fetchListings();
   }, [user]);
 
@@ -189,153 +202,123 @@ export default function BrowsePage() {
 
   // ---- MAP ----
   useEffect(() => {
-    if (!mapOpen || !user || user === undefined) return;
-    if (!mapContainerRef.current) return;
-
-    function initMap() {
-      if (mapLoadedRef.current && mapInstanceRef.current) {
-        updateMarkers(mapInstanceRef.current);
-        return;
-      }
-      const maplibre = (window as any).maplibregl;
-      if (!maplibre) return;
-
-      const map = new maplibre.Map({
-        container: mapContainerRef.current!,
-        style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-        center: [-73.9857, 40.7484],
-        zoom: 12,
-      });
-
-      map.addControl(new maplibre.NavigationControl(), "top-right");
-      map.addControl(new maplibre.GeolocateControl({
-        positionOptions: { enableHighAccuracy: true },
-        trackUserLocation: true,
-      }), "top-right");
-
-      map.on("load", () => {
-        mapLoadedRef.current = true;
-        mapInstanceRef.current = map;
-        updateMarkers(map);
-      });
-    }
-
-    async function geocodeAddress(address: string): Promise<[number, number] | null> {
-      try {
-        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address + ", New York, NY, USA")}&format=json&limit=1&countrycodes=us`;
-        const res = await fetch(url, { headers: { "Accept-Language": "en", "User-Agent": "GAWALoop/1.0" } });
-        const data = await res.json();
-        if (data && data[0]) return [parseFloat(data[0].lon), parseFloat(data[0].lat)];
-      } catch {}
-      return null;
-    }
-
-    async function updateMarkers(map: any) {
-      const maplibre = (window as any).maplibregl;
-      if (!maplibre || !listings.length) return;
-
-      // Remove old markers
-      const existing = (map as any)._gawaMarkers || [];
-      existing.forEach((m: any) => m.remove());
-      (map as any)._gawaMarkers = [];
-
-      const bounds = new maplibre.LngLatBounds();
-      let hasPoints = false;
-
-      for (const listing of listings) {
-        if (!listing.address) continue;
-        const coords = await geocodeAddress(listing.address);
-        if (!coords) continue;
-
-        const diff = new Date(listing.expires_at).getTime() - Date.now();
-        const mins = Math.floor(diff / 60000);
-        const timeLeft = mins <= 0 ? null : mins < 60 ? `${mins}m left` : `${Math.floor(mins/60)}h ${mins%60}m left`;
-        const isUrgent = timeLeft !== null && mins <= 30;
-
-        // Circular marker — anchored at center so it aligns exactly with coords
-        const SIZE = 40;
-        const el = document.createElement("div");
-        el.style.cssText = `
-          width: ${SIZE}px;
-          height: ${SIZE}px;
-          border-radius: 50%;
-          background: ${isUrgent ? "#f59e0b" : "#16a34a"};
-          border: 3px solid #fff;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 20px;
-          cursor: pointer;
-          transition: transform 0.15s;
-          user-select: none;
-        `;
-        el.innerHTML = "🍽️";
-        el.title = listing.food_name;
-        el.onmouseenter = () => { el.style.transform = "scale(1.18)"; el.style.zIndex = "10"; };
-        el.onmouseleave = () => { el.style.transform = "scale(1)"; el.style.zIndex = "1"; };
-
-        const popupHTML = `
-          <div style="font-family:-apple-system,sans-serif;min-width:190px;max-width:250px;padding:2px">
-            ${listing.image_url ? `<img src="${listing.image_url}" alt="${listing.food_name}" style="width:100%;height:110px;object-fit:cover;border-radius:8px;margin-bottom:10px;display:block"/>` : ""}
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:6px">
-              <strong style="font-size:14px;color:#0a2e1a;line-height:1.3">${listing.food_name}</strong>
-              <span style="background:#f0fdf4;color:#16a34a;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1px solid #bbf7d0;white-space:nowrap;flex-shrink:0">FREE</span>
-            </div>
-            <p style="margin:0 0 3px;font-size:12px;color:#6b7280">🏪 ${listing.business_name}</p>
-            <p style="margin:0 0 3px;font-size:12px;color:#6b7280">📦 ${listing.category}</p>
-            ${timeLeft ? `<p style="margin:0 0 8px;font-size:12px;color:${isUrgent ? "#92400e" : "#166534"};font-weight:600">⏰ ${timeLeft}</p>` : "<div style='margin-bottom:8px'></div>"}
-            <p style="margin:0 0 10px;font-size:11px;color:#9ca3af">📍 ${listing.address}</p>
-            <a href="/browse" style="display:block;background:#16a34a;color:#fff;text-align:center;padding:8px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:700">Reserve Now →</a>
-          </div>
-        `;
-
-        // KEY FIX: anchor:"center" aligns the circular marker's center to the coordinate point
-        const popup = new maplibre.Popup({ offset: 22, maxWidth: "270px", closeButton: true })
-          .setHTML(popupHTML);
-
-        const marker = new maplibre.Marker({ element: el, anchor: "center" })
-          .setLngLat(coords)
-          .setPopup(popup)
-          .addTo(map);
-
-        (map as any)._gawaMarkers.push(marker);
-        bounds.extend(coords);
-        hasPoints = true;
-      }
-
-      if (hasPoints) {
-        map.fitBounds(bounds, { padding: 80, maxZoom: 15, duration: 800 });
-      }
-    }
-
-    function loadMapLibre(cb: () => void) {
-      if ((window as any).maplibregl) { cb(); return; }
-
-      if (!document.getElementById("maplibre-css")) {
-        const link = document.createElement("link");
-        link.id = "maplibre-css";
-        link.rel = "stylesheet";
-        link.href = "https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css";
-        document.head.appendChild(link);
-      }
-
-      if (!document.getElementById("maplibre-js")) {
-        const script = document.createElement("script");
-        script.id = "maplibre-js";
-        script.src = "https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js";
-        script.onload = cb;
-        document.head.appendChild(script);
-      } else {
-        // Script tag exists, wait for it to finish loading
-        const check = setInterval(() => {
-          if ((window as any).maplibregl) { clearInterval(check); cb(); }
-        }, 80);
-      }
-    }
-
-    loadMapLibre(initMap);
+    if (!mapOpen) return;
+    // User must be resolved and signed in
+    if (user === undefined || user === null) return;
+    // Container must be in the DOM — use a small delay to let React paint it
+    const initTimer = setTimeout(() => {
+      if (!mapContainerRef.current) return;
+      loadMapLibre(() => initMap());
+    }, 80);
+    return () => clearTimeout(initTimer);
   }, [mapOpen, user, listings]);
+
+  function loadMapLibre(cb: () => void) {
+    if ((window as any).maplibregl) { cb(); return; }
+    if (!document.getElementById("maplibre-css")) {
+      const link = document.createElement("link");
+      link.id = "maplibre-css";
+      link.rel = "stylesheet";
+      link.href = "https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css";
+      document.head.appendChild(link);
+    }
+    if (!document.getElementById("maplibre-js")) {
+      const script = document.createElement("script");
+      script.id = "maplibre-js";
+      script.src = "https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    } else {
+      const check = setInterval(() => {
+        if ((window as any).maplibregl) { clearInterval(check); cb(); }
+      }, 80);
+    }
+  }
+
+  function initMap() {
+    if (!mapContainerRef.current) return;
+    const maplibre = (window as any).maplibregl;
+    if (!maplibre) return;
+
+    // If map already exists just update markers
+    if (mapLoadedRef.current && mapInstanceRef.current) {
+      updateMarkers(mapInstanceRef.current);
+      return;
+    }
+
+    const map = new maplibre.Map({
+      container: mapContainerRef.current,
+      style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+      center: [-73.9857, 40.7484],
+      zoom: 12,
+    });
+    map.addControl(new maplibre.NavigationControl(), "top-right");
+    map.addControl(new maplibre.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true }), "top-right");
+    map.on("load", () => {
+      mapLoadedRef.current = true;
+      mapInstanceRef.current = map;
+      updateMarkers(map);
+    });
+  }
+
+  async function geocodeAddress(address: string): Promise<[number, number] | null> {
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address + ", New York, NY, USA")}&format=json&limit=1&countrycodes=us`;
+      const res = await fetch(url, { headers: { "Accept-Language": "en" } });
+      const data = await res.json();
+      if (data && data[0]) return [parseFloat(data[0].lon), parseFloat(data[0].lat)];
+    } catch {}
+    return null;
+  }
+
+  async function updateMarkers(map: any) {
+    const maplibre = (window as any).maplibregl;
+    if (!maplibre || !listings.length) return;
+    const existing = (map as any)._gawaMarkers || [];
+    existing.forEach((m: any) => m.remove());
+    (map as any)._gawaMarkers = [];
+
+    const bounds = new maplibre.LngLatBounds();
+    let hasPoints = false;
+
+    for (const listing of listings) {
+      if (!listing.address) continue;
+      const coords = await geocodeAddress(listing.address);
+      if (!coords) continue;
+
+      const diff = new Date(listing.expires_at).getTime() - Date.now();
+      const mins = Math.floor(diff / 60000);
+      const timeLeft = mins <= 0 ? null : mins < 60 ? `${mins}m left` : `${Math.floor(mins/60)}h ${mins%60}m left`;
+      const isUrgent = timeLeft !== null && mins <= 30;
+
+      const el = document.createElement("div");
+      el.style.cssText = `width:40px;height:40px;border-radius:50%;background:${isUrgent?"#f59e0b":"#16a34a"};border:3px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;transition:transform 0.15s;user-select:none;`;
+      el.innerHTML = "🍽️";
+      el.onmouseenter = () => { el.style.transform = "scale(1.18)"; };
+      el.onmouseleave = () => { el.style.transform = "scale(1)"; };
+
+      const popupHTML = `<div style="font-family:-apple-system,sans-serif;min-width:190px;max-width:250px;padding:2px">
+        ${listing.image_url ? `<img src="${listing.image_url}" alt="${listing.food_name}" style="width:100%;height:110px;object-fit:cover;border-radius:8px;margin-bottom:10px;display:block"/>` : ""}
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:6px">
+          <strong style="font-size:14px;color:#0a2e1a;line-height:1.3">${listing.food_name}</strong>
+          <span style="background:#f0fdf4;color:#16a34a;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1px solid #bbf7d0;white-space:nowrap;flex-shrink:0">FREE</span>
+        </div>
+        <p style="margin:0 0 3px;font-size:12px;color:#6b7280">🏪 ${listing.business_name}</p>
+        <p style="margin:0 0 3px;font-size:12px;color:#6b7280">📦 ${listing.category}</p>
+        ${timeLeft ? `<p style="margin:0 0 8px;font-size:12px;color:${isUrgent?"#92400e":"#166534"};font-weight:600">⏰ ${timeLeft}</p>` : "<div style='margin-bottom:8px'></div>"}
+        <p style="margin:0 0 10px;font-size:11px;color:#9ca3af">📍 ${listing.address}</p>
+        <a href="/browse" style="display:block;background:#16a34a;color:#fff;text-align:center;padding:8px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:700">Reserve Now →</a>
+      </div>`;
+
+      const popup = new maplibre.Popup({ offset: 22, maxWidth: "270px", closeButton: true }).setHTML(popupHTML);
+      const marker = new maplibre.Marker({ element: el, anchor: "center" }).setLngLat(coords).setPopup(popup).addTo(map);
+      (map as any)._gawaMarkers.push(marker);
+      bounds.extend(coords);
+      hasPoints = true;
+    }
+
+    if (hasPoints) map.fitBounds(bounds, { padding: 80, maxZoom: 15, duration: 800 });
+  }
 
   useEffect(() => {
     return () => {
@@ -632,20 +615,11 @@ export default function BrowsePage() {
           </p>
         )}
 
-        {/* ===== MAP PANEL ===== */}
+        {/* MAP PANEL */}
         {!loading && (
           <div style={{ marginBottom: "32px" }}>
             <button onClick={() => setMapOpen(o => !o)}
-              style={{
-                width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
-                background: mapOpen ? "#0a2e1a" : "#fff",
-                color: mapOpen ? "#4ade80" : "#374151",
-                border: `1px solid ${mapOpen ? "#0a2e1a" : "#e5e7eb"}`,
-                borderRadius: mapOpen ? "16px 16px 0 0" : "16px",
-                padding: "14px 20px", cursor: "pointer", fontSize: "14px", fontWeight: 700,
-                boxShadow: mapOpen ? "none" : "0 1px 4px rgba(0,0,0,0.06)",
-                transition: "all 0.2s",
-              }}>
+              style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", background: mapOpen ? "#0a2e1a" : "#fff", color: mapOpen ? "#4ade80" : "#374151", border: `1px solid ${mapOpen ? "#0a2e1a" : "#e5e7eb"}`, borderRadius: mapOpen ? "16px 16px 0 0" : "16px", padding: "14px 20px", cursor: "pointer", fontSize: "14px", fontWeight: 700, boxShadow: mapOpen ? "none" : "0 1px 4px rgba(0,0,0,0.06)", transition: "all 0.2s" }}>
               <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <span style={{ fontSize: "18px" }}>🗺️</span>
                 {locale === "fr" ? "Voir sur la carte" : locale === "es" ? "Ver en el mapa" : locale === "pt" ? "Ver no mapa" : locale === "ar" ? "عرض على الخريطة" : "View on Map"}
@@ -660,14 +634,14 @@ export default function BrowsePage() {
 
             {mapOpen && (
               <div style={{ border: "1px solid #0a2e1a", borderTop: "none", borderRadius: "0 0 16px 16px", overflow: "hidden", background: "#fff" }}>
-                {!user || user === undefined ? (
+                {!user || user === null ? (
                   <div style={{ height: "360px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #f0fdf4, #ecfdf5)", gap: "12px", padding: "24px" }}>
                     <div style={{ fontSize: "48px" }}>🔒</div>
                     <p style={{ margin: 0, fontSize: "16px", fontWeight: 800, color: "#0a2e1a", textAlign: "center" }}>
                       {locale === "fr" ? "Connectez-vous pour voir la carte" : locale === "es" ? "Inicia sesión para ver el mapa" : locale === "pt" ? "Entre para ver o mapa" : locale === "ar" ? "سجّل للدخول لرؤية الخريطة" : "Sign in to see the map"}
                     </p>
                     <p style={{ margin: 0, fontSize: "13px", color: "#6b7280", textAlign: "center", maxWidth: "280px" }}>
-                      {locale === "fr" ? "Voyez où se trouve la nourriture gratuite près de vous." : locale === "es" ? "Mira dónde hay comida gratis cerca de ti." : locale === "pt" ? "Veja onde tem comida grátis perto de você." : locale === "ar" ? "شاهد مواقع الطعام المجاني القريبة منك." : "See where free food is available near you."}
+                      {locale === "fr" ? "Voyez où se trouve la nourriture gratuite." : locale === "es" ? "Mira dónde hay comida gratis." : locale === "pt" ? "Veja onde tem comida grátis." : locale === "ar" ? "شاهد مواقع الطعام المجاني." : "See where free food is available near you."}
                     </p>
                     <button onClick={() => { setSigninModal(true); setSigninError(""); setSigninDone(false); setTermsAccepted(false); }}
                       style={{ background: "#16a34a", color: "#fff", padding: "10px 24px", borderRadius: "10px", border: "none", cursor: "pointer", fontSize: "14px", fontWeight: 700, marginTop: "4px" }}>
@@ -677,26 +651,20 @@ export default function BrowsePage() {
                 ) : listings.length === 0 ? (
                   <div style={{ height: "300px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#f9fafb", gap: "10px" }}>
                     <p style={{ fontSize: "40px", margin: 0 }}>🗺️</p>
-                    <p style={{ margin: 0, fontSize: "15px", fontWeight: 700, color: "#0a2e1a" }}>
-                      {locale === "fr" ? "Aucun lieu à afficher" : locale === "es" ? "Sin lugares para mostrar" : locale === "pt" ? "Sem locais para mostrar" : locale === "ar" ? "لا مواقع لعرضها" : "No locations to show"}
-                    </p>
-                    <p style={{ margin: 0, fontSize: "13px", color: "#6b7280" }}>
-                      {locale === "fr" ? "Les annonces apparaissent ici quand elles sont disponibles." : locale === "es" ? "Los anuncios aparecerán aquí cuando estén disponibles." : locale === "pt" ? "Os anúncios aparecerão aqui quando disponíveis." : locale === "ar" ? "ستظهر الإعلانات هنا عند توفرها." : "Listings will appear here when food is available."}
-                    </p>
+                    <p style={{ margin: 0, fontSize: "15px", fontWeight: 700, color: "#0a2e1a" }}>{locale === "fr" ? "Aucun lieu à afficher" : locale === "es" ? "Sin lugares para mostrar" : locale === "pt" ? "Sem locais para mostrar" : locale === "ar" ? "لا مواقع لعرضها" : "No locations to show"}</p>
+                    <p style={{ margin: 0, fontSize: "13px", color: "#6b7280" }}>{locale === "fr" ? "Les annonces apparaissent ici." : locale === "es" ? "Los anuncios aparecerán aquí." : locale === "pt" ? "Os anúncios aparecerão aqui." : locale === "ar" ? "ستظهر الإعلانات هنا." : "Listings will appear here when food is available."}</p>
                   </div>
                 ) : (
                   <div style={{ position: "relative" }}>
                     <div style={{ position: "absolute", top: "12px", left: "12px", zIndex: 10, background: "rgba(255,255,255,0.95)", borderRadius: "10px", padding: "10px 14px", boxShadow: "0 2px 8px rgba(0,0,0,0.12)", fontSize: "12px", display: "flex", flexDirection: "column", gap: "6px" }}>
-                      <p style={{ margin: 0, fontWeight: 700, color: "#0a2e1a", fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                        {locale === "fr" ? "Légende" : locale === "es" ? "Leyenda" : locale === "pt" ? "Legenda" : locale === "ar" ? "المفتاح" : "Legend"}
-                      </p>
+                      <p style={{ margin: 0, fontWeight: 700, color: "#0a2e1a", fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.5px" }}>{locale === "fr" ? "Légende" : locale === "es" ? "Leyenda" : locale === "pt" ? "Legenda" : locale === "ar" ? "المفتاح" : "Legend"}</p>
                       <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
                         <span style={{ width: "14px", height: "14px", borderRadius: "50%", background: "#16a34a", border: "2px solid #fff", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", flexShrink: 0, display: "inline-block" }} />
-                        <span style={{ color: "#374151" }}>{locale === "fr" ? "Nourriture disponible" : locale === "es" ? "Comida disponible" : locale === "pt" ? "Comida disponível" : locale === "ar" ? "طعام متاح" : "Food available"}</span>
+                        <span style={{ color: "#374151" }}>{locale === "fr" ? "Disponible" : locale === "es" ? "Disponible" : locale === "pt" ? "Disponível" : locale === "ar" ? "متاح" : "Food available"}</span>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
                         <span style={{ width: "14px", height: "14px", borderRadius: "50%", background: "#f59e0b", border: "2px solid #fff", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", flexShrink: 0, display: "inline-block" }} />
-                        <span style={{ color: "#374151" }}>{locale === "fr" ? "Expire bientôt (≤30min)" : locale === "es" ? "Vence pronto (≤30min)" : locale === "pt" ? "Vence em breve (≤30min)" : locale === "ar" ? "تنتهي قريباً (≤30د)" : "Expiring soon (≤30min)"}</span>
+                        <span style={{ color: "#374151" }}>{locale === "fr" ? "Expire bientôt" : locale === "es" ? "Vence pronto" : locale === "pt" ? "Vence em breve" : locale === "ar" ? "تنتهي قريباً" : "Expiring soon (≤30min)"}</span>
                       </div>
                     </div>
                     <div ref={mapContainerRef} style={{ width: "100%", height: "420px" }} />
@@ -722,7 +690,7 @@ export default function BrowsePage() {
                   <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#374151" }}>2. {locale === "fr" ? "Cliquez sur le lien de confirmation" : locale === "es" ? "Haz clic en el enlace" : locale === "pt" ? "Clique no link" : locale === "ar" ? "انقر على الرابط" : "Click the confirmation link"}</p>
                   <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>3. {locale === "fr" ? "Vous serez connecté automatiquement" : locale === "es" ? "Serás conectado automáticamente" : locale === "pt" ? "Você será conectado" : locale === "ar" ? "ستُوقّع دخولك تلقائياً" : "You'll be signed in automatically"}</p>
                 </div>
-                <p style={{ margin: "0 0 16px", fontSize: "12px", color: "#9ca3af" }}>{locale === "fr" ? "Vérifiez vos spams si absent." : locale === "es" ? "¿No lo ves? Revisa spam." : locale === "pt" ? "Não viu? Verifique spam." : locale === "ar" ? "تحقق من البريد المزعج." : "Don't see it? Check your spam folder."}</p>
+                <p style={{ margin: "0 0 16px", fontSize: "12px", color: "#9ca3af" }}>{locale === "fr" ? "Vérifiez vos spams." : locale === "es" ? "Revisa spam." : locale === "pt" ? "Verifique spam." : locale === "ar" ? "تحقق من البريد المزعج." : "Don't see it? Check your spam folder."}</p>
                 <button onClick={() => { setSigninModal(false); setSigninDone(false); }} style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "10px 24px", borderRadius: "8px", cursor: "pointer", fontSize: "14px", fontWeight: 600 }}>{locale === "fr" ? "OK, compris" : locale === "es" ? "OK, entendido" : locale === "pt" ? "OK, entendi" : locale === "ar" ? "حسناً" : "OK, got it"}</button>
               </div>
             ) : (
