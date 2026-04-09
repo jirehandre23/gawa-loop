@@ -482,11 +482,63 @@ export default function BrowsePage() {
                   </div>
                 )}
 
-                {isAdmin && isSignedIn && (
-                  <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
-                    <p style={{ margin: 0, fontSize: "13px", color: "#166534", fontWeight: 600 }}>👁️ Admin view — claims disabled for admin account</p>
-                  </div>
-                )}
+               {isAdmin && isSignedIn && (
+  <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
+    <p style={{ margin: "0 0 10px", fontSize: "13px", color: "#166534", fontWeight: 600 }}>
+      👁️ Admin view — manage business
+    </p>
+
+    <div style={{ display: "flex", gap: "8px", justifyContent: "center", flexWrap: "wrap" }}>
+      <button
+        onClick={() => handleSuspendBusiness(listing.id, listing.business_name, 1)}
+        style={{
+          background: "#f59e0b",
+          color: "#fff",
+          border: "none",
+          padding: "6px 12px",
+          borderRadius: "6px",
+          cursor: "pointer",
+          fontSize: "12px",
+          fontWeight: 700
+        }}
+      >
+        Suspend 1w
+      </button>
+
+      <button
+        onClick={() => handleSuspendBusiness(listing.id, listing.business_name, 4)}
+        style={{
+          background: "#ea580c",
+          color: "#fff",
+          border: "none",
+          padding: "6px 12px",
+          borderRadius: "6px",
+          cursor: "pointer",
+          fontSize: "12px",
+          fontWeight: 700
+        }}
+      >
+        Suspend 1m
+      </button>
+
+      <button
+        onClick={() => handleReinstateBusiness(listing.id, listing.business_name)}
+        style={{
+          background: "#16a34a",
+          color: "#fff",
+          border: "none",
+          padding: "6px 12px",
+          borderRadius: "6px",
+          cursor: "pointer",
+          fontSize: "12px",
+          fontWeight: 700
+        }}
+      >
+        Reinstate
+      </button>
+    </div>
+  </div>
+)}
 
                 {isSignedIn && isBusiness && !isNgo && !isAdmin && (
                   <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
