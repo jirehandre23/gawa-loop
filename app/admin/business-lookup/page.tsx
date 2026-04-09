@@ -38,14 +38,17 @@ export default function AdminPanel() {
   const [leafletReady, setLeafletReady]   = useState(false);
   const [mapPins, setMapPins]             = useState<{ biz: Business; lat: number; lng: number }[]>([]);
   const [geocoding, setGeocoding]         = useState(false);
-  const mapRef                            = useRef<any>(null);
-  const mapContainerRef                   = useRef<HTMLDivElement>(null);
+  const mapRef          = useRef<any>(null);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const geocodingRef    = useRef(false);
 
-  // Load Leaflet CSS + JS once on mount
+  // 1. Load Leaflet CSS + JS once on mount
   useEffect(() => {
     if (typeof window !== "undefined" && window.L) { setLeafletReady(true); return; }
     if (document.getElementById("leaflet-css")) {
-      const check = setInterval(() => { if (window.L) { setLeafletReady(true); clearInterval(check); } }, 100);
+      const check = setInterval(() => {
+        if (window.L) { setLeafletReady(true); clearInterval(check); }
+      }, 100);
       return () => clearInterval(check);
     }
     const link  = document.createElement("link");
@@ -53,15 +56,16 @@ export default function AdminPanel() {
     link.rel    = "stylesheet";
     link.href   = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
     document.head.appendChild(link);
-    const script   = document.createElement("script");
-    script.src     = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-    script.onload  = () => setLeafletReady(true);
+    const script  = document.createElement("script");
+    script.src    = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+    script.onload = () => setLeafletReady(true);
     document.head.appendChild(script);
   }, []);
 
-  // Geocode businesses sequentially — 1 per second to respect Nominatim
+  // 2. Geocode all businesses sequentially once they load (1 req/sec for Nominatim)
   useEffect(() => {
-    if (!businesses.length || geocoding || mapPins.length > 0) return;
+    if (!businesses.length || geocodingRef.current || mapPins.length > 0) return;
+    geocodingRef.current = true;
     setGeocoding(true);
     (async () => {
       const pins: { biz: Business; lat: number; lng: number }[] = [];
@@ -75,22 +79,21 @@ export default function AdminPanel() {
           const data = await res.json();
           if (data?.length) {
             pins.push({ biz, lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) });
-            // Update map progressively as each pin resolves
-            setMapPins([...pins]);
+            setMapPins([...pins]); // progressive update — each pin appears as it resolves
           }
         } catch {}
-        await new Promise(r => setTimeout(r, 1200)); // 1.2s between requests
+        await new Promise(r => setTimeout(r, 1200)); // respect 1 req/sec rate limit
       }
       setGeocoding(false);
     })();
   }, [businesses]);
 
-  // Build/rebuild map whenever Leaflet is ready or pins change
+  // 3. Rebuild map whenever Leaflet becomes ready OR new pins arrive
   useEffect(() => {
     if (!leafletReady || !mapContainerRef.current) return;
     const L = window.L;
 
-    // Destroy old instance to avoid "Map container already initialized" error
+    // Destroy previous map instance before rebuilding
     if (mapRef.current) {
       try { mapRef.current.remove(); } catch {}
       mapRef.current = null;
@@ -124,11 +127,11 @@ export default function AdminPanel() {
       `);
     });
 
-    // Fix tiles not rendering on initial load
+    // Fix tiles not rendering on first paint
     setTimeout(() => { try { map.invalidateSize(); } catch {} }, 200);
   }, [leafletReady, mapPins]);
 
-  // Cleanup on unmount
+  // 4. Destroy map on unmount
   useEffect(() => {
     return () => { if (mapRef.current) { try { mapRef.current.remove(); } catch {} } };
   }, []);
@@ -237,14 +240,12 @@ export default function AdminPanel() {
     padding: "10px 20px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 700, borderRadius: "8px",
     background: tab === t ? "#0a2e1a" : "transparent", color: tab === t ? "#fff" : "#374151",
   });
-
   const Badge = ({ label, color }: { label: string; color: string }) => (
     <span style={{ background: color, color: "#fff", fontSize: "11px", fontWeight: 700, padding: "3px 10px", borderRadius: "20px", whiteSpace: "nowrap" }}>{label}</span>
   );
   const Btn = ({ label, color, onClick }: { label: string; color: string; onClick: () => void }) => (
     <button onClick={onClick} style={{ background: color, color: "#fff", border: "none", padding: "7px 14px", borderRadius: "7px", cursor: "pointer", fontSize: "12px", fontWeight: 700, whiteSpace: "nowrap" }}>{label}</button>
   );
-
   const searchInp: React.CSSProperties = {
     padding: "10px 14px", borderRadius: "8px", border: "1.5px solid #9ca3af",
     fontSize: "14px", color: "#111827", background: "#fff", outline: "none", minWidth: "240px",
@@ -310,20 +311,20 @@ export default function AdminPanel() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(185px, 1fr))", gap: "14px", marginBottom: "28px" }}>
               {[
                 { label: "Total Businesses",    value: stats.bizTotal,                               icon: "🏪", color: "#0a2e1a" },
-                { label: "NGO / Food Banks",     value: stats.ngoTotal,                               icon: "🏛", color: "#2563eb" },
+                { label: "NGO / Food Banks",     value: stats.ngoTotal,                               icon: "🏛",  color: "#2563eb" },
                 { label: "Restaurants",          value: (stats.bizTotal||0)-(stats.ngoTotal||0),      icon: "🍽️", color: "#16a34a" },
-                { label: "Total Customers",      value: stats.cusTotal,                               icon: "👥", color: "#7c3aed" },
-                { label: "Total Listings",       value: stats.listTotal,                              icon: "📋", color: "#374151" },
-                { label: "Total Pickups",        value: stats.pickups,                                icon: "✅", color: "#16a34a" },
-                { label: "Total Claims",         value: stats.claims,                                 icon: "🎯", color: "#ea580c" },
-                { label: "Active Listings Now",  value: stats.active,                                 icon: "🟢", color: "#16a34a" },
-                { label: "Food Donated (lbs)",   value: `${Number(stats.lbs).toFixed(1)} lbs`,        icon: "⚖️", color: "#059669" },
-                { label: "CO₂e Saved (lbs)",     value: `${Math.round(stats.lbs * 2.5)} lbs`,         icon: "🌍", color: "#0369a1" },
-                { label: "💰 Value Saved",       value: `$${Number(stats.valueSaved).toFixed(2)}`,    icon: "💰", color: "#16a34a" },
-                { label: "💰 Total Est. Value",  value: `$${Number(stats.totalValue).toFixed(2)}`,    icon: "💵", color: "#059669" },
-                { label: "Suspended Businesses", value: stats.suspended_biz,                          icon: "⚠️", color: "#d97706" },
-                { label: "Suspended Customers",  value: stats.suspended_cus,                          icon: "⚠️", color: "#d97706" },
-                { label: "Permanently Banned",   value: stats.banned,                                 icon: "🚫", color: "#dc2626" },
+                { label: "Total Customers",      value: stats.cusTotal,                               icon: "👥",  color: "#7c3aed" },
+                { label: "Total Listings",       value: stats.listTotal,                              icon: "📋",  color: "#374151" },
+                { label: "Total Pickups",        value: stats.pickups,                                icon: "✅",  color: "#16a34a" },
+                { label: "Total Claims",         value: stats.claims,                                 icon: "🎯",  color: "#ea580c" },
+                { label: "Active Listings Now",  value: stats.active,                                 icon: "🟢",  color: "#16a34a" },
+                { label: "Food Donated (lbs)",   value: `${Number(stats.lbs).toFixed(1)} lbs`,        icon: "⚖️",  color: "#059669" },
+                { label: "CO₂e Saved (lbs)",     value: `${Math.round(stats.lbs * 2.5)} lbs`,         icon: "🌍",  color: "#0369a1" },
+                { label: "💰 Value Saved",       value: `$${Number(stats.valueSaved).toFixed(2)}`,    icon: "💰",  color: "#16a34a" },
+                { label: "💰 Total Est. Value",  value: `$${Number(stats.totalValue).toFixed(2)}`,    icon: "💵",  color: "#059669" },
+                { label: "Suspended Businesses", value: stats.suspended_biz,                          icon: "⚠️",  color: "#d97706" },
+                { label: "Suspended Customers",  value: stats.suspended_cus,                          icon: "⚠️",  color: "#d97706" },
+                { label: "Permanently Banned",   value: stats.banned,                                 icon: "🚫",  color: "#dc2626" },
               ].map((s, i) => (
                 <div key={i} style={{ background: "#fff", borderRadius: "14px", padding: "18px", border: "1px solid #e5e7eb", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
                   <p style={{ margin: "0 0 4px", fontSize: "20px" }}>{s.icon}</p>
@@ -340,7 +341,7 @@ export default function AdminPanel() {
                   <h3 style={{ margin: "0 0 2px", fontSize: "16px", fontWeight: 800, color: "#0a2e1a" }}>📍 Business Locations</h3>
                   <p style={{ margin: 0, fontSize: "12px", color: "#6b7280" }}>
                     {geocoding
-                      ? `⏳ Geocoding... ${mapPins.length} of ${businesses.filter(b => b.address).length} businesses mapped so far`
+                      ? `⏳ Geocoding... ${mapPins.length} of ${businesses.filter(b => b.address).length} loaded`
                       : `${mapPins.length} of ${businesses.length} businesses mapped — click a pin for details`}
                   </p>
                 </div>
@@ -356,13 +357,16 @@ export default function AdminPanel() {
                 </div>
               </div>
 
-              {/* Stable map container — always in DOM */}
-              <div ref={mapContainerRef} style={{ width: "100%", height: "480px", borderRadius: "12px", overflow: "hidden", border: "1px solid #e5e7eb", background: "#e8f5e9" }} />
+              {/* Map container — always in DOM so Leaflet has a stable node */}
+              <div
+                ref={mapContainerRef}
+                style={{ width: "100%", height: "480px", borderRadius: "12px", overflow: "hidden", border: "1px solid #e5e7eb", background: "#e8f5e9" }}
+              />
 
               {geocoding && (
                 <div style={{ marginTop: "10px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "8px", padding: "10px 16px" }}>
                   <p style={{ margin: 0, fontSize: "12px", color: "#92400e", fontWeight: 600 }}>
-                    Pins appear as addresses are resolved — 1 per second to stay within Nominatim's rate limit. This only runs once per page visit.
+                    Pins appear as each address resolves — 1 per second to stay within Nominatim's rate limit. Runs once per page visit.
                   </p>
                 </div>
               )}
@@ -382,9 +386,9 @@ export default function AdminPanel() {
               <input placeholder="Search by name or email..." value={bizSearch} onChange={e => setBizSearch(e.target.value)} style={searchInp}/>
               <div style={{ display: "flex", gap: "6px" }}>
                 {[
-                  { key: "all",        label: `All (${businesses.length})`,                                                          active: "#0a2e1a" },
-                  { key: "restaurant", label: `🍽️ Restaurants (${businesses.filter(b => b.account_type !== "ngo").length})`,         active: "#16a34a" },
-                  { key: "ngo",        label: `🏛 NGOs (${businesses.filter(b => b.account_type === "ngo").length})`,                active: "#2563eb" },
+                  { key: "all",        label: `All (${businesses.length})`,                                               active: "#0a2e1a" },
+                  { key: "restaurant", label: `🍽️ Restaurants (${businesses.filter(b => b.account_type !== "ngo").length})`, active: "#16a34a" },
+                  { key: "ngo",        label: `🏛 NGOs (${businesses.filter(b => b.account_type === "ngo").length})`,       active: "#2563eb" },
                 ].map(f => (
                   <button key={f.key} onClick={() => setBizTypeFilter(f.key as any)}
                     style={{ padding: "8px 14px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "12px", fontWeight: 700,
@@ -412,7 +416,6 @@ export default function AdminPanel() {
                       <div>
                         <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px", flexWrap: "wrap" }}>
                           <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 800, color: "#0a2e1a" }}>{biz.name}</h3>
-                          {/* Always-visible type badge */}
                           {isNgo
                             ? <span style={{ background: "#eff6ff", color: "#2563eb", border: "1px solid #bfdbfe", fontSize: "12px", fontWeight: 800, padding: "3px 12px", borderRadius: "20px" }}>🏛 NGO / Food Bank</span>
                             : <span style={{ background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", fontSize: "12px", fontWeight: 800, padding: "3px 12px", borderRadius: "20px" }}>🍽️ Restaurant</span>
