@@ -10,750 +10,708 @@ const supabase = createClient(
 );
 
 const ADMIN_EMAIL = "admin@gawaloop.com";
-const TERMINAL    = ["PICKED_UP", "EXPIRED", "CANCELLED", "NOSHOW"];
+const SORT_OPTIONS = ["Newest", "Expiring Soon"];
 
-const STATUS_COLOR: Record<string, { bg: string; text: string }> = {
-  AVAILABLE: { bg: "#16a34a", text: "#fff" },
-  RESERVED:  { bg: "#2563eb", text: "#fff" },
-  PICKED_UP: { bg: "#7c3aed", text: "#fff" },
-  EXPIRED:   { bg: "#9ca3af", text: "#fff" },
-  CANCELLED: { bg: "#ef4444", text: "#fff" },
-  NOSHOW:    { bg: "#f59e0b", text: "#fff" },
+const FILTER_T: Record<string, Record<string, string>> = {
+  en: { all: "All", newest: "Newest", expiring: "Expiring Soon", sort_label: "Sort" },
+  fr: { all: "Tout", newest: "Plus récent", expiring: "Expire bientôt", sort_label: "Trier" },
+  es: { all: "Todo", newest: "Más reciente", expiring: "Por vencer", sort_label: "Ordenar" },
+  pt: { all: "Tudo", newest: "Mais recente", expiring: "A vencer", sort_label: "Ordenar" },
+  ar: { all: "الكل", newest: "الأحدث", expiring: "ينتهي قريباً", sort_label: "ترتيب" },
 };
 
-type ClaimRow = {
-  id: string; first_name: string; email: string; phone: string;
-  eta_minutes: number; confirmation_code: string; reserved_until: string;
-  status: string; noshow: boolean; customer_user_id?: string;
+type Listing = {
+  id: string; business_name: string; food_name: string; category: string;
+  quantity: string; allergy_note: string; estimated_value: number; note: string;
+  status: string; expires_at: string; created_at: string; claim_hold_minutes: number;
+  address: string; maps_url: string; image_url: string; weight_kg: number;
+  business_logo_url: string;
 };
-type ListingRow = {
-  id: string; food_name: string; category: string; quantity: string;
-  address: string; allergy_note: string; estimated_value: number; note: string;
-  status: string; expires_at: string; created_at: string; reserved_until: string;
-  claim_code: string; image_url?: string; weight_kg?: number;
-  business_logo_url?: string;
-  claims?: ClaimRow[];
-};
+type BizInfo = { address: string; phone: string | null; email: string };
 
-// CHANGE 1: active_hours removed from EMPTY_FORM — replaced by new expiry UI state
-const EMPTY_FORM = {
-  food_name: "", category: "Food", quantity: "", allergy_note: "",
-  estimated_value: "", weight_lbs: "", note: "",
-  claim_hold: "10",
-};
-const LBS_TO_KG = 0.453592;
-
-// CHANGE 2: expiry mode types
-type ExpiryMode = "hours" | "days" | "datetime";
-
-function treeMetric(lbs: number) {
-  if (lbs <= 0)   return { emoji: "🌱", label: "Plant a seed — start donating!" };
-  if (lbs < 11)   return { emoji: "🌱", label: "Seedling saved" };
-  if (lbs < 33)   return { emoji: "🪴", label: "Small plant" };
-  if (lbs < 88)   return { emoji: "🌿", label: "Young tree" };
-  if (lbs < 220)  return { emoji: "🌳", label: "Full tree" };
-  if (lbs < 551)  return { emoji: "🌳🌳", label: "2 trees" };
-  if (lbs < 1102) return { emoji: "🌲🌲🌲", label: "Small forest" };
-  return { emoji: "🌲🌲🌲🌲🌲", label: "Forest preserved!" };
-}
-
-function groupByYearMonth(listings: ListingRow[]) {
-  const groups: Record<string, Record<string, ListingRow[]>> = {};
-  for (const l of listings) {
-    const d     = new Date(l.created_at);
-    const year  = String(d.getFullYear());
-    const month = d.toLocaleString("default", { month: "long" });
-    if (!groups[year])        groups[year] = {};
-    if (!groups[year][month]) groups[year][month] = [];
-    groups[year][month].push(l);
-  }
-  return groups;
-}
-
-export default function BusinessDashboard() {
-  const [locale, setLocale]                 = useState<Locale>("en");
-  const [listings, setListings]             = useState<ListingRow[]>([]);
-  const [businessName, setBusiness]         = useState<string | null>(null);
-  const [businessId, setBusinessId]         = useState<string | null>(null);
-  const [businessAddress, setAddress]       = useState("");
-  const [businessLogoUrl, setLogoUrl]       = useState<string | null>(null);
-  // CHANGE 3: track account_type for NGO title
-  const [accountType, setAccountType]       = useState<string>("restaurant");
-  const [loading, setLoading]               = useState(true);
-  const [isAdmin, setIsAdmin]               = useState(false);
-  const [adminView, setAdminView]           = useState<string | null>(null);
-  const [allBizNames, setAllBizNames]       = useState<string[]>([]);
-  const [showForm, setShowForm]             = useState(false);
-  const [form, setForm]                     = useState(EMPTY_FORM);
-  const [posting, setPosting]               = useState(false);
-  const [postMsg, setPostMsg]               = useState("");
-  const [uploadingImg, setUploadingImg]     = useState(false);
-  const [editingId, setEditingId]           = useState<string | null>(null);
-  const [editForm, setEditForm]             = useState<Partial<typeof EMPTY_FORM>>({});
-  const [logoMsg, setLogoMsg]               = useState("");
-  const [activeTab, setActiveTab]           = useState<"active" | "history">("active");
-  const [claimerAvatars, setClaimerAvatars] = useState<Record<string, string | null>>({});
-  // CHANGE 2: expiry UI state
-  const [expiryMode, setExpiryMode]         = useState<ExpiryMode>("hours");
-  const [expiryHours, setExpiryHours]       = useState<string>("1");
-  const [expiryDays, setExpiryDays]         = useState<string>("1");
-  const [expiryDatetime, setExpiryDatetime] = useState<string>("");
-  // CHANGE 1: track whether image was selected
-  const [imageSelected, setImageSelected]   = useState(false);
-  const listingFileRef = useRef<HTMLInputElement>(null);
-  const logoRef        = useRef<HTMLInputElement>(null);
+export default function BrowsePage() {
+  const [locale, setLocale]             = useState<Locale>("en");
+  const [listings, setListings]         = useState<Listing[]>([]);
+  const [filtered, setFiltered]         = useState<Listing[]>([]);
+  const [search, setSearch]             = useState("");
+  const [activeCategory, setCategory]   = useState("All");
+  const [sortBy, setSortBy]             = useState("Newest");
+  const [loading, setLoading]           = useState(true);
+  const [user, setUser]                 = useState<any>(null);
+  const [isBusiness, setIsBusiness]     = useState(false);
+  const [isNgo, setIsNgo]               = useState(false);
+  const [isAdmin, setIsAdmin]           = useState(false);
+  const [bizInfoMap, setBizInfoMap]     = useState<Record<string, BizInfo>>({});
+  const [selectedId, setSelectedId]     = useState<string | null>(null);
+  const [claimForm, setClaimForm]       = useState({ first_name: "", email: "", phone: "", eta_minutes: 15 });
+  const [claimLoading, setClaimLoading] = useState(false);
+  const [claimMsg, setClaimMsg]         = useState("");
+  const [claimSuccess, setClaimSuccess] = useState(false);
+  const [lastCode, setLastCode]         = useState("");
+  const [signinModal, setSigninModal]   = useState(false);
+  const [signinEmail, setSigninEmail]   = useState("");
+  const [signinPassword, setSigninPassword] = useState("");
+  const [signinLoading, setSigninLoading]   = useState(false);
+  const [signinError, setSigninError]       = useState("");
+  const [signinMode, setSigninMode]         = useState<"signin" | "signup">("signin");
+  const [signinDone, setSigninDone]         = useState(false);
+  const [termsAccepted, setTermsAccepted]   = useState(false);
+  const intervalRef                     = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => { setLocale(detectLocale()); }, []);
 
-  async function uploadImage(file: File, bucket: string, folder: string): Promise<string | null> {
-    setUploadingImg(true);
-    const fd = new FormData();
-    fd.append("file", file); fd.append("bucket", bucket); fd.append("folder", folder);
-    const res  = await fetch("/api/upload-image", { method: "POST", body: fd });
-    const data = await res.json();
-    setUploadingImg(false);
-    return data.url || null;
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const u = session?.user ?? null;
+      setUser(u);
+      if (u?.email) {
+        setClaimForm(f => ({ ...f, email: u.email! }));
+        if (u.email === ADMIN_EMAIL) {
+          setIsAdmin(true);
+          setIsBusiness(false);
+          setIsNgo(false);
+        } else {
+          const { data: biz } = await supabase
+            .from("businesses").select("id, account_type").eq("email", u.email).single();
+          if (biz) {
+            setIsBusiness(true);
+            setIsNgo(biz.account_type === "ngo");
+          } else {
+            setIsBusiness(false);
+            setIsNgo(false);
+            // CHANGE 5: auto-fill name and phone from most recent claim
+            if (u.id) {
+              const { data: prevClaim } = await supabase
+                .from("claims")
+                .select("first_name, phone, email")
+                .eq("customer_user_id", u.id)
+                .order("created_at", { ascending: false })
+                .limit(1)
+                .single();
+              if (prevClaim) {
+                setClaimForm(f => ({
+                  ...f,
+                  email: u.email!,
+                  first_name: prevClaim.first_name || f.first_name,
+                  phone: prevClaim.phone || f.phone,
+                }));
+              }
+            }
+          }
+        }
+        setSigninModal(false);
+        setSigninDone(false);
+      } else {
+        setIsBusiness(false);
+        setIsNgo(false);
+        setIsAdmin(false);
+        setClaimForm(f => ({ ...f, email: "" }));
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function fetchListings() {
+    try {
+      const { data, error } = await supabase
+        .from("listings").select("*")
+        .eq("status", "AVAILABLE")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      const all = (data || []) as Listing[];
+      setListings(all);
+      applyFilters(all, search, activeCategory, sortBy);
+    } catch (e) {
+      console.error("fetchListings error:", e);
+      setListings([]);
+      setFiltered([]);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  async function loadDashboard(adminTarget?: string | null) {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { window.location.href = "/business/login"; return; }
-
-    const email = user.email || "";
-    const admin = email === ADMIN_EMAIL;
-    setIsAdmin(admin);
-
-    if (admin) {
-      const { data } = await supabase.from("listings").select("business_name").order("business_name");
-      const unique = [...new Set((data || []).map((b: any) => b.business_name).filter(Boolean))];
-      setAllBizNames(unique as string[]);
+  async function fetchBizInfo(all: Listing[]) {
+    if (!all.length) return;
+    const names = [...new Set(all.map((l) => l.business_name).filter(Boolean))];
+    const { data: bizData } = await supabase
+      .from("businesses").select("name, address, phone, email").in("name", names);
+    if (bizData) {
+      const map: Record<string, BizInfo> = {};
+      for (const b of bizData) map[b.name] = { address: b.address, phone: b.phone, email: b.email };
+      setBizInfoMap(map);
     }
+  }
 
-    // CHANGE 3: fetch account_type
-    const { data: biz } = await supabase
-      .from("businesses").select("id, name, address, logo_url, status, account_type")
-      .eq("email", email).single();
+  useEffect(() => {
+    const timeout = setTimeout(() => setLoading(false), 5000);
+    (async () => { await fetchListings(); clearTimeout(timeout); })();
+    intervalRef.current = setInterval(fetchListings, 30000);
+    return () => {
+      clearTimeout(timeout);
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
 
-    if (biz && biz.status === "pending" && !admin) { window.location.href = "/business/pending"; return; }
-    if (biz && biz.status === "rejected" && !admin) { await supabase.auth.signOut(); window.location.href = "/business/login"; return; }
+  useEffect(() => {
+    if (user && (!isBusiness || isNgo || isAdmin) && listings.length > 0) fetchBizInfo(listings);
+  }, [user, isBusiness, isNgo, isAdmin, listings]);
 
-    const bName = admin ? (adminTarget ?? null) : (biz?.name ?? null);
-    setBusiness(bName);
-    setAddress(biz?.address || "");
-    setLogoUrl(biz?.logo_url || null);
-    setBusinessId(biz?.id || null);
-    setAccountType(biz?.account_type || "restaurant");
+  function applyFilters(all: Listing[], q: string, cat: string, sort: string) {
+    let result = [...all];
+    if (q.trim()) {
+      const lower = q.toLowerCase();
+      result = result.filter(l =>
+        l.food_name?.toLowerCase().includes(lower) ||
+        l.business_name?.toLowerCase().includes(lower) ||
+        l.category?.toLowerCase().includes(lower)
+      );
+    }
+    if (cat !== "All") result = result.filter(l => l.category === cat);
+    if (sort === "Expiring Soon") {
+      result.sort((a, b) => new Date(a.expires_at).getTime() - new Date(b.expires_at).getTime());
+    } else {
+      result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    }
+    setFiltered(result);
+  }
 
-    if (bName) {
-      const { data } = await supabase
-        .from("listings").select("*, claims(*)")
-        .eq("business_name", bName)
-        .order("created_at", { ascending: false });
-      setListings(data || []);
+  function handleSearch(q: string) { setSearch(q); applyFilters(listings, q, activeCategory, sortBy); }
+  function handleCategory(cat: string) { setCategory(cat); applyFilters(listings, search, cat, sortBy); }
+  function handleSort(sort: string) { setSortBy(sort); applyFilters(listings, search, activeCategory, sort); }
 
-      const reservedClaims = (data || [])
-        .filter((l: ListingRow) => l.status === "RESERVED")
-        .flatMap((l: ListingRow) => l.claims?.filter(c => c.status === "active") || []);
-      for (const claim of reservedClaims) {
-        if (claim.email) fetchClaimerAvatar(claim.id, claim.email);
+  // CHANGE 6: openClaim sets ETA capped by listing expiry and 10h max
+  function openClaim(id: string) {
+    setSelectedId(id);
+    setClaimMsg("");
+    setClaimSuccess(false);
+    const listing = listings.find(l => l.id === id);
+    if (listing) {
+      const minsUntilExpiry = Math.floor((new Date(listing.expires_at).getTime() - Date.now()) / 60000);
+      const maxEta = Math.min(minsUntilExpiry, 600); // 600 mins = 10 hours
+      const currentEta = claimForm.eta_minutes;
+      if (currentEta > maxEta) {
+        // reset to first valid option
+        const validOptions = [10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 300, 360, 420, 480, 540, 600];
+        const firstValid = validOptions.find(o => o <= maxEta) || Math.min(maxEta, 10);
+        setClaimForm(f => ({ ...f, eta_minutes: firstValid }));
       }
     }
-    setLoading(false);
   }
 
-  async function fetchClaimerAvatar(claimId: string, email: string) {
-    if (claimerAvatars[claimId] !== undefined) return;
-    const res  = await fetch("/api/claim-avatar", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-    const data = await res.json();
-    setClaimerAvatars(prev => ({ ...prev, [claimId]: data.avatar_url || null }));
-  }
-
-  useEffect(() => { loadDashboard(adminView); }, [adminView]);
-
-  const now        = new Date();
-  const thisMonth  = now.getMonth();
-  const thisYear   = now.getFullYear();
-  const monthlyL   = listings.filter(l => {
-    const d = new Date(l.created_at);
-    return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
-  });
-  const yearlyL    = listings.filter(l => new Date(l.created_at).getFullYear() === thisYear);
-
-  const mPickups   = monthlyL.filter(l => l.status === "PICKED_UP").length;
-  const yPickups   = yearlyL.filter(l => l.status === "PICKED_UP").length;
-  const mCancelled = monthlyL.filter(l => l.status === "CANCELLED").length;
-  const yCancelled = yearlyL.filter(l => l.status === "CANCELLED").length;
-  const mExpired   = monthlyL.filter(l => l.status === "EXPIRED").length;
-  const yExpired   = yearlyL.filter(l => l.status === "EXPIRED").length;
-  const mNoshow    = monthlyL.filter(l => l.claims?.some(c => c.noshow)).length;
-  const yNoshow    = yearlyL.filter(l => l.claims?.some(c => c.noshow)).length;
-
-  // CHANGE 4: money saved calculations
-  const mMoneySaved  = monthlyL.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.estimated_value || 0), 0);
-  const yMoneySaved  = yearlyL.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.estimated_value || 0), 0);
-  const totalMoneySaved = listings.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.estimated_value || 0), 0);
-
-  const totalWeightLbs = listings
-    .filter(l => l.status === "PICKED_UP")
-    .reduce((s, l) => s + Number(l.weight_kg || 0) * 2.205, 0);
-  const tree = treeMetric(totalWeightLbs);
-  const T    = t[locale];
-
-  const activeListings  = listings.filter(l => !TERMINAL.includes(l.status));
-  const historyListings = listings.filter(l => TERMINAL.includes(l.status));
-  const historyGroups   = groupByYearMonth(historyListings);
-  const historyYears    = Object.keys(historyGroups).sort((a, b) => Number(b) - Number(a));
-
-  // CHANGE 2: compute expiresAt from current expiry mode
-  function computeExpiresAt(): string {
-    if (expiryMode === "hours") {
-      return new Date(Date.now() + Number(expiryHours) * 3600000).toISOString();
-    }
-    if (expiryMode === "days") {
-      return new Date(Date.now() + Number(expiryDays) * 86400000).toISOString();
-    }
-    // datetime mode
-    return new Date(expiryDatetime).toISOString();
-  }
-
-  async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file || !businessId) { setLogoMsg("Error: business not loaded."); return; }
-    setLogoMsg("Uploading...");
-    const url = await uploadImage(file, "business-logos", businessId);
-    if (url) {
-      const { error } = await supabase.from("businesses").update({ logo_url: url }).eq("id", businessId);
-      if (error) setLogoMsg("Upload ok but save failed: " + error.message);
-      else { setLogoUrl(url + "?t=" + Date.now()); setLogoMsg("✅ Logo saved!"); }
-    } else {
-      setLogoMsg("Upload failed. Please try again.");
-    }
-    setTimeout(() => setLogoMsg(""), 5000);
-    if (e.target) e.target.value = "";
-  }
-
-  async function handlePost(e: React.FormEvent) {
+  async function handleSignin(e: React.FormEvent) {
     e.preventDefault();
-    if (!businessName || !businessId) return;
-
-    // CHANGE 1: require image
-    if (!listingFileRef.current?.files?.[0]) {
-      setPostMsg("Please add a photo of the food before posting.");
-      return;
+    setSigninLoading(true); setSigninError("");
+    if (signinMode === "signin") {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: signinEmail.trim().toLowerCase(), password: signinPassword,
+      });
+      if (error) { setSigninError("Invalid email or password."); setSigninLoading(false); return; }
+    } else {
+      const { error } = await supabase.auth.signUp({
+        email: signinEmail.trim().toLowerCase(), password: signinPassword,
+        options: { emailRedirectTo: "https://gawaloop.com/browse" },
+      });
+      if (error) { setSigninError(error.message); setSigninLoading(false); return; }
+      setSigninDone(true);
     }
-
-    setPosting(true); setPostMsg("");
-
-    const { data: bizData } = await supabase.from("businesses").select("logo_url").eq("id", businessId).single();
-    const currentLogoUrl = bizData?.logo_url || null;
-
-    const imageUrl = await uploadImage(listingFileRef.current.files[0], "listing-images", businessName.replace(/\s/g, "_"));
-
-    // CHANGE 2: use computeExpiresAt
-    const expiresAt = computeExpiresAt();
-    const weightKg  = form.weight_lbs ? Number(form.weight_lbs) * LBS_TO_KG : null;
-
-    const { error } = await supabase.from("listings").insert({
-      business_name:      businessName,
-      address:            businessAddress,
-      food_name:          form.food_name,
-      category:           form.category,
-      quantity:           form.quantity,
-      allergy_note:       form.allergy_note || null,
-      estimated_value:    form.estimated_value ? Number(form.estimated_value) : null,
-      weight_kg:          weightKg,
-      note:               form.note || null,
-      status:             "AVAILABLE",
-      expires_at:         expiresAt,
-      claim_hold_minutes: Number(form.claim_hold),
-      image_url:          imageUrl,
-      business_logo_url:  currentLogoUrl,
-    });
-
-    if (error) setPostMsg("Error posting. Please try again.");
-    else {
-      setPostMsg("✅ Food posted successfully!");
-      setForm(EMPTY_FORM);
-      setImageSelected(false);
-      setExpiryMode("hours");
-      setExpiryHours("1");
-      setExpiryDays("1");
-      setExpiryDatetime("");
-      setShowForm(false);
-      if (listingFileRef.current) listingFileRef.current.value = "";
-      loadDashboard(adminView);
-    }
-    setPosting(false);
+    setSigninLoading(false);
   }
 
-  async function handlePickedUp(id: string) {
-    const res  = await fetch("/api/mark-picked-up", {
+  async function handleClaim(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedId || (isBusiness && !isNgo)) return;
+    setClaimLoading(true); setClaimMsg("");
+    const res = await fetch("/api/claim-submit", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ listingId: id }),
-    });
-    const data = await res.json();
-    if (data.success) setListings(prev => prev.map(l => l.id === id ? { ...l, status: "PICKED_UP" } : l));
-  }
-
-  async function handleCancelReservation(id: string) {
-    const listing = listings.find(l => l.id === id);
-    const activeClaim = listing?.claims?.find(c => c.status === "active");
-    if (activeClaim) {
-      await supabase.from("claims").update({ status: "cancelled" }).eq("id", activeClaim.id);
-    }
-    await supabase.from("listings")
-      .update({ status: "AVAILABLE", reserved_until: null, claim_code: null })
-      .eq("id", id);
-    setListings(prev => prev.map(l =>
-      l.id === id ? { ...l, status: "AVAILABLE", reserved_until: null as any, claim_code: null as any } : l
-    ));
-  }
-
-  async function handleCancelListing(id: string) {
-    if (!confirm("Cancel this listing? Customers will be notified.")) return;
-    const res  = await fetch("/api/cancel-listing", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ listingId: id }),
+      body: JSON.stringify({
+        listingId: selectedId, first_name: claimForm.first_name.trim(),
+        email: claimForm.email.trim().toLowerCase(), phone: claimForm.phone.trim(),
+        eta_minutes: claimForm.eta_minutes, customer_user_id: user?.id || null,
+      }),
     });
     const data = await res.json();
     if (data.success) {
-      setListings(prev => prev.map(l => l.id === id ? { ...l, status: "CANCELLED" } : l));
-      if (data.notified > 0) alert(`${data.notified} customer(s) notified.`);
+      setClaimSuccess(true);
+      setLastCode(data.confirmation_code || data.code || data.claim?.confirmation_code || "");
+      setListings(prev => prev.filter(l => l.id !== selectedId));
+      setFiltered(prev => prev.filter(l => l.id !== selectedId));
+    } else {
+      setClaimMsg(data.error || "Failed to reserve. Please try again.");
     }
+    setClaimLoading(false);
   }
 
-  function startEdit(listing: ListingRow) {
-    setEditingId(listing.id);
-    const lbs = listing.weight_kg ? (listing.weight_kg * 2.205).toFixed(1) : "";
-    setEditForm({
-      food_name: listing.food_name, category: listing.category,
-      quantity: listing.quantity, allergy_note: listing.allergy_note || "",
-      note: listing.note || "", estimated_value: String(listing.estimated_value || ""),
-      weight_lbs: lbs,
-    });
+  const T      = t[locale];
+  const FT     = FILTER_T[locale] || FILTER_T.en;
+  const isRTL  = locale === "ar";
+  const canClaim = !!user && (!isBusiness || isNgo || isAdmin);
+  const isSignedIn = canClaim;
+  const liveCats = ["All", ...Array.from(new Set(listings.map(l => l.category).filter(Boolean)))];
+
+  function minsLeft(expires_at: string) {
+    const diff = new Date(expires_at).getTime() - Date.now();
+    if (diff <= 0) return null;
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return `${mins}m left`;
+    return `${Math.floor(mins / 60)}h ${mins % 60}m left`;
   }
 
-  async function handleSaveEdit(id: string) {
-    const weightKg = editForm.weight_lbs ? Number(editForm.weight_lbs) * LBS_TO_KG : null;
-    await supabase.from("listings").update({
-      food_name: editForm.food_name, category: editForm.category,
-      quantity: editForm.quantity, allergy_note: editForm.allergy_note || null,
-      note: editForm.note || null,
-      estimated_value: editForm.estimated_value ? Number(editForm.estimated_value) : null,
-      weight_kg: weightKg,
-    }).eq("id", id);
-    setListings(prev => prev.map(l =>
-      l.id === id ? { ...l, ...editForm, estimated_value: Number(editForm.estimated_value || 0), weight_kg: weightKg || 0 } : l
-    ));
-    setEditingId(null);
+  // CHANGE 6: build ETA options capped by listing expiry and 10h max
+  function getEtaOptions(listingId: string | null) {
+    const ALL_OPTIONS = [
+      { value: 10,  label: (l: string) => `10 ${l === "ar" ? "دقائق" : "minutes"}` },
+      { value: 15,  label: (l: string) => `15 ${l === "ar" ? "دقائق" : "minutes"}` },
+      { value: 20,  label: (l: string) => `20 ${l === "ar" ? "دقائق" : "minutes"}` },
+      { value: 30,  label: (l: string) => `30 ${l === "ar" ? "دقائق" : "minutes"}` },
+      { value: 45,  label: (l: string) => `45 ${l === "ar" ? "دقائق" : "minutes"}` },
+      { value: 60,  label: (l: string) => `1 ${l === "fr" ? "heure" : l === "es" ? "hora" : l === "pt" ? "hora" : l === "ar" ? "ساعة" : "hour"}` },
+      { value: 90,  label: (l: string) => `1.5 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
+      { value: 120, label: (l: string) => `2 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
+      { value: 180, label: (l: string) => `3 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
+      { value: 240, label: (l: string) => `4 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
+      { value: 300, label: (l: string) => `5 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
+      { value: 360, label: (l: string) => `6 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
+      { value: 420, label: (l: string) => `7 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
+      { value: 480, label: (l: string) => `8 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
+      { value: 540, label: (l: string) => `9 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
+      { value: 600, label: (l: string) => `10 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
+    ];
+    if (!listingId) return ALL_OPTIONS;
+    const listing = listings.find(l => l.id === listingId);
+    if (!listing) return ALL_OPTIONS;
+    const minsUntilExpiry = Math.floor((new Date(listing.expires_at).getTime() - Date.now()) / 60000);
+    const maxEta = Math.min(minsUntilExpiry, 600);
+    return ALL_OPTIONS.filter(o => o.value <= maxEta);
   }
 
   const inp: React.CSSProperties = {
-    width: "100%", padding: "10px 14px", borderRadius: "8px",
+    width: "100%", padding: "11px 14px", borderRadius: "8px",
     border: "1px solid #d1d5db", fontSize: "14px", color: "#111827",
-    boxSizing: "border-box", outline: "none", background: "#fff",
+    background: "#fff", outline: "none", boxSizing: "border-box",
   };
   const lbl: React.CSSProperties = {
-    display: "block", fontSize: "13px", fontWeight: 600, color: "#374151", marginBottom: "4px",
+    display: "block", fontSize: "13px", fontWeight: 600, color: "#374151", marginBottom: "5px",
   };
 
-  // CHANGE 3: dashboard title based on account_type
-  const dashboardTitle = isAdmin ? "Business Dashboard" : accountType === "ngo" ? "NGO Dashboard" : "Business Dashboard";
+  return (
+    <div dir={isRTL ? "rtl" : "ltr"} style={{ minHeight: "100vh", background: "#f9fafb", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
 
-  function renderListingCard(listing: ListingRow) {
-    const isTerminal  = TERMINAL.includes(listing.status);
-    const isReserved  = listing.status === "RESERVED";
-    const isAvailable = listing.status === "AVAILABLE";
-    const isPickedUp  = listing.status === "PICKED_UP";
-    const sc          = STATUS_COLOR[listing.status] || { bg: "#6b7280", text: "#fff" };
-    const activeClaim = listing.claims?.find(c => c.status === "active");
-    const noshowClaim = listing.claims?.find(c => c.noshow === true);
-    const isEditing   = editingId === listing.id;
-    const weightLbs   = listing.weight_kg ? (listing.weight_kg * 2.205) : null;
-    const claimerAvatar = activeClaim ? claimerAvatars[activeClaim.id] : undefined;
+      <nav style={{ background: "#0a2e1a", padding: "0 24px", height: "56px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 50 }}>
+        <a href="/" style={{ display: "flex", alignItems: "center", gap: "8px", textDecoration: "none" }}>
+          <img src="/gawa-logo-green.png" alt="GAWA Loop" style={{ width: "28px", height: "28px", objectFit: "contain" }}/>
+          <span style={{ color: "#fff", fontWeight: 800, fontSize: "16px" }}>GAWA Loop</span>
+        </a>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+          <LanguageSwitcher />
+          {user ? (
+            <a href={isAdmin ? "/admin/business-lookup" : isBusiness ? "/business/dashboard" : "/customer/profile"}
+              style={{ background: "#16a34a", color: "#fff", padding: "7px 14px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 700 }}>
+              {isAdmin ? "🔑 Admin" : isBusiness ? "Dashboard" : "My Profile"}
+            </a>
+          ) : (
+            <button onClick={() => { setSigninModal(true); setSigninError(""); setSigninDone(false); setTermsAccepted(false); }}
+              style={{ background: "rgba(255,255,255,0.1)", color: "#fff", padding: "7px 14px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 600 }}>
+              Sign In
+            </button>
+          )}
+        </div>
+      </nav>
 
-    return (
-      <div key={listing.id} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "24px", marginBottom: "16px", opacity: isTerminal ? 0.88 : 1 }}>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "14px", gap: "12px" }}>
-          <div style={{ display: "flex", gap: "12px", alignItems: "flex-start", flex: 1 }}>
-            {listing.image_url && (
-              <img src={listing.image_url} alt={listing.food_name}
-                style={{ width: "64px", height: "64px", borderRadius: "10px", objectFit: "cover", flexShrink: 0 }}/>
-            )}
-            <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "#0a2e1a", lineHeight: 1.3 }}>
-              {listing.food_name || "Unnamed food"}
-            </h3>
-          </div>
-          <span style={{ background: sc.bg, color: sc.text, fontSize: "12px", fontWeight: 700, padding: "5px 14px", borderRadius: "20px", flexShrink: 0 }}>
-            {listing.status === "NOSHOW" ? "NO-SHOW" : listing.status}
-          </span>
+      <div style={{ maxWidth: "760px", margin: "0 auto", padding: "32px 16px" }}>
+        <h1 style={{ fontSize: "28px", fontWeight: 900, color: "#0a2e1a", margin: "0 0 4px" }}>
+          {T.browse || "Browse Free Food"}
+        </h1>
+        <p style={{ color: "#6b7280", fontSize: "14px", margin: "0 0 20px" }}>
+          {filtered.length} {filtered.length === 1 ? "item" : "items"} available now · refreshes every 30s
+        </p>
+
+        {/* SEARCH */}
+        <div style={{ position: "relative", marginBottom: "14px" }}>
+          <span style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", fontSize: "16px" }}>🔍</span>
+          <input style={{ ...inp, paddingLeft: "40px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}
+            placeholder={locale === "fr" ? "Rechercher..." : locale === "es" ? "Buscar..." : locale === "pt" ? "Pesquisar..." : locale === "ar" ? "بحث..." : "Search food, category..."}
+            value={search} onChange={e => handleSearch(e.target.value)}/>
         </div>
 
-        {isEditing ? (
-          <div style={{ background: "#f9fafb", borderRadius: "12px", padding: "16px", marginBottom: "16px" }}>
-            <p style={{ margin: "0 0 12px", fontSize: "13px", fontWeight: 700, color: "#0a2e1a" }}>✏️ Editing listing</p>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-              <div style={{ gridColumn: "1/-1" }}><label style={lbl}>Food name</label><input style={inp} value={editForm.food_name || ""} onChange={e => setEditForm(f => ({ ...f, food_name: e.target.value }))}/></div>
-              <div><label style={lbl}>Category</label><input style={inp} value={editForm.category || ""} onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))}/></div>
-              <div><label style={lbl}>Quantity</label><input style={inp} value={editForm.quantity || ""} onChange={e => setEditForm(f => ({ ...f, quantity: e.target.value }))}/></div>
-              <div><label style={lbl}>Weight (lbs)</label><input style={inp} type="number" step="0.1" value={editForm.weight_lbs || ""} onChange={e => setEditForm(f => ({ ...f, weight_lbs: e.target.value }))}/></div>
-              <div><label style={lbl}>Est. Value ($)</label><input style={inp} type="number" step="0.01" value={editForm.estimated_value || ""} onChange={e => setEditForm(f => ({ ...f, estimated_value: e.target.value }))}/></div>
-              <div style={{ gridColumn: "1/-1" }}><label style={lbl}>Allergy info</label><input style={inp} value={editForm.allergy_note || ""} onChange={e => setEditForm(f => ({ ...f, allergy_note: e.target.value }))}/></div>
-              <div style={{ gridColumn: "1/-1" }}><label style={lbl}>Note</label><input style={inp} value={editForm.note || ""} onChange={e => setEditForm(f => ({ ...f, note: e.target.value }))}/></div>
-            </div>
-            <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
-              <button onClick={() => handleSaveEdit(listing.id)} style={{ background: "#16a34a", color: "#fff", border: "none", padding: "9px 20px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "14px" }}>Save Changes</button>
-              <button onClick={() => setEditingId(null)} style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "9px 16px", borderRadius: "8px", cursor: "pointer", fontSize: "14px" }}>Cancel</button>
-            </div>
-          </div>
-        ) : (
-          <div style={{ fontSize: "14px", color: "#1f2937", lineHeight: 1.9 }}>
-            <p style={{ margin: "2px 0" }}><b>Category:</b> {listing.category || "N/A"}</p>
-            <p style={{ margin: "2px 0" }}><b>Quantity:</b> {listing.quantity || "N/A"}</p>
-            <p style={{ margin: "2px 0" }}><b>Address:</b> {listing.address || "N/A"}</p>
-            {weightLbs && weightLbs > 0 && <p style={{ margin: "2px 0" }}><b>Weight:</b> {weightLbs.toFixed(1)} lbs</p>}
-            {listing.estimated_value && listing.estimated_value > 0 && <p style={{ margin: "2px 0" }}><b>Est. Value:</b> ${Number(listing.estimated_value).toFixed(2)}</p>}
-            {listing.allergy_note && <p style={{ margin: "2px 0" }}><b>Allergy:</b> {listing.allergy_note}</p>}
-            {listing.note && <p style={{ margin: "2px 0" }}><b>Note:</b> {listing.note}</p>}
-            <p style={{ margin: "2px 0" }}><b>Expires:</b> {listing.expires_at ? new Date(listing.expires_at).toLocaleString() : "N/A"}</p>
-            <p style={{ margin: "2px 0" }}><b>Posted:</b> {new Date(listing.created_at).toLocaleString()}</p>
+        {/* CATEGORY TABS */}
+        {!loading && listings.length > 0 && (
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "12px" }}>
+            {liveCats.map(cat => (
+              <button key={cat} onClick={() => handleCategory(cat)}
+                style={{ padding: "7px 16px", borderRadius: "20px", cursor: "pointer", fontSize: "13px", fontWeight: 700, transition: "all 0.15s",
+                  background: activeCategory === cat ? "#0a2e1a" : "#fff",
+                  color: activeCategory === cat ? "#4ade80" : "#374151",
+                  border: activeCategory === cat ? "none" : "1px solid #e5e7eb",
+                  boxShadow: activeCategory === cat ? "none" : "0 1px 3px rgba(0,0,0,0.06)",
+                }}>
+                {cat === "All" ? FT.all : cat}
+              </button>
+            ))}
           </div>
         )}
 
-        {isReserved && activeClaim && (
-          <div style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: "12px", padding: "16px 20px", marginTop: "16px" }}>
-            <p style={{ margin: "0 0 12px", fontWeight: 700, color: "#1d4ed8", fontSize: "14px" }}>Reserved by Customer</p>
-            <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "12px" }}>
-              {claimerAvatar
-                ? <img src={claimerAvatar} alt="Customer" style={{ width: "52px", height: "52px", borderRadius: "50%", objectFit: "cover", border: "2px solid #bfdbfe", flexShrink: 0 }}/>
-                : <div style={{ width: "52px", height: "52px", borderRadius: "50%", background: "#dbeafe", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "24px", flexShrink: 0 }}>🙋</div>
-              }
-              <div style={{ fontSize: "14px", color: "#1e3a5f", lineHeight: 2 }}>
-                <p style={{ margin: "2px 0" }}><b>Name:</b> {activeClaim.first_name}</p>
-                <p style={{ margin: "2px 0" }}><b>Email:</b> {activeClaim.email}</p>
-                <p style={{ margin: "2px 0" }}><b>Phone:</b> {activeClaim.phone || "Not provided"}</p>
-                <p style={{ margin: "2px 0" }}><b>ETA:</b> {activeClaim.eta_minutes} min · <b>Code:</b> <span style={{ fontWeight: 900, fontSize: "17px", color: "#2563eb", letterSpacing: "2px" }}>{activeClaim.confirmation_code}</span></p>
-              </div>
-            </div>
+        {/* SORT */}
+        {!loading && listings.length > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "20px" }}>
+            <span style={{ fontSize: "13px", color: "#6b7280", fontWeight: 600 }}>{FT.sort_label}:</span>
+            {SORT_OPTIONS.map(opt => (
+              <button key={opt} onClick={() => handleSort(opt)}
+                style={{ padding: "5px 14px", borderRadius: "20px", border: "none", cursor: "pointer", fontSize: "12px", fontWeight: 700,
+                  background: sortBy === opt ? "#16a34a" : "#f3f4f6",
+                  color: sortBy === opt ? "#fff" : "#374151",
+                }}>
+                {opt === "Newest" ? FT.newest : FT.expiring}
+              </button>
+            ))}
           </div>
         )}
 
-        {isPickedUp && activeClaim && (
-          <div style={{ background: "#f5f3ff", border: "1.5px solid #ddd6fe", borderRadius: "12px", padding: "16px 20px", marginTop: "16px" }}>
-            <p style={{ margin: "0 0 6px", fontWeight: 700, color: "#6d28d9", fontSize: "14px" }}>✅ Picked Up By</p>
-            <p style={{ margin: "0 0 4px", fontSize: "16px", color: "#2e1065", fontWeight: 700 }}>{activeClaim.first_name}</p>
-            <p style={{ margin: 0, fontSize: "12px", color: "#9ca3af", fontStyle: "italic" }}>Contact details hidden after pickup to protect customer privacy.</p>
-          </div>
-        )}
-
-        {(listing.status === "NOSHOW" || noshowClaim) && (
-          <div style={{ background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: "12px", padding: "14px 20px", marginTop: "16px" }}>
-            <p style={{ margin: "0 0 4px", fontWeight: 700, color: "#92400e", fontSize: "14px" }}>No-Show</p>
-            <p style={{ margin: 0, fontSize: "13px", color: "#78350f" }}>
-              {noshowClaim ? `${noshowClaim.first_name} did not arrive within the claim window.` : "Customer did not arrive within the claim window."}
+        {/* LISTINGS */}
+        {loading ? (
+          <div style={{ textAlign: "center", padding: "80px 0" }}>
+            <div style={{ display: "inline-block", width: "36px", height: "36px", border: "3px solid #e5e7eb", borderTopColor: "#16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            <p style={{ marginTop: "16px", color: "#9ca3af", fontSize: "14px" }}>
+              {locale === "fr" ? "Recherche de nourriture..." : locale === "es" ? "Buscando comida..." : locale === "pt" ? "Procurando comida..." : locale === "ar" ? "جارٍ البحث..." : "Finding available food near you..."}
             </p>
           </div>
-        )}
-
-        {!isTerminal && !isEditing && (
-          <div style={{ display: "flex", gap: "10px", marginTop: "20px", flexWrap: "wrap" }}>
-            {isReserved && (
-              <button onClick={() => handlePickedUp(listing.id)}
-                style={{ background: "#16a34a", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "14px" }}>
-                Mark as Picked Up
-              </button>
-            )}
-            {isReserved && (
-              <button onClick={() => handleCancelReservation(listing.id)}
-                style={{ background: "#f59e0b", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "14px" }}>
-                Cancel Reservation
-              </button>
-            )}
-            {isAvailable && (
-              <button onClick={() => startEdit(listing)}
-                style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "10px 20px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "14px" }}>
-                Edit
-              </button>
-            )}
-            {(isAvailable || isReserved) && (
-              <button onClick={() => handleCancelListing(listing.id)}
-                style={{ background: "#ef4444", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "14px" }}>
-                Cancel Listing
-              </button>
+        ) : filtered.length === 0 ? (
+          <div style={{ background: "#fff", borderRadius: "20px", border: "1px solid #e5e7eb", padding: "60px 24px", textAlign: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+            <p style={{ fontSize: "48px", margin: "0 0 16px" }}>🍽️</p>
+            <p style={{ fontSize: "18px", fontWeight: 800, color: "#0a2e1a", margin: "0 0 8px" }}>
+              {activeCategory !== "All"
+                ? `${locale === "fr" ? "Aucun résultat dans" : locale === "es" ? "Sin resultados en" : locale === "pt" ? "Sem resultados em" : locale === "ar" ? "لا نتائج في" : "No results in"} "${activeCategory}"`
+                : (locale === "fr" ? "Aucune nourriture disponible" : locale === "es" ? "Sin comida disponible" : locale === "pt" ? "Sem comida disponível" : locale === "ar" ? "لا طعام متاح الآن" : "No food available right now")}
+            </p>
+            <p style={{ fontSize: "14px", color: "#6b7280", margin: "0 0 20px", lineHeight: 1.6 }}>
+              {activeCategory !== "All" ? (
+                <button onClick={() => handleCategory("All")} style={{ background: "none", border: "none", color: "#16a34a", fontWeight: 700, cursor: "pointer", fontSize: "14px", padding: 0 }}>
+                  {locale === "fr" ? "Voir toutes les catégories →" : locale === "es" ? "Ver todas →" : locale === "pt" ? "Ver todas →" : locale === "ar" ? "← عرض الكل" : "View all categories →"}
+                </button>
+              ) : (locale === "fr" ? "Les annonces se rafraîchissent toutes les 30 secondes." : locale === "es" ? "Los anuncios se actualizan cada 30 segundos." : locale === "pt" ? "Anúncios atualizam a cada 30 segundos." : locale === "ar" ? "تتجدد الإعلانات كل 30 ثانية." : "Listings refresh automatically every 30 seconds.")}
+            </p>
+            {activeCategory === "All" && (
+              <a href="/" style={{ background: "#16a34a", color: "#fff", padding: "10px 24px", borderRadius: "8px", textDecoration: "none", fontSize: "14px", fontWeight: 700 }}>← Back to Home</a>
             )}
           </div>
-        )}
+        ) : filtered.map(listing => {
+          const bizInfo = bizInfoMap[listing.business_name];
+          const timeLeft = minsLeft(listing.expires_at);
+          const isUrgent = timeLeft !== null && timeLeft.includes("m left") && parseInt(timeLeft) <= 30;
+          return (
+            <div key={listing.id} style={{ background: "#fff", borderRadius: "20px", border: `1px solid ${isUrgent ? "#fde68a" : "#e5e7eb"}`, overflow: "hidden", marginBottom: "20px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
 
-        {isTerminal && (
-          <p style={{ marginTop: "14px", fontSize: "13px", color: "#6b7280", fontStyle: "italic" }}>
-            {listing.status === "PICKED_UP" && "Successfully picked up."}
-            {listing.status === "EXPIRED"   && "This listing expired without being claimed."}
-            {listing.status === "CANCELLED" && "This listing was cancelled."}
-            {(listing.status === "NOSHOW" || noshowClaim) && "Customer did not show up."}
+              {listing.image_url ? (
+                <div style={{ width: "100%", height: "220px", overflow: "hidden" }}>
+                  <img src={listing.image_url} alt={listing.food_name}
+                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                    onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}/>
+                </div>
+              ) : (
+                <div style={{ width: "100%", height: "80px", background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "36px" }}>🍽️</div>
+              )}
+
+              <div style={{ padding: "20px 24px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px", gap: "8px" }}>
+                  <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a", flex: 1 }}>{listing.food_name}</h2>
+                  <div style={{ display: "flex", gap: "6px", flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    <span style={{ background: "#f0fdf4", color: "#16a34a", fontSize: "11px", fontWeight: 700, padding: "4px 10px", borderRadius: "20px", border: "1px solid #bbf7d0" }}>FREE</span>
+                    <span style={{ background: "#f1f5f9", color: "#475569", fontSize: "11px", fontWeight: 700, padding: "4px 10px", borderRadius: "20px" }}>{listing.category}</span>
+                    {timeLeft && (
+                      <span style={{ background: isUrgent ? "#fef3c7" : "#f0fdf4", color: isUrgent ? "#92400e" : "#166534", fontSize: "11px", fontWeight: 700, padding: "4px 10px", borderRadius: "20px" }}>
+                        ⏰ {timeLeft}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <p style={{ margin: "0 0 6px", fontSize: "14px", color: "#6b7280" }}>
+                  {listing.quantity}
+                  {listing.weight_kg && listing.weight_kg > 0 && ` · ${(listing.weight_kg * 2.205).toFixed(1)} lbs`}
+                </p>
+                {listing.allergy_note && (
+                  <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "6px", padding: "4px 10px", display: "inline-block" }}>
+                    ⚠️ {listing.allergy_note}
+                  </p>
+                )}
+                {listing.note && <p style={{ margin: "6px 0 10px", fontSize: "13px", color: "#374151" }}>📝 {listing.note}</p>}
+
+                {isSignedIn ? (
+                  <div style={{ background: "#f9fafb", borderRadius: "12px", padding: "14px 16px", marginBottom: "16px" }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", marginBottom: bizInfo ? "12px" : 0 }}>
+                      {listing.business_logo_url ? (
+                        <img src={listing.business_logo_url} alt={listing.business_name}
+                          style={{ width: "36px", height: "36px", borderRadius: "8px", objectFit: "cover", flexShrink: 0 }}/>
+                      ) : (
+                        <div style={{ width: "36px", height: "36px", borderRadius: "8px", background: "#e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px", flexShrink: 0 }}>🏪</div>
+                      )}
+                      <div style={{ flex: 1 }}>
+                        <p style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: 700, color: "#0a2e1a" }}>{listing.business_name}</p>
+                        <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#6b7280" }}>📍 {listing.address}</p>
+                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                          <a href={`https://maps.google.com/?q=${encodeURIComponent(listing.address || "")}`} target="_blank" rel="noreferrer"
+                            style={{ background: "#e8f0fe", color: "#1a73e8", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🗺️ Google Maps</a>
+                          <a href={`https://maps.apple.com/?q=${encodeURIComponent(listing.address || "")}`} target="_blank" rel="noreferrer"
+                            style={{ background: "#f3f4f6", color: "#374151", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🍎 Apple Maps</a>
+                          <a href={`https://waze.com/ul?q=${encodeURIComponent(listing.address || "")}`} target="_blank" rel="noreferrer"
+                            style={{ background: "#e8f8ff", color: "#0099cc", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🚗 Waze</a>
+                        </div>
+                      </div>
+                    </div>
+                    {bizInfo && (
+                      <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "10px", display: "flex", flexDirection: "column", gap: "5px" }}>
+                        {bizInfo.phone && (
+                          <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>
+                            📞 <a href={`tel:${bizInfo.phone}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>{bizInfo.phone}</a>
+                          </p>
+                        )}
+                        <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>
+                          ✉️ <a href={`mailto:${bizInfo.email}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>{bizInfo.email}</a>
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "12px", padding: "14px 16px", marginBottom: "16px", textAlign: "center" }}>
+                    <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#374151", fontWeight: 600 }}>
+                      🔒 {locale === "fr" ? "Connectez-vous pour voir les détails et réserver" : locale === "es" ? "Inicia sesión para ver detalles y reservar" : locale === "pt" ? "Entre para ver detalhes e reservar" : locale === "ar" ? "سجّل للدخول لرؤية التفاصيل والحجز" : "Sign in to see the restaurant details & claim this food"}
+                    </p>
+                    <button onClick={() => { setSigninModal(true); setSigninError(""); setSigninDone(false); setTermsAccepted(false); }}
+                      style={{ background: "#16a34a", color: "#fff", padding: "8px 20px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 700 }}>
+                      {locale === "fr" ? "Se connecter — Gratuit" : locale === "es" ? "Iniciar sesión — Gratis" : locale === "pt" ? "Entrar — Grátis" : locale === "ar" ? "تسجيل الدخول — مجاني" : "Sign In — It's Free"}
+                    </button>
+                  </div>
+                )}
+
+                {isSignedIn && !isAdmin && (
+                  <button onClick={() => openClaim(listing.id)}
+                    style={{ width: "100%", background: "#16a34a", color: "#fff", border: "none", padding: "14px", borderRadius: "10px", cursor: "pointer", fontSize: "15px", fontWeight: 800 }}>
+                    {locale === "fr" ? "Réserver — Gratuit" : locale === "es" ? "Reservar — Gratis" : locale === "pt" ? "Reservar — Grátis" : locale === "ar" ? "احجز الآن — مجاناً" : "Reserve Now — It's Free"}
+                  </button>
+                )}
+
+                {isAdmin && (
+                  <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
+                    <p style={{ margin: 0, fontSize: "13px", color: "#166534", fontWeight: 600 }}>👁️ Admin view — claims disabled for admin account</p>
+                  </div>
+                )}
+
+                {isBusiness && !isNgo && !isAdmin && (
+                  <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
+                    <p style={{ margin: 0, fontSize: "13px", color: "#6b7280" }}>
+                      {locale === "fr" ? "Les comptes professionnels ne peuvent pas réserver." : locale === "es" ? "Las cuentas de negocios no pueden reservar." : locale === "pt" ? "Contas empresariais não podem reservar." : locale === "ar" ? "حسابات الأعمال لا يمكنها الحجز." : "Business accounts cannot claim food."}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+
+        {!loading && filtered.length > 0 && (
+          <p style={{ textAlign: "center", fontSize: "13px", color: "#9ca3af", marginTop: "8px", marginBottom: "24px" }}>
+            {locale === "fr" ? "Actualisation toutes les 30s — Tout est gratuit" : locale === "es" ? "Actualización cada 30s — Todo gratis" : locale === "pt" ? "Atualiza a cada 30s — Tudo grátis" : locale === "ar" ? "تحديث كل 30 ثانية — كل الطعام مجاني" : "Listings refresh every 30 seconds — All food is free"}
           </p>
         )}
       </div>
-    );
-  }
 
-  if (loading) return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "sans-serif" }}>
-      <p style={{ color: "#6b7280" }}>Loading dashboard...</p>
-    </div>
-  );
-
-  return (
-    <div style={{ minHeight: "100vh", background: "#f9fafb", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", padding: "24px 16px" }}>
-      <div style={{ maxWidth: "780px", margin: "0 auto" }}>
-
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "28px", flexWrap: "wrap", gap: "12px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <div style={{ position: "relative" }}>
-              {businessLogoUrl
-                ? <img src={businessLogoUrl} alt="logo" style={{ width: "48px", height: "48px", borderRadius: "12px", objectFit: "cover", border: "2px solid #e5e7eb", cursor: "pointer" }} onClick={() => logoRef.current?.click()}/>
-                : <div onClick={() => logoRef.current?.click()} style={{ width: "48px", height: "48px", borderRadius: "12px", background: "#f0fdf4", border: "2px dashed #16a34a", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: "20px" }}>📷</div>
-              }
-              <input ref={logoRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleLogoUpload}/>
-              <div onClick={() => logoRef.current?.click()} style={{ position: "absolute", bottom: "-3px", right: "-3px", background: "#16a34a", borderRadius: "50%", width: "16px", height: "16px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "9px", color: "#fff", cursor: "pointer" }}>✏️</div>
-            </div>
-            <div>
-              {/* CHANGE 3: dynamic title */}
-              <h1 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>{dashboardTitle}</h1>
-              <p style={{ margin: 0, fontSize: "13px", color: "#6b7280" }}>
-                {isAdmin ? (adminView || "Select a business") : (businessName || "No business linked")}
-                {isAdmin && <span style={{ marginLeft: "8px", background: "#0a2e1a", color: "#4ade80", fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "6px" }}>🔑 ADMIN</span>}
-              </p>
-              {logoMsg && <p style={{ margin: "2px 0 0", fontSize: "12px", color: logoMsg.includes("✅") ? "#16a34a" : "#ef4444", fontWeight: 600 }}>{logoMsg}</p>}
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-            <LanguageSwitcher/>
-            <a href="/" style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "8px 14px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 600 }}>🏠 Home</a>
-            <a href="/browse" style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "8px 14px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 600 }}>🍽️ Browse</a>
-            {isAdmin && <a href="/admin/business-lookup" style={{ background: "#0a2e1a", color: "#4ade80", border: "1px solid #166534", padding: "8px 14px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 700 }}>🔑 Admin Panel</a>}
-            {isAdmin && allBizNames.length > 0 && (
-              <select value={adminView || ""} onChange={e => setAdminView(e.target.value || null)}
-                style={{ padding: "8px 12px", borderRadius: "8px", border: "2px solid #0a2e1a", fontSize: "14px", background: "#f0fdf4", cursor: "pointer", fontWeight: 600, color: "#0a2e1a" }}>
-                <option value="">— Select Business —</option>
-                {allBizNames.map(b => <option key={b} value={b}>{b}</option>)}
-              </select>
-            )}
-            <button onClick={() => { setShowForm(true); setPostMsg(""); }}
-              style={{ background: "#16a34a", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontSize: "14px", fontWeight: 700 }}>
-              + New Listing
-            </button>
-            <button onClick={async () => { await supabase.auth.signOut(); window.location.href = "/business/login"; }}
-              style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "10px 16px", borderRadius: "8px", cursor: "pointer", fontSize: "14px", fontWeight: 600 }}>
-              Sign Out
-            </button>
-          </div>
-        </div>
-
-        <div style={{ background: "linear-gradient(135deg,#0a2e1a,#166534)", borderRadius: "16px", padding: "20px 24px", marginBottom: "20px", display: "flex", alignItems: "center", gap: "16px" }}>
-          <div style={{ fontSize: "48px", lineHeight: 1 }}>{tree.emoji}</div>
-          <div>
-            <p style={{ margin: "0 0 2px", fontSize: "12px", fontWeight: 700, color: "#4ade80", textTransform: "uppercase", letterSpacing: "0.6px" }}>🌍 Environmental Impact</p>
-            <p style={{ margin: "0 0 2px", fontSize: "20px", fontWeight: 800, color: "#fff" }}>{tree.label}</p>
-            <p style={{ margin: 0, fontSize: "13px", color: "#a3c9b0" }}>
-              {totalWeightLbs > 0
-                ? `${totalWeightLbs.toFixed(1)} lbs donated · ~${(totalWeightLbs * 2.5).toFixed(1)} lbs CO₂e saved`
-                : "Start posting food to grow your impact"}
-            </p>
-          </div>
-        </div>
-
-        {showForm && (
-          <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "28px", marginBottom: "24px", boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-              <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "#0a2e1a" }}>Post New Food</h2>
-              <button onClick={() => setShowForm(false)} style={{ background: "none", border: "none", fontSize: "22px", cursor: "pointer", color: "#9ca3af" }}>✕</button>
-            </div>
-            <form onSubmit={handlePost}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-                <div style={{ gridColumn: "1/-1" }}><label style={lbl}>Business Name</label><input style={{ ...inp, background: "#f9fafb", color: "#6b7280" }} value={businessName || ""} disabled/></div>
-                <div style={{ gridColumn: "1/-1" }}><label style={lbl}>Pickup Address</label><input style={{ ...inp, background: "#f9fafb", color: "#6b7280" }} value={businessAddress || ""} disabled/></div>
-                <div style={{ gridColumn: "1/-1" }}>
-                  <label style={lbl}>Food Name *</label>
-                  <input style={inp} required value={form.food_name} onChange={e => setForm(f => ({ ...f, food_name: e.target.value }))} placeholder="e.g. Chicken sandwiches"/>
+      {/* SIGN-IN MODAL */}
+      {signinModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: "16px" }}>
+          <div style={{ background: "#fff", borderRadius: "20px", padding: "32px", width: "100%", maxWidth: "420px", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}>
+            {signinDone ? (
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: "52px", marginBottom: "16px" }}>📬</div>
+                <h2 style={{ margin: "0 0 10px", fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>
+                  {locale === "fr" ? "Vérifiez votre email !" : locale === "es" ? "¡Revisa tu email!" : locale === "pt" ? "Verifique seu email!" : locale === "ar" ? "تحقق من بريدك!" : "Check your email!"}
+                </h2>
+                <p style={{ margin: "0 0 16px", fontSize: "15px", color: "#374151", lineHeight: 1.6 }}>
+                  {locale === "fr" ? "Lien envoyé à" : locale === "es" ? "Enlace enviado a" : locale === "pt" ? "Link enviado para" : locale === "ar" ? "أرسلنا رابطاً إلى" : "We sent a confirmation link to"} <b>{signinEmail}</b>
+                </p>
+                <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "12px", padding: "16px", marginBottom: "20px", textAlign: "left" }}>
+                  <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#374151" }}>1. {locale === "fr" ? "Ouvrez votre boîte mail" : locale === "es" ? "Abre tu bandeja" : locale === "pt" ? "Abra sua caixa" : locale === "ar" ? "افتح بريدك" : "Open your email inbox"}</p>
+                  <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#374151" }}>2. {locale === "fr" ? "Cliquez sur le lien de confirmation" : locale === "es" ? "Haz clic en el enlace" : locale === "pt" ? "Clique no link" : locale === "ar" ? "انقر على الرابط" : "Click the confirmation link"}</p>
+                  <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>3. {locale === "fr" ? "Vous serez connecté automatiquement" : locale === "es" ? "Serás conectado automáticamente" : locale === "pt" ? "Você será conectado" : locale === "ar" ? "ستُوقّع دخولك تلقائياً" : "You'll be signed in automatically"}</p>
                 </div>
-                <div>
-                  <label style={lbl}>Category *</label>
-                  <select style={{ ...inp, cursor: "pointer" }} value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
-                    <option>Food</option><option>Bakery</option><option>Beverages</option><option>Prepared Meals</option><option>Produce</option><option>Other</option>
-                  </select>
-                </div>
-                <div><label style={lbl}>Quantity *</label><input style={inp} required value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} placeholder="e.g. 10 portions"/></div>
-                <div><label style={lbl}>Weight (lbs)</label><input style={inp} type="number" min="0" step="0.1" value={form.weight_lbs} onChange={e => setForm(f => ({ ...f, weight_lbs: e.target.value }))} placeholder="e.g. 8"/></div>
-                <div><label style={lbl}>Est. Value ($)</label><input style={inp} type="number" min="0" step="0.01" value={form.estimated_value} onChange={e => setForm(f => ({ ...f, estimated_value: e.target.value }))} placeholder="e.g. 25"/></div>
-                <div style={{ gridColumn: "1/-1" }}><label style={lbl}>Allergy / Dietary Info</label><input style={inp} value={form.allergy_note} onChange={e => setForm(f => ({ ...f, allergy_note: e.target.value }))} placeholder="e.g. Contains nuts, halal"/></div>
-
-                {/* CHANGE 1: Photo is now REQUIRED */}
-                <div style={{ gridColumn: "1/-1" }}>
-                  <label style={lbl}>
-                    Food Photo <span style={{ color: "#ef4444" }}>*</span>
-                    {!imageSelected && <span style={{ marginLeft: "8px", fontSize: "12px", color: "#ef4444", fontWeight: 600 }}>Required</span>}
-                    {imageSelected && <span style={{ marginLeft: "8px", fontSize: "12px", color: "#16a34a", fontWeight: 600 }}>✓ Photo selected</span>}
-                  </label>
-                  <input
-                    ref={listingFileRef}
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    style={{ fontSize: "13px", color: "#374151", width: "100%" }}
-                    onChange={e => setImageSelected(!!(e.target.files?.[0]))}
-                  />
-                  {uploadingImg && <p style={{ margin: "6px 0 0", fontSize: "13px", color: "#16a34a", fontWeight: 600 }}>Uploading photo...</p>}
-                </div>
-
-                {/* CHANGE 2: Active For — new expiry UI */}
-                <div style={{ gridColumn: "1/-1" }}>
-                  <label style={lbl}>Active For *</label>
-                  <div style={{ display: "flex", gap: "8px", marginBottom: "10px", flexWrap: "wrap" }}>
-                    {(["hours", "days", "datetime"] as ExpiryMode[]).map(mode => (
-                      <button key={mode} type="button" onClick={() => setExpiryMode(mode)}
-                        style={{ padding: "6px 16px", borderRadius: "20px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 700,
-                          background: expiryMode === mode ? "#0a2e1a" : "#f3f4f6",
-                          color: expiryMode === mode ? "#4ade80" : "#374151" }}>
-                        {mode === "hours" ? "Hours" : mode === "days" ? "Days" : "Pick date & time"}
-                      </button>
-                    ))}
-                  </div>
-                  {expiryMode === "hours" && (
-                    <select style={{ ...inp, cursor: "pointer" }} value={expiryHours} onChange={e => setExpiryHours(e.target.value)}>
-                      {[1,2,3,4,5,6,7,8,9,10].map(h => <option key={h} value={String(h)}>{h} hour{h > 1 ? "s" : ""}</option>)}
-                    </select>
-                  )}
-                  {expiryMode === "days" && (
-                    <select style={{ ...inp, cursor: "pointer" }} value={expiryDays} onChange={e => setExpiryDays(e.target.value)}>
-                      {[1,2,3,4,5,6,7,8,9,10].map(d => <option key={d} value={String(d)}>{d} day{d > 1 ? "s" : ""}</option>)}
-                    </select>
-                  )}
-                  {expiryMode === "datetime" && (
-                    <input
-                      style={inp}
-                      type="datetime-local"
-                      value={expiryDatetime}
-                      min={new Date().toISOString().slice(0, 16)}
-                      onChange={e => setExpiryDatetime(e.target.value)}
-                      required={expiryMode === "datetime"}
-                    />
-                  )}
-                </div>
-
-                <div style={{ gridColumn: "1/-1" }}>
-                  <label style={lbl}>Claim Hold Time</label>
-                  <select style={{ ...inp, cursor: "pointer" }} value={form.claim_hold} onChange={e => setForm(f => ({ ...f, claim_hold: e.target.value }))}>
-                    <option value="10">10 minutes</option><option value="15">15 minutes</option><option value="20">20 minutes</option><option value="30">30 minutes</option><option value="45">45 minutes</option><option value="60">1 hour</option>
-                  </select>
-                </div>
-                <div style={{ gridColumn: "1/-1" }}><label style={lbl}>Note</label><textarea style={{ ...inp, height: "70px", resize: "vertical" }} value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} placeholder="e.g. Ask for Maria at the front."/></div>
+                <p style={{ margin: "0 0 16px", fontSize: "12px", color: "#9ca3af" }}>
+                  {locale === "fr" ? "Vérifiez vos spams si absent." : locale === "es" ? "¿No lo ves? Revisa spam." : locale === "pt" ? "Não viu? Verifique spam." : locale === "ar" ? "تحقق من البريد المزعج." : "Don't see it? Check your spam folder."}
+                </p>
+                <button onClick={() => { setSigninModal(false); setSigninDone(false); }}
+                  style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "10px 24px", borderRadius: "8px", cursor: "pointer", fontSize: "14px", fontWeight: 600 }}>
+                  {locale === "fr" ? "OK, compris" : locale === "es" ? "OK, entendido" : locale === "pt" ? "OK, entendi" : locale === "ar" ? "حسناً" : "OK, got it"}
+                </button>
               </div>
-              {postMsg && <p style={{ margin: "12px 0 0", fontSize: "14px", color: postMsg.includes("✅") ? "#16a34a" : "#ef4444", fontWeight: 600 }}>{postMsg}</p>}
-              <button type="submit" disabled={posting || uploadingImg}
-                style={{ marginTop: "20px", background: (posting || uploadingImg) ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "12px 28px", borderRadius: "10px", cursor: (posting || uploadingImg) ? "not-allowed" : "pointer", fontSize: "15px", fontWeight: 700 }}>
-                {posting ? "Posting..." : uploadingImg ? "Uploading..." : "Post Food"}
-              </button>
-            </form>
-          </div>
-        )}
-
-        {/* CHANGE 4: Your Impact section with money saved added */}
-        <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "24px 28px", marginBottom: "24px" }}>
-          <h2 style={{ margin: "0 0 16px", fontSize: "17px", fontWeight: 800, color: "#0a2e1a" }}>Your Impact</h2>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-            {[
-              {
-                label: `This Month (${now.toLocaleString("default", { month: "long" })})`,
-                items: [
-                  { k: "Listings Posted", v: monthlyL.length },
-                  { k: "✅ Picked Up",    v: mPickups },
-                  { k: "❌ Cancelled",    v: mCancelled },
-                  { k: "⏰ Expired",      v: mExpired },
-                  { k: "👻 No-Shows",     v: mNoshow },
-                  { k: "Food Saved",      v: `${monthlyL.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.weight_kg || 0) * 2.205, 0).toFixed(1)} lbs` },
-                  { k: "💰 Value Saved",  v: `$${mMoneySaved.toFixed(2)}` },
-                ],
-              },
-              {
-                label: `This Year (${thisYear})`,
-                items: [
-                  { k: "Listings Posted", v: yearlyL.length },
-                  { k: "✅ Picked Up",    v: yPickups },
-                  { k: "❌ Cancelled",    v: yCancelled },
-                  { k: "⏰ Expired",      v: yExpired },
-                  { k: "👻 No-Shows",     v: yNoshow },
-                  { k: "Total Donated",   v: `${totalWeightLbs.toFixed(1)} lbs` },
-                  { k: "💰 Total Value",  v: `$${yMoneySaved.toFixed(2)}` },
-                ],
-              },
-            ].map(section => (
-              <div key={section.label} style={{ background: "#f9fafb", borderRadius: "12px", padding: "16px 20px", border: "1px solid #e5e7eb" }}>
-                <p style={{ margin: "0 0 12px", fontSize: "12px", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.8px" }}>{section.label}</p>
-                {section.items.map(item => (
-                  <div key={item.k} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid #f0f0f0" }}>
-                    <span style={{ fontSize: "13px", color: "#374151" }}>{item.k}</span>
-                    <span style={{ fontSize: "14px", fontWeight: 700, color: item.k.includes("💰") ? "#16a34a" : "#0a2e1a" }}>{item.v}</span>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ display: "flex", gap: "4px", background: "#fff", borderRadius: "12px", padding: "4px", border: "1px solid #e5e7eb", marginBottom: "20px" }}>
-          {[
-            { key: "active",  label: `📋 Active Listings (${activeListings.length})` },
-            { key: "history", label: `📁 Past Orders (${historyListings.length})` },
-          ].map(tab => (
-            <button key={tab.key} onClick={() => setActiveTab(tab.key as "active" | "history")}
-              style={{ flex: 1, padding: "10px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "14px", fontWeight: 700, background: activeTab === tab.key ? "#0a2e1a" : "transparent", color: activeTab === tab.key ? "#fff" : "#374151" }}>
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {activeTab === "active" && (
-          <>
-            {activeListings.length === 0 ? (
-              <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "12px", padding: "40px", textAlign: "center" }}>
-                <p style={{ color: "#6b7280", marginBottom: "16px" }}>{isAdmin && !adminView ? "Select a business above." : "No active listings right now."}</p>
-                {(!isAdmin || adminView) && <button onClick={() => setShowForm(true)} style={{ background: "#16a34a", color: "#fff", border: "none", padding: "12px 24px", borderRadius: "8px", cursor: "pointer", fontWeight: 600 }}>+ New Listing</button>}
-              </div>
-            ) : activeListings.map(l => renderListingCard(l))}
-          </>
-        )}
-
-        {activeTab === "history" && (
-          <>
-            {historyListings.length === 0 ? (
-              <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "12px", padding: "40px", textAlign: "center" }}>
-                <p style={{ color: "#6b7280" }}>No past orders yet.</p>
-              </div>
-            ) : historyYears.map(year => (
-              <div key={year} style={{ marginBottom: "28px" }}>
-                <h3 style={{ margin: "0 0 16px", fontSize: "20px", fontWeight: 900, color: "#0a2e1a", borderBottom: "2px solid #e5e7eb", paddingBottom: "8px" }}>📅 {year}</h3>
-                {Object.keys(historyGroups[year])
-                  .sort((a, b) => new Date(`${b} 1, ${year}`).getMonth() - new Date(`${a} 1, ${year}`).getMonth())
-                  .map(month => (
-                    <div key={month} style={{ marginBottom: "20px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
-                        <h4 style={{ margin: 0, fontSize: "15px", fontWeight: 700, color: "#374151" }}>{month}</h4>
-                        <span style={{ background: "#f0fdf4", color: "#16a34a", fontSize: "12px", fontWeight: 700, padding: "2px 10px", borderRadius: "12px", border: "1px solid #bbf7d0" }}>
-                          {historyGroups[year][month].length} orders
-                        </span>
-                      </div>
-                      {historyGroups[year][month].map(l => renderListingCard(l))}
+            ) : (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
+                  <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>
+                    {signinMode === "signin"
+                      ? (locale === "fr" ? "Se connecter" : locale === "es" ? "Iniciar sesión" : locale === "pt" ? "Entrar" : locale === "ar" ? "تسجيل الدخول" : "Sign In")
+                      : (locale === "fr" ? "Créer un compte" : locale === "es" ? "Crear cuenta" : locale === "pt" ? "Criar conta" : locale === "ar" ? "إنشاء حساب" : "Create Account")}
+                  </h2>
+                  <button onClick={() => setSigninModal(false)} style={{ background: "none", border: "none", fontSize: "22px", cursor: "pointer", color: "#9ca3af" }}>✕</button>
+                </div>
+                <form onSubmit={handleSignin}>
+                  {signinError && (
+                    <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px", padding: "10px 14px", marginBottom: "16px" }}>
+                      <p style={{ margin: 0, color: "#991b1b", fontSize: "13px" }}>{signinError}</p>
                     </div>
-                  ))
-                }
+                  )}
+                  <div style={{ marginBottom: "14px" }}>
+                    <label style={lbl}>{locale === "ar" ? "البريد الإلكتروني *" : "Email *"}</label>
+                    <input style={inp} type="email" required value={signinEmail}
+                      onChange={e => setSigninEmail(e.target.value)} placeholder="you@email.com"/>
+                  </div>
+                  <div style={{ marginBottom: signinMode === "signup" ? "16px" : "20px" }}>
+                    <label style={lbl}>{locale === "fr" ? "Mot de passe *" : locale === "es" ? "Contraseña *" : locale === "pt" ? "Senha *" : locale === "ar" ? "كلمة المرور *" : "Password *"}</label>
+                    <input style={inp} type="password" required value={signinPassword}
+                      onChange={e => setSigninPassword(e.target.value)} placeholder="••••••••" minLength={6}/>
+                  </div>
+
+                  {signinMode === "signup" && (
+                    <label style={{ display: "flex", gap: "10px", alignItems: "flex-start", marginBottom: "16px", cursor: "pointer" }}
+                      onClick={() => setTermsAccepted(v => !v)}>
+                      <div style={{ width: "20px", height: "20px", borderRadius: "5px", border: `2px solid ${termsAccepted ? "#16a34a" : "#d1d5db"}`, background: termsAccepted ? "#16a34a" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: "1px", transition: "all 0.15s" }}>
+                        {termsAccepted && <span style={{ color: "#fff", fontSize: "12px", fontWeight: 900 }}>✓</span>}
+                      </div>
+                      <p style={{ margin: 0, fontSize: "13px", color: "#374151", lineHeight: 1.5 }}>
+                        {locale === "fr" ? "J'accepte les " : locale === "es" ? "Acepto los " : locale === "pt" ? "Aceito os " : locale === "ar" ? "أوافق على " : "I agree to the "}
+                        <a href="/terms" target="_blank" onClick={e => e.stopPropagation()} style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>
+                          {locale === "fr" ? "Conditions d'utilisation" : locale === "es" ? "Términos de uso" : locale === "pt" ? "Termos de uso" : locale === "ar" ? "شروط الاستخدام" : "Terms of Use"}
+                        </a>
+                        {" "}{locale === "fr" ? "et la " : locale === "es" ? "y la " : locale === "pt" ? "e a " : locale === "ar" ? "و" : "and "}
+                        <a href="/privacy" target="_blank" onClick={e => e.stopPropagation()} style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>
+                          {locale === "fr" ? "Politique de confidentialité" : locale === "es" ? "Política de privacidad" : locale === "pt" ? "Política de privacidade" : locale === "ar" ? "سياسة الخصوصية" : "Privacy Policy"}
+                        </a>
+                        {" *"}
+                      </p>
+                    </label>
+                  )}
+
+                  <button type="submit" disabled={signinLoading || (signinMode === "signup" && !termsAccepted)}
+                    style={{ width: "100%", background: (signinLoading || (signinMode === "signup" && !termsAccepted)) ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "13px", borderRadius: "10px", cursor: (signinLoading || (signinMode === "signup" && !termsAccepted)) ? "not-allowed" : "pointer", fontSize: "15px", fontWeight: 700, marginBottom: "14px" }}>
+                    {signinLoading ? "..." : signinMode === "signin"
+                      ? (locale === "fr" ? "Se connecter" : locale === "es" ? "Iniciar sesión" : locale === "pt" ? "Entrar" : locale === "ar" ? "دخول" : "Sign In")
+                      : (locale === "fr" ? "Créer le compte" : locale === "es" ? "Crear cuenta" : locale === "pt" ? "Criar conta" : locale === "ar" ? "إنشاء حساب" : "Create Account")}
+                  </button>
+                  <p style={{ textAlign: "center", fontSize: "13px", color: "#6b7280", margin: 0 }}>
+                    {signinMode === "signin"
+                      ? (locale === "fr" ? "Pas de compte ?" : locale === "es" ? "¿Sin cuenta?" : locale === "pt" ? "Sem conta?" : locale === "ar" ? "ليس لديك حساب؟" : "No account?")
+                      : (locale === "fr" ? "Déjà un compte ?" : locale === "es" ? "¿Ya tienes cuenta?" : locale === "pt" ? "Já tem conta?" : locale === "ar" ? "لديك حساب؟" : "Already have one?")}{" "}
+                    <button type="button" onClick={() => { setSigninMode(signinMode === "signin" ? "signup" : "signin"); setSigninError(""); setTermsAccepted(false); }}
+                      style={{ background: "none", border: "none", color: "#16a34a", fontWeight: 700, cursor: "pointer", fontSize: "13px", padding: 0 }}>
+                      {signinMode === "signin"
+                        ? (locale === "fr" ? "Créer un compte" : locale === "es" ? "Crear cuenta" : locale === "pt" ? "Criar conta" : locale === "ar" ? "إنشاء حساب" : "Create one free")
+                        : (locale === "fr" ? "Se connecter" : locale === "es" ? "Iniciar sesión" : locale === "pt" ? "Entrar" : locale === "ar" ? "تسجيل الدخول" : "Sign in")}
+                    </button>
+                  </p>
+                </form>
+                <p style={{ textAlign: "center", marginTop: "14px", fontSize: "12px", color: "#9ca3af" }}>
+                  {locale === "fr" ? "Entreprise ?" : locale === "es" ? "¿Negocio?" : locale === "pt" ? "Empresa?" : locale === "ar" ? "شركة؟" : "Business?"}{" "}
+                  <a href="/business/login" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>
+                    {locale === "fr" ? "Connexion entreprise →" : locale === "es" ? "Login empresas →" : locale === "pt" ? "Login empresas →" : locale === "ar" ? "← دخول الأعمال" : "Business login →"}
+                  </a>
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* CLAIM MODAL */}
+      {selectedId && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: "16px" }}>
+          <div style={{ background: "#fff", borderRadius: "20px", padding: "32px", width: "100%", maxWidth: "480px", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}>
+            {claimSuccess ? (
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: "56px", marginBottom: "12px" }}>🎉</div>
+                <h2 style={{ margin: "0 0 8px", fontSize: "22px", fontWeight: 800, color: "#0a2e1a" }}>
+                  {locale === "fr" ? "Réservation confirmée !" : locale === "es" ? "¡Reserva confirmada!" : locale === "pt" ? "Reserva confirmada!" : locale === "ar" ? "تم تأكيد الحجز!" : "Reservation Confirmed!"}
+                </h2>
+                <p style={{ margin: "0 0 16px", color: "#6b7280", fontSize: "14px" }}>
+                  {locale === "fr" ? "Votre code de retrait :" : locale === "es" ? "Tu código:" : locale === "pt" ? "Seu código:" : locale === "ar" ? "رمز الاستلام:" : "Your pickup code:"}
+                </p>
+                <div style={{ background: "#f0fdf4", border: "2px solid #16a34a", borderRadius: "12px", padding: "20px", marginBottom: "16px" }}>
+                  <p style={{ margin: 0, fontSize: "48px", fontWeight: 900, letterSpacing: "8px", color: "#0a2e1a", fontFamily: "monospace" }}>{lastCode}</p>
+                </div>
+                <p style={{ color: "#6b7280", fontSize: "13px", marginBottom: "20px" }}>
+                  {locale === "fr" ? "Vérifiez votre email. Montrez ce code à votre arrivée." : locale === "es" ? "Revisa tu email. Muestra este código al llegar." : locale === "pt" ? "Verifique seu email. Mostre este código ao chegar." : locale === "ar" ? "تحقق من بريدك. أظهر هذا الرمز عند الوصول." : "Check your email for details. Show this code when you arrive."}
+                </p>
+                <button onClick={() => { setSelectedId(null); setClaimSuccess(false); }}
+                  style={{ background: "#16a34a", color: "#fff", border: "none", padding: "12px 28px", borderRadius: "10px", cursor: "pointer", fontWeight: 700, fontSize: "15px" }}>
+                  {locale === "fr" ? "Terminé" : locale === "es" ? "Listo" : locale === "pt" ? "Pronto" : locale === "ar" ? "تم" : "Done"}
+                </button>
               </div>
-            ))}
-          </>
-        )}
-      </div>
+            ) : (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
+                  <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>
+                    {locale === "fr" ? "Réserver cette nourriture" : locale === "es" ? "Reservar esta comida" : locale === "pt" ? "Reservar esta comida" : locale === "ar" ? "احجز هذا الطعام" : "Reserve This Food"}
+                  </h2>
+                  <button onClick={() => setSelectedId(null)} style={{ background: "none", border: "none", fontSize: "22px", cursor: "pointer", color: "#9ca3af" }}>✕</button>
+                </div>
+                <form onSubmit={handleClaim}>
+                  {claimMsg && (
+                    <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px", padding: "10px 14px", marginBottom: "16px" }}>
+                      <p style={{ margin: 0, color: "#991b1b", fontSize: "13px" }}>{claimMsg}</p>
+                    </div>
+                  )}
+                  {/* CHANGE 5: auto-filled fields with edit hint */}
+                  <div style={{ marginBottom: "14px" }}>
+                    <label style={lbl}>{locale === "fr" ? "Votre prénom *" : locale === "es" ? "Tu nombre *" : locale === "pt" ? "Seu nome *" : locale === "ar" ? "اسمك الأول *" : "Your First Name *"}</label>
+                    <input style={inp} required value={claimForm.first_name}
+                      onChange={e => setClaimForm(f => ({ ...f, first_name: e.target.value }))}
+                      placeholder={locale === "fr" ? "Votre prénom" : locale === "es" ? "Tu nombre" : locale === "pt" ? "Seu nome" : locale === "ar" ? "اسمك" : "Your first name"}/>
+                  </div>
+                  <div style={{ marginBottom: "14px" }}>
+                    <label style={lbl}>Email *</label>
+                    <input style={inp} type="email" required value={claimForm.email}
+                      onChange={e => setClaimForm(f => ({ ...f, email: e.target.value }))}/>
+                  </div>
+                  <div style={{ marginBottom: "14px" }}>
+                    <label style={lbl}>{locale === "fr" ? "Téléphone *" : locale === "es" ? "Teléfono *" : locale === "pt" ? "Telefone *" : locale === "ar" ? "الهاتف *" : "Phone Number *"}</label>
+                    <input style={inp} type="tel" required value={claimForm.phone}
+                      onChange={e => setClaimForm(f => ({ ...f, phone: e.target.value }))} placeholder="e.g. 3478015325"/>
+                  </div>
+                  {/* CHANGE 5: hint if fields were auto-filled */}
+                  {(claimForm.first_name || claimForm.phone) && (
+                    <p style={{ margin: "-8px 0 12px", fontSize: "12px", color: "#16a34a", fontWeight: 600 }}>
+                      ✓ {locale === "fr" ? "Informations pré-remplies — modifiez si nécessaire" : locale === "es" ? "Información precargada — edita si es necesario" : locale === "pt" ? "Informações preenchidas — edite se necessário" : locale === "ar" ? "تم ملء البيانات تلقائياً — عدّل إن أردت" : "Pre-filled from your last claim — edit if needed"}
+                    </p>
+                  )}
+                  {/* CHANGE 6: ETA options capped by listing expiry and 10h max */}
+                  <div style={{ marginBottom: "20px" }}>
+                    <label style={lbl}>{locale === "fr" ? "Heure d'arrivée" : locale === "es" ? "Hora de llegada" : locale === "pt" ? "Horário de chegada" : locale === "ar" ? "وقت الوصول" : "Your Arrival Time"}</label>
+                    <select style={{ ...inp, cursor: "pointer" }} value={claimForm.eta_minutes}
+                      onChange={e => setClaimForm(f => ({ ...f, eta_minutes: Number(e.target.value) }))}>
+                      {getEtaOptions(selectedId).map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label(locale)}</option>
+                      ))}
+                    </select>
+                    {(() => {
+                      const listing = listings.find(l => l.id === selectedId);
+                      if (!listing) return null;
+                      const minsUntilExpiry = Math.floor((new Date(listing.expires_at).getTime() - Date.now()) / 60000);
+                      if (minsUntilExpiry < 600) {
+                        return (
+                          <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#f59e0b", fontWeight: 600 }}>
+                            ⏰ {locale === "fr" ? `Ce listing expire dans ${minsUntilExpiry} min` : locale === "es" ? `Este anuncio expira en ${minsUntilExpiry} min` : locale === "pt" ? `Este anúncio expira em ${minsUntilExpiry} min` : locale === "ar" ? `ينتهي هذا الإعلان خلال ${minsUntilExpiry} دقيقة` : `This listing expires in ${minsUntilExpiry} min — arrival time limited accordingly`}
+                          </p>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
+                  <button type="submit" disabled={claimLoading}
+                    style={{ width: "100%", background: claimLoading ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "14px", borderRadius: "10px", cursor: claimLoading ? "not-allowed" : "pointer", fontSize: "15px", fontWeight: 800 }}>
+                    {claimLoading ? "..." : (locale === "fr" ? "Réserver — Gratuit" : locale === "es" ? "Reservar — Gratis" : locale === "pt" ? "Reservar — Grátis" : locale === "ar" ? "احجز — مجاناً" : "Reserve Now — It's Free")}
+                  </button>
+                </form>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
