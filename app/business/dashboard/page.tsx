@@ -35,7 +35,6 @@ type ListingRow = {
   claims?: ClaimRow[];
 };
 
-// NGO received claim row — joined with listing info
 type ReceivedClaim = {
   id: string;
   first_name: string;
@@ -118,7 +117,6 @@ export default function BusinessDashboard() {
   const [expiryDays, setExpiryDays]         = useState<string>("1");
   const [expiryDatetime, setExpiryDatetime] = useState<string>("");
   const [imageSelected, setImageSelected]   = useState(false);
-  // NGO received claims
   const [receivedClaims, setReceivedClaims] = useState<ReceivedClaim[]>([]);
   const listingFileRef = useRef<HTMLInputElement>(null);
   const logoRef        = useRef<HTMLInputElement>(null);
@@ -136,7 +134,6 @@ export default function BusinessDashboard() {
   }
 
   async function loadReceivedClaims(userId: string) {
-    // Fetch all claims this NGO made, joined with listing info
     const { data, error } = await supabase
       .from("claims")
       .select("id, first_name, confirmation_code, eta_minutes, status, created_at, listing_id, listings(food_name, business_name, image_url, address)")
@@ -203,7 +200,6 @@ export default function BusinessDashboard() {
       }
     }
 
-    // Load NGO received claims
     if (!admin && biz?.account_type === "ngo") {
       await loadReceivedClaims(user.id);
     }
@@ -241,9 +237,9 @@ export default function BusinessDashboard() {
   const mNoshow    = monthlyL.filter(l => l.claims?.some(c => c.noshow)).length;
   const yNoshow    = yearlyL.filter(l => l.claims?.some(c => c.noshow)).length;
 
-  const mMoneySaved     = monthlyL.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.estimated_value || 0), 0);
-  const yMoneySaved     = yearlyL.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.estimated_value || 0), 0);
-  const totalWeightLbs  = listings.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.weight_kg || 0) * 2.205, 0);
+  const mMoneySaved    = monthlyL.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.estimated_value || 0), 0);
+  const yMoneySaved    = yearlyL.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.estimated_value || 0), 0);
+  const totalWeightLbs = listings.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.weight_kg || 0) * 2.205, 0);
   const tree = treeMetric(totalWeightLbs);
   const T    = t[locale];
 
@@ -254,7 +250,6 @@ export default function BusinessDashboard() {
 
   const isNgo = accountType === "ngo";
 
-  // NGO received stats
   const receivedActive    = receivedClaims.filter(c => c.status === "active");
   const receivedPickedUp  = receivedClaims.filter(c => c.status === "picked_up");
   const receivedCancelled = receivedClaims.filter(c => c.status === "cancelled");
@@ -461,7 +456,6 @@ export default function BusinessDashboard() {
     );
   }
 
-  // NGO received claim card
   function renderReceivedCard(claim: ReceivedClaim) {
     const sc = CLAIM_STATUS_COLOR[claim.status] || { bg: "#6b7280", text: "#fff" };
     const isActive    = claim.status === "active";
@@ -579,6 +573,8 @@ export default function BusinessDashboard() {
                 <div><label style={lbl}>Weight (lbs)</label><input style={inp} type="number" min="0" step="0.1" value={form.weight_lbs} onChange={e => setForm(f => ({ ...f, weight_lbs: e.target.value }))} placeholder="e.g. 8"/></div>
                 <div><label style={lbl}>Est. Value ($)</label><input style={inp} type="number" min="0" step="0.01" value={form.estimated_value} onChange={e => setForm(f => ({ ...f, estimated_value: e.target.value }))} placeholder="e.g. 25"/></div>
                 <div style={{ gridColumn: "1/-1" }}><label style={lbl}>Allergy / Dietary Info</label><input style={inp} value={form.allergy_note} onChange={e => setForm(f => ({ ...f, allergy_note: e.target.value }))} placeholder="e.g. Contains nuts, halal"/></div>
+
+                {/* Photo — required */}
                 <div style={{ gridColumn: "1/-1" }}>
                   <label style={lbl}>
                     Food Photo <span style={{ color: "#ef4444" }}>*</span>
@@ -588,6 +584,8 @@ export default function BusinessDashboard() {
                   <input ref={listingFileRef} type="file" accept="image/*" capture="environment" style={{ fontSize: "13px", color: "#374151", width: "100%" }} onChange={e => setImageSelected(!!(e.target.files?.[0]))}/>
                   {uploadingImg && <p style={{ margin: "6px 0 0", fontSize: "13px", color: "#16a34a", fontWeight: 600 }}>Uploading photo...</p>}
                 </div>
+
+                {/* Active For */}
                 <div style={{ gridColumn: "1/-1" }}>
                   <label style={lbl}>Active For *</label>
                   <div style={{ display: "flex", gap: "8px", marginBottom: "10px", flexWrap: "wrap" }}>
@@ -602,12 +600,27 @@ export default function BusinessDashboard() {
                   {expiryMode === "days"  && <select style={{ ...inp, cursor: "pointer" }} value={expiryDays}  onChange={e => setExpiryDays(e.target.value)}>{[1,2,3,4,5,6,7,8,9,10].map(d => <option key={d} value={String(d)}>{d} day{d > 1 ? "s" : ""}</option>)}</select>}
                   {expiryMode === "datetime" && <input style={inp} type="datetime-local" value={expiryDatetime} min={new Date().toISOString().slice(0,16)} onChange={e => setExpiryDatetime(e.target.value)} required={expiryMode === "datetime"}/>}
                 </div>
+
+                {/* Claim Hold Time — expanded to 24h */}
                 <div style={{ gridColumn: "1/-1" }}>
                   <label style={lbl}>Claim Hold Time</label>
+                  <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#6b7280" }}>
+                    How long the food stays reserved after a customer claims it. If they don't arrive within this window, the reservation is cancelled automatically.
+                  </p>
                   <select style={{ ...inp, cursor: "pointer" }} value={form.claim_hold} onChange={e => setForm(f => ({ ...f, claim_hold: e.target.value }))}>
-                    <option value="10">10 minutes</option><option value="15">15 minutes</option><option value="20">20 minutes</option><option value="30">30 minutes</option><option value="45">45 minutes</option><option value="60">1 hour</option>
+                    <option value="10">10 minutes</option>
+                    <option value="15">15 minutes</option>
+                    <option value="20">20 minutes</option>
+                    <option value="30">30 minutes</option>
+                    <option value="45">45 minutes</option>
+                    <option value="60">1 hour</option>
+                    <option value="120">2 hours</option>
+                    <option value="240">4 hours</option>
+                    <option value="480">8 hours</option>
+                    <option value="1440">24 hours</option>
                   </select>
                 </div>
+
                 <div style={{ gridColumn: "1/-1" }}><label style={lbl}>Note</label><textarea style={{ ...inp, height: "70px", resize: "vertical" }} value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} placeholder="e.g. Ask for Maria at the front."/></div>
               </div>
               {postMsg && <p style={{ margin: "12px 0 0", fontSize: "14px", color: postMsg.includes("✅") ? "#16a34a" : "#ef4444", fontWeight: 600 }}>{postMsg}</p>}
@@ -663,7 +676,7 @@ export default function BusinessDashboard() {
           </div>
         </div>
 
-        {/* TABS — NGOs get a third tab */}
+        {/* TABS */}
         <div style={{ display: "flex", gap: "4px", background: "#fff", borderRadius: "12px", padding: "4px", border: "1px solid #e5e7eb", marginBottom: "20px" }}>
           {[
             { key: "active",   label: `📋 Active Listings (${activeListings.length})` },
@@ -671,9 +684,7 @@ export default function BusinessDashboard() {
             ...(isNgo ? [{ key: "received", label: `📥 Food Received (${receivedClaims.length})` }] : []),
           ].map(tab => (
             <button key={tab.key} onClick={() => setActiveTab(tab.key as "active" | "history" | "received")}
-              style={{ flex: 1, padding: "10px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 700,
-                background: activeTab === tab.key ? "#0a2e1a" : "transparent",
-                color: activeTab === tab.key ? "#fff" : "#374151" }}>
+              style={{ flex: 1, padding: "10px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 700, background: activeTab === tab.key ? "#0a2e1a" : "transparent", color: activeTab === tab.key ? "#fff" : "#374151" }}>
               {tab.label}
             </button>
           ))}
@@ -721,12 +732,11 @@ export default function BusinessDashboard() {
         {/* FOOD RECEIVED TAB — NGO only */}
         {activeTab === "received" && isNgo && (
           <>
-            {/* Summary strip */}
             <div style={{ display: "flex", gap: "10px", marginBottom: "20px", flexWrap: "wrap" }}>
               {[
-                { label: "Active Reservations", count: receivedActive.length,    bg: "#eff6ff", color: "#2563eb" },
+                { label: "Active Reservations",   count: receivedActive.length,    bg: "#eff6ff", color: "#2563eb" },
                 { label: "Successfully Received", count: receivedPickedUp.length,  bg: "#f5f3ff", color: "#7c3aed" },
-                { label: "Cancelled",              count: receivedCancelled.length, bg: "#f9fafb", color: "#9ca3af" },
+                { label: "Cancelled",             count: receivedCancelled.length, bg: "#f9fafb", color: "#9ca3af" },
               ].map(s => (
                 <div key={s.label} style={{ background: s.bg, borderRadius: "12px", padding: "12px 18px", flex: 1, minWidth: "120px", textAlign: "center" }}>
                   <p style={{ margin: "0 0 2px", fontSize: "24px", fontWeight: 900, color: s.color }}>{s.count}</p>
@@ -734,7 +744,6 @@ export default function BusinessDashboard() {
                 </div>
               ))}
             </div>
-
             {receivedClaims.length === 0 ? (
               <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "12px", padding: "48px", textAlign: "center" }}>
                 <p style={{ fontSize: "40px", margin: "0 0 12px" }}>📥</p>
@@ -744,21 +753,18 @@ export default function BusinessDashboard() {
               </div>
             ) : (
               <>
-                {/* Active claims first */}
                 {receivedActive.length > 0 && (
                   <div style={{ marginBottom: "24px" }}>
                     <h3 style={{ margin: "0 0 12px", fontSize: "15px", fontWeight: 800, color: "#2563eb" }}>🔵 Active Reservations — Show this code at pickup</h3>
                     {receivedActive.map(c => renderReceivedCard(c))}
                   </div>
                 )}
-                {/* Picked up */}
                 {receivedPickedUp.length > 0 && (
                   <div style={{ marginBottom: "24px" }}>
                     <h3 style={{ margin: "0 0 12px", fontSize: "15px", fontWeight: 800, color: "#7c3aed" }}>✅ Successfully Received</h3>
                     {receivedPickedUp.map(c => renderReceivedCard(c))}
                   </div>
                 )}
-                {/* Cancelled */}
                 {receivedCancelled.length > 0 && (
                   <div style={{ marginBottom: "24px" }}>
                     <h3 style={{ margin: "0 0 12px", fontSize: "15px", fontWeight: 800, color: "#9ca3af" }}>❌ Cancelled</h3>
