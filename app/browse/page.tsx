@@ -98,10 +98,10 @@ export default function BrowsePage() {
           }
         }
         setSigninModal(false); setSigninDone(false);
-    } else if (_event === "SIGNED_OUT") {
-      setIsBusiness(false); setIsNgo(false); setIsAdmin(false); setNgoName(null);
-      setClaimForm(f => ({ ...f, email: "" }));
-    }
+      } else if (_event === "SIGNED_OUT") {
+        setIsBusiness(false); setIsNgo(false); setIsAdmin(false); setNgoName(null);
+        setClaimForm(f => ({ ...f, email: "" }));
+      }
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -233,9 +233,9 @@ export default function BrowsePage() {
   const FT    = FILTER_T[locale] || FILTER_T.en;
   const isRTL = locale === "ar";
 
-  const isSignedIn     = !!user;
-  const canClaim       = !!user && (!isBusiness || isNgo || isAdmin);
-  const liveCats       = ["All", ...Array.from(new Set(listings.map(l => l.category).filter(Boolean)))];
+  const isSignedIn = !!user;
+  const canClaim   = !!user && (!isBusiness || isNgo || isAdmin);
+  const liveCats   = ["All", ...Array.from(new Set(listings.map(l => l.category).filter(Boolean)))];
 
   function minsLeft(expires_at: string) {
     const diff = new Date(expires_at).getTime() - Date.now();
@@ -482,63 +482,11 @@ export default function BrowsePage() {
                   </div>
                 )}
 
-               {isAdmin && isSignedIn && (
-  <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
-    <p style={{ margin: "0 0 10px", fontSize: "13px", color: "#166534", fontWeight: 600 }}>
-      👁️ Admin view — manage business
-    </p>
-
-    <div style={{ display: "flex", gap: "8px", justifyContent: "center", flexWrap: "wrap" }}>
-      <button
-        onClick={() => handleSuspendBusiness(listing.id, listing.business_name, 1)}
-        style={{
-          background: "#f59e0b",
-          color: "#fff",
-          border: "none",
-          padding: "6px 12px",
-          borderRadius: "6px",
-          cursor: "pointer",
-          fontSize: "12px",
-          fontWeight: 700
-        }}
-      >
-        Suspend 1w
-      </button>
-
-      <button
-        onClick={() => handleSuspendBusiness(listing.id, listing.business_name, 4)}
-        style={{
-          background: "#ea580c",
-          color: "#fff",
-          border: "none",
-          padding: "6px 12px",
-          borderRadius: "6px",
-          cursor: "pointer",
-          fontSize: "12px",
-          fontWeight: 700
-        }}
-      >
-        Suspend 1m
-      </button>
-
-      <button
-        onClick={() => handleReinstateBusiness(listing.id, listing.business_name)}
-        style={{
-          background: "#16a34a",
-          color: "#fff",
-          border: "none",
-          padding: "6px 12px",
-          borderRadius: "6px",
-          cursor: "pointer",
-          fontSize: "12px",
-          fontWeight: 700
-        }}
-      >
-        Reinstate
-      </button>
-    </div>
-  </div>
-)}
+                {isAdmin && isSignedIn && (
+                  <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
+                    <p style={{ margin: 0, fontSize: "13px", color: "#166534", fontWeight: 600 }}>👁️ Admin view — claims disabled for admin account</p>
+                  </div>
+                )}
 
                 {isSignedIn && isBusiness && !isNgo && !isAdmin && (
                   <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
