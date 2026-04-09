@@ -59,64 +59,49 @@ export default function BrowsePage() {
   const [termsAccepted, setTermsAccepted]   = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const searchRef   = useRef(search);
-  const categoryRef = useRef(activeCategory);
-  const sortRef     = useRef(sortBy);
-  useEffect(() => { searchRef.current = search; }, [search]);
-  useEffect(() => { categoryRef.current = activeCategory; }, [activeCategory]);
-  useEffect(() => { sortRef.current = sortBy; }, [sortBy]);
-
   useEffect(() => { setLocale(detectLocale()); }, []);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const u = session?.user ?? null;
-
-      // Only clear state on an explicit sign-out — NOT on transient null sessions during navigation
-      if (!u) {
-        if (_event === "SIGNED_OUT") {
-          setUser(null);
-          setIsBusiness(false); setIsNgo(false); setIsAdmin(false); setNgoName(null);
-          setClaimForm(f => ({ ...f, email: "" }));
-        }
-        return;
-      }
-
       setUser(u);
-      setClaimForm(f => ({ ...f, email: u.email! }));
-
-      if (u.email === ADMIN_EMAIL) {
-        setIsAdmin(true); setIsBusiness(false); setIsNgo(false); setNgoName(null);
-      } else {
-        const { data: biz } = await supabase
-          .from("businesses").select("id, name, account_type").eq("email", u.email!).maybeSingle();
-        if (biz) {
-          const ngoAccount = biz.account_type === "ngo";
-          setIsBusiness(true);
-          setIsNgo(ngoAccount);
-          setNgoName(ngoAccount ? (biz.name as string) : null);
+      if (u?.email) {
+        setClaimForm(f => ({ ...f, email: u.email! }));
+        if (u.email === ADMIN_EMAIL) {
+          setIsAdmin(true); setIsBusiness(false); setIsNgo(false); setNgoName(null);
         } else {
-          setIsBusiness(false); setIsNgo(false); setNgoName(null);
-          if (u.id) {
-            const { data: prevClaim } = await supabase
-              .from("claims")
-              .select("first_name, phone")
-              .eq("customer_user_id", u.id)
-              .order("created_at", { ascending: false })
-              .limit(1)
-              .maybeSingle();
-            if (prevClaim?.first_name || prevClaim?.phone) {
-              setClaimForm(f => ({
-                ...f, email: u.email!,
-                first_name: prevClaim.first_name || f.first_name,
-                phone: prevClaim.phone || f.phone,
-              }));
+          const { data: biz } = await supabase
+            .from("businesses").select("id, name, account_type").eq("email", u.email).maybeSingle();
+          if (biz) {
+            const ngoAccount = biz.account_type === "ngo";
+            setIsBusiness(true);
+            setIsNgo(ngoAccount);
+            setNgoName(ngoAccount ? (biz.name as string) : null);
+          } else {
+            setIsBusiness(false); setIsNgo(false); setNgoName(null);
+            if (u.id) {
+              const { data: prevClaim } = await supabase
+                .from("claims")
+                .select("first_name, phone")
+                .eq("customer_user_id", u.id)
+                .order("created_at", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              if (prevClaim?.first_name || prevClaim?.phone) {
+                setClaimForm(f => ({
+                  ...f, email: u.email!,
+                  first_name: prevClaim.first_name || f.first_name,
+                  phone: prevClaim.phone || f.phone,
+                }));
+              }
             }
           }
         }
+        setSigninModal(false); setSigninDone(false);
+      } else {
+        setIsBusiness(false); setIsNgo(false); setIsAdmin(false); setNgoName(null);
+        setClaimForm(f => ({ ...f, email: "" }));
       }
-
-      setSigninModal(false); setSigninDone(false);
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -149,7 +134,7 @@ export default function BrowsePage() {
       if (error) throw error;
       const all = (data || []) as Listing[];
       setListings(all);
-      applyFilters(all, searchRef.current, categoryRef.current, sortRef.current);
+      applyFilters(all, search, activeCategory, sortBy);
     } catch (e) {
       console.error("fetchListings error:", e);
       setListings([]); setFiltered([]);
@@ -172,7 +157,7 @@ export default function BrowsePage() {
 
   useEffect(() => {
     const timeout = setTimeout(() => setLoading(false), 5000);
-    fetchListings().then(() => clearTimeout(timeout));
+    (async () => { await fetchListings(); clearTimeout(timeout); })();
     intervalRef.current = setInterval(fetchListings, 30000);
     return () => {
       clearTimeout(timeout);
@@ -248,10 +233,9 @@ export default function BrowsePage() {
   const FT    = FILTER_T[locale] || FILTER_T.en;
   const isRTL = locale === "ar";
 
-  const isSignedIn = !!user;
-  const canClaim   = !!user && (!isBusiness || isNgo || isAdmin);
-  const displayedListings = filtered;
-  const liveCats = ["All", ...Array.from(new Set(listings.map(l => l.category).filter(Boolean)))];
+  const isSignedIn     = !!user;
+  const canClaim       = !!user && (!isBusiness || isNgo || isAdmin);
+  const liveCats       = ["All", ...Array.from(new Set(listings.map(l => l.category).filter(Boolean)))];
 
   function minsLeft(expires_at: string) {
     const diff = new Date(expires_at).getTime() - Date.now();
@@ -326,7 +310,7 @@ export default function BrowsePage() {
           {T.browse || "Browse Free Food"}
         </h1>
         <p style={{ color: "#6b7280", fontSize: "14px", margin: "0 0 20px" }}>
-          {displayedListings.length} {displayedListings.length === 1 ? "item" : "items"} available now · refreshes every 30s
+          {filtered.length} {filtered.length === 1 ? "item" : "items"} available now · refreshes every 30s
         </p>
 
         <div style={{ position: "relative", marginBottom: "14px" }}>
@@ -375,7 +359,7 @@ export default function BrowsePage() {
               {locale === "fr" ? "Recherche de nourriture..." : locale === "es" ? "Buscando comida..." : locale === "pt" ? "Procurando comida..." : locale === "ar" ? "جارٍ البحث..." : "Finding available food near you..."}
             </p>
           </div>
-        ) : displayedListings.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <div style={{ background: "#fff", borderRadius: "20px", border: "1px solid #e5e7eb", padding: "60px 24px", textAlign: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
             <p style={{ fontSize: "48px", margin: "0 0 16px" }}>🍽️</p>
             <p style={{ fontSize: "18px", fontWeight: 800, color: "#0a2e1a", margin: "0 0 8px" }}>
@@ -394,7 +378,7 @@ export default function BrowsePage() {
               <a href="/" style={{ background: "#16a34a", color: "#fff", padding: "10px 24px", borderRadius: "8px", textDecoration: "none", fontSize: "14px", fontWeight: 700 }}>← Back to Home</a>
             )}
           </div>
-        ) : displayedListings.map(listing => {
+        ) : filtered.map(listing => {
           const bizInfo         = bizInfoMap[listing.business_name];
           const timeLeft        = minsLeft(listing.expires_at);
           const isUrgent        = timeLeft !== null && timeLeft.includes("m left") && parseInt(timeLeft) <= 30;
@@ -516,7 +500,7 @@ export default function BrowsePage() {
           );
         })}
 
-        {!loading && displayedListings.length > 0 && (
+        {!loading && filtered.length > 0 && (
           <p style={{ textAlign: "center", fontSize: "13px", color: "#9ca3af", marginTop: "8px", marginBottom: "24px" }}>
             {locale === "fr" ? "Actualisation toutes les 30s — Tout est gratuit" : locale === "es" ? "Actualización cada 30s — Todo gratis" : locale === "pt" ? "Atualiza a cada 30s — Tudo grátis" : locale === "ar" ? "تحديث كل 30 ثانية — كل الطعام مجاني" : "Listings refresh every 30 seconds — All food is free"}
           </p>
@@ -689,19 +673,6 @@ export default function BrowsePage() {
                         <option key={opt.value} value={opt.value}>{opt.label(locale)}</option>
                       ))}
                     </select>
-                    {(() => {
-                      const listing = listings.find(l => l.id === selectedId);
-                      if (!listing) return null;
-                      const minsUntilExpiry = Math.floor((new Date(listing.expires_at).getTime() - Date.now()) / 60000);
-                      if (minsUntilExpiry < 600) {
-                        return (
-                          <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#f59e0b", fontWeight: 600 }}>
-                            ⏰ {locale === "fr" ? `Ce listing expire dans ${minsUntilExpiry} min` : locale === "es" ? `Este anuncio expira en ${minsUntilExpiry} min` : locale === "pt" ? `Este anúncio expira em ${minsUntilExpiry} min` : locale === "ar" ? `ينتهي هذا الإعلان خلال ${minsUntilExpiry} دقيقة` : `This listing expires in ${minsUntilExpiry} min — arrival time limited accordingly`}
-                          </p>
-                        );
-                      }
-                      return null;
-                    })()}
                   </div>
                   <button type="submit" disabled={claimLoading}
                     style={{ width: "100%", background: claimLoading ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "14px", borderRadius: "10px", cursor: claimLoading ? "not-allowed" : "pointer", fontSize: "15px", fontWeight: 800 }}>
