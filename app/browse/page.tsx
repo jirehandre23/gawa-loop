@@ -59,7 +59,6 @@ export default function BrowsePage() {
   const [termsAccepted, setTermsAccepted]   = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Stable refs for search/category/sort so the interval always uses latest values
   const searchRef   = useRef(search);
   const categoryRef = useRef(activeCategory);
   const sortRef     = useRef(sortBy);
@@ -72,45 +71,52 @@ export default function BrowsePage() {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const u = session?.user ?? null;
+
+      // Only clear state on an explicit sign-out — NOT on transient null sessions during navigation
+      if (!u) {
+        if (_event === "SIGNED_OUT") {
+          setUser(null);
+          setIsBusiness(false); setIsNgo(false); setIsAdmin(false); setNgoName(null);
+          setClaimForm(f => ({ ...f, email: "" }));
+        }
+        return;
+      }
+
       setUser(u);
-      if (u?.email) {
-        setClaimForm(f => ({ ...f, email: u.email! }));
-        if (u.email === ADMIN_EMAIL) {
-          setIsAdmin(true); setIsBusiness(false); setIsNgo(false); setNgoName(null);
+      setClaimForm(f => ({ ...f, email: u.email! }));
+
+      if (u.email === ADMIN_EMAIL) {
+        setIsAdmin(true); setIsBusiness(false); setIsNgo(false); setNgoName(null);
+      } else {
+        const { data: biz } = await supabase
+          .from("businesses").select("id, name, account_type").eq("email", u.email!).maybeSingle();
+        if (biz) {
+          const ngoAccount = biz.account_type === "ngo";
+          setIsBusiness(true);
+          setIsNgo(ngoAccount);
+          setNgoName(ngoAccount ? (biz.name as string) : null);
         } else {
-          const { data: biz } = await supabase
-             .from("businesses").select("id, name, account_type").eq("email", u.email).maybeSingle();
-          if (biz) {
-            const ngoAccount = biz.account_type === "ngo";
-            setIsBusiness(true);
-            setIsNgo(ngoAccount);
-            setNgoName(ngoAccount ? (biz.name as string) : null);
-          } else {
-            setIsBusiness(false); setIsNgo(false); setNgoName(null);
-            // Auto-fill from last claim — maybeSingle() returns null (not error) when 0 rows
-            if (u.id) {
-              const { data: prevClaim } = await supabase
-                .from("claims")
-                .select("first_name, phone")
-                .eq("customer_user_id", u.id)
-                .order("created_at", { ascending: false })
-                .limit(1)
-                .maybeSingle();
-              if (prevClaim?.first_name || prevClaim?.phone) {
-                setClaimForm(f => ({
-                  ...f, email: u.email!,
-                  first_name: prevClaim.first_name || f.first_name,
-                  phone: prevClaim.phone || f.phone,
-                }));
-              }
+          setIsBusiness(false); setIsNgo(false); setNgoName(null);
+          if (u.id) {
+            const { data: prevClaim } = await supabase
+              .from("claims")
+              .select("first_name, phone")
+              .eq("customer_user_id", u.id)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (prevClaim?.first_name || prevClaim?.phone) {
+              setClaimForm(f => ({
+                ...f, email: u.email!,
+                first_name: prevClaim.first_name || f.first_name,
+                phone: prevClaim.phone || f.phone,
+              }));
             }
           }
         }
-        setSigninModal(false); setSigninDone(false);
-      } else {
-        setIsBusiness(false); setIsNgo(false); setIsAdmin(false); setNgoName(null);
-        setClaimForm(f => ({ ...f, email: "" }));
       }
+
+      setSigninModal(false); setSigninDone(false);
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -164,7 +170,6 @@ export default function BrowsePage() {
     }
   }
 
-  // Fetch listings on mount and every 30s
   useEffect(() => {
     const timeout = setTimeout(() => setLoading(false), 5000);
     fetchListings().then(() => clearTimeout(timeout));
@@ -175,13 +180,9 @@ export default function BrowsePage() {
     };
   }, []);
 
-  // Fetch biz contact info for all signed-in users who can see it
-  // (customers, NGOs, admins — not plain restaurant accounts)
   useEffect(() => {
-    if (user && (!isBusiness || isNgo || isAdmin) && listings.length > 0) {
-      fetchBizInfo(listings);
-    }
-  }, [user, isBusiness, isNgo, isAdmin, listings]);
+    if (user && listings.length > 0) fetchBizInfo(listings);
+  }, [user, listings]);
 
   function handleSearch(q: string) { setSearch(q); applyFilters(listings, q, activeCategory, sortBy); }
   function handleCategory(cat: string) { setCategory(cat); applyFilters(listings, search, cat, sortBy); }
@@ -247,14 +248,9 @@ export default function BrowsePage() {
   const FT    = FILTER_T[locale] || FILTER_T.en;
   const isRTL = locale === "ar";
 
-  // canClaim: customers + NGOs + admin (not plain restaurant businesses)
-  // isSignedIn: any logged-in user — controls showing biz contact details
   const isSignedIn = !!user;
   const canClaim   = !!user && (!isBusiness || isNgo || isAdmin);
-
-  // All users see all listings — NGO own-listing handled per card
   const displayedListings = filtered;
-
   const liveCats = ["All", ...Array.from(new Set(listings.map(l => l.category).filter(Boolean)))];
 
   function minsLeft(expires_at: string) {
@@ -333,7 +329,6 @@ export default function BrowsePage() {
           {displayedListings.length} {displayedListings.length === 1 ? "item" : "items"} available now · refreshes every 30s
         </p>
 
-        {/* SEARCH */}
         <div style={{ position: "relative", marginBottom: "14px" }}>
           <span style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", fontSize: "16px" }}>🔍</span>
           <input style={{ ...inp, paddingLeft: "40px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}
@@ -341,7 +336,6 @@ export default function BrowsePage() {
             value={search} onChange={e => handleSearch(e.target.value)}/>
         </div>
 
-        {/* CATEGORY TABS */}
         {!loading && listings.length > 0 && (
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "12px" }}>
             {liveCats.map(cat => (
@@ -358,7 +352,6 @@ export default function BrowsePage() {
           </div>
         )}
 
-        {/* SORT */}
         {!loading && listings.length > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "20px" }}>
             <span style={{ fontSize: "13px", color: "#6b7280", fontWeight: 600 }}>{FT.sort_label}:</span>
@@ -374,7 +367,6 @@ export default function BrowsePage() {
           </div>
         )}
 
-        {/* LISTINGS */}
         {loading ? (
           <div style={{ textAlign: "center", padding: "80px 0" }}>
             <div style={{ display: "inline-block", width: "36px", height: "36px", border: "3px solid #e5e7eb", borderTopColor: "#16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
@@ -409,7 +401,6 @@ export default function BrowsePage() {
           const isOwnNgoListing = isNgo && !!ngoName && listing.business_name === ngoName;
           return (
             <div key={listing.id} style={{ background: "#fff", borderRadius: "20px", border: `1px solid ${isUrgent ? "#fde68a" : "#e5e7eb"}`, overflow: "hidden", marginBottom: "20px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
-
               {listing.image_url ? (
                 <div style={{ width: "100%", height: "220px", overflow: "hidden" }}>
                   <img src={listing.image_url} alt={listing.food_name}
@@ -445,7 +436,6 @@ export default function BrowsePage() {
                 )}
                 {listing.note && <p style={{ margin: "6px 0 10px", fontSize: "13px", color: "#374151" }}>📝 {listing.note}</p>}
 
-                {/* Business info — shown to all signed-in users */}
                 {isSignedIn ? (
                   <div style={{ background: "#f9fafb", borderRadius: "12px", padding: "14px 16px", marginBottom: "16px" }}>
                     <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", marginBottom: bizInfo ? "12px" : 0 }}>
@@ -482,7 +472,6 @@ export default function BrowsePage() {
                     )}
                   </div>
                 ) : (
-                  /* Not signed in — show lock prompt */
                   <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "12px", padding: "14px 16px", marginBottom: "16px", textAlign: "center" }}>
                     <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#374151", fontWeight: 600 }}>
                       🔒 {locale === "fr" ? "Connectez-vous pour voir les détails et réserver" : locale === "es" ? "Inicia sesión para ver detalles y reservar" : locale === "pt" ? "Entre para ver detalhes e reservar" : locale === "ar" ? "سجّل للدخول لرؤية التفاصيل والحجز" : "Sign in to see the restaurant details & claim this food"}
@@ -494,7 +483,6 @@ export default function BrowsePage() {
                   </div>
                 )}
 
-                {/* Reserve button — customers + NGOs (not NGO's own listing, not admin, not plain restaurant) */}
                 {canClaim && !isAdmin && !isOwnNgoListing && (
                   <button onClick={() => openClaim(listing.id)}
                     style={{ width: "100%", background: "#16a34a", color: "#fff", border: "none", padding: "14px", borderRadius: "10px", cursor: "pointer", fontSize: "15px", fontWeight: 800 }}>
@@ -502,7 +490,6 @@ export default function BrowsePage() {
                   </button>
                 )}
 
-                {/* NGO viewing their own listing */}
                 {isOwnNgoListing && (
                   <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
                     <p style={{ margin: 0, fontSize: "13px", color: "#166534", fontWeight: 600 }}>
@@ -511,14 +498,12 @@ export default function BrowsePage() {
                   </div>
                 )}
 
-                {/* Admin view */}
                 {isAdmin && isSignedIn && (
                   <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
                     <p style={{ margin: 0, fontSize: "13px", color: "#166534", fontWeight: 600 }}>👁️ Admin view — claims disabled for admin account</p>
                   </div>
                 )}
 
-                {/* Plain restaurant business — can't claim any food */}
                 {isSignedIn && isBusiness && !isNgo && !isAdmin && (
                   <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
                     <p style={{ margin: 0, fontSize: "13px", color: "#6b7280" }}>
@@ -538,7 +523,6 @@ export default function BrowsePage() {
         )}
       </div>
 
-      {/* SIGN-IN MODAL */}
       {signinModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "20px", padding: "32px", width: "100%", maxWidth: "420px", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}>
@@ -639,7 +623,6 @@ export default function BrowsePage() {
         </div>
       )}
 
-      {/* CLAIM MODAL */}
       {selectedId && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "20px", padding: "32px", width: "100%", maxWidth: "480px", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}>
