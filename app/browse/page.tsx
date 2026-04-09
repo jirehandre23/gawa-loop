@@ -57,13 +57,13 @@ export default function BrowsePage() {
   const [signinMode, setSigninMode]         = useState<"signin" | "signup">("signin");
   const [signinDone, setSigninDone]         = useState(false);
   const [termsAccepted, setTermsAccepted]   = useState(false);
-  const intervalRef      = useRef<NodeJS.Timeout | null>(null);
-  const searchRef        = useRef("");
-  const categoryRef      = useRef("All");
-  const sortRef          = useRef("Newest");
-  const didInitialFetch  = useRef(false);
+  const intervalRef     = useRef<NodeJS.Timeout | null>(null);
+  const searchRef       = useRef("");
+  const categoryRef     = useRef("All");
+  const sortRef         = useRef("Newest");
+  const didInitialFetch = useRef(false);
 
-  // --- NEW: map state ---
+  // Map state
   const [mapOpen, setMapOpen]   = useState(false);
   const mapContainerRef         = useRef<HTMLDivElement>(null);
   const mapInstanceRef          = useRef<any>(null);
@@ -95,24 +95,14 @@ export default function BrowsePage() {
             let prevClaim: { first_name: string | null; phone: string | null } | null = null;
             if (u.id) {
               const { data: byId } = await supabase
-                .from("claims")
-                .select("first_name, phone")
-                .eq("customer_user_id", u.id)
-                .not("first_name", "is", null)
-                .order("created_at", { ascending: false })
-                .limit(1)
-                .maybeSingle();
+                .from("claims").select("first_name, phone").eq("customer_user_id", u.id)
+                .not("first_name", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
               prevClaim = byId;
             }
             if (!prevClaim?.first_name && !prevClaim?.phone) {
               const { data: byEmail } = await supabase
-                .from("claims")
-                .select("first_name, phone")
-                .eq("email", u.email)
-                .not("first_name", "is", null)
-                .order("created_at", { ascending: false })
-                .limit(1)
-                .maybeSingle();
+                .from("claims").select("first_name, phone").eq("email", u.email)
+                .not("first_name", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
               prevClaim = byEmail;
             }
             if (prevClaim?.first_name || prevClaim?.phone) {
@@ -155,9 +145,7 @@ export default function BrowsePage() {
   async function fetchListings() {
     try {
       const { data, error } = await supabase
-        .from("listings").select("*")
-        .eq("status", "AVAILABLE")
-        .order("created_at", { ascending: false });
+        .from("listings").select("*").eq("status", "AVAILABLE").order("created_at", { ascending: false });
       if (error) throw error;
       const all = (data || []) as Listing[];
       setListings(all);
@@ -184,16 +172,9 @@ export default function BrowsePage() {
 
   useEffect(() => {
     const timeout = setTimeout(() => setLoading(false), 5000);
-    (async () => {
-      await fetchListings();
-      didInitialFetch.current = true;
-      clearTimeout(timeout);
-    })();
+    (async () => { await fetchListings(); didInitialFetch.current = true; clearTimeout(timeout); })();
     intervalRef.current = setInterval(fetchListings, 30000);
-    return () => {
-      clearTimeout(timeout);
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
+    return () => { clearTimeout(timeout); if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
 
   useEffect(() => {
@@ -206,16 +187,13 @@ export default function BrowsePage() {
     if (user && listings.length > 0) fetchBizInfo(listings);
   }, [user, listings]);
 
-  // ---- MAP: load MapLibre GL and build/update map when panel opens ----
+  // ---- MAP ----
   useEffect(() => {
-    // Only initialise when map panel is open and user is signed in
     if (!mapOpen || !user || user === undefined) return;
     if (!mapContainerRef.current) return;
 
-    // Load MapLibre GL via CDN if not already loaded
     function initMap() {
       if (mapLoadedRef.current && mapInstanceRef.current) {
-        // Map already exists — just update markers
         updateMarkers(mapInstanceRef.current);
         return;
       }
@@ -225,9 +203,8 @@ export default function BrowsePage() {
       const map = new maplibre.Map({
         container: mapContainerRef.current!,
         style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-        center: [-73.9857, 40.7484], // NYC default
+        center: [-73.9857, 40.7484],
         zoom: 12,
-        attributionControl: true,
       });
 
       map.addControl(new maplibre.NavigationControl(), "top-right");
@@ -245,8 +222,8 @@ export default function BrowsePage() {
 
     async function geocodeAddress(address: string): Promise<[number, number] | null> {
       try {
-        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address + ", New York, NY")}&format=json&limit=1`;
-        const res = await fetch(url, { headers: { "Accept-Language": "en" } });
+        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address + ", New York, NY, USA")}&format=json&limit=1&countrycodes=us`;
+        const res = await fetch(url, { headers: { "Accept-Language": "en", "User-Agent": "GAWALoop/1.0" } });
         const data = await res.json();
         if (data && data[0]) return [parseFloat(data[0].lon), parseFloat(data[0].lat)];
       } catch {}
@@ -257,7 +234,7 @@ export default function BrowsePage() {
       const maplibre = (window as any).maplibregl;
       if (!maplibre || !listings.length) return;
 
-      // Remove old markers if any
+      // Remove old markers
       const existing = (map as any)._gawaMarkers || [];
       existing.forEach((m: any) => m.remove());
       (map as any)._gawaMarkers = [];
@@ -275,42 +252,49 @@ export default function BrowsePage() {
         const timeLeft = mins <= 0 ? null : mins < 60 ? `${mins}m left` : `${Math.floor(mins/60)}h ${mins%60}m left`;
         const isUrgent = timeLeft !== null && mins <= 30;
 
-        // Custom marker element
+        // Circular marker — anchored at center so it aligns exactly with coords
+        const SIZE = 40;
         const el = document.createElement("div");
         el.style.cssText = `
-          width: 38px; height: 38px; border-radius: 50%;
+          width: ${SIZE}px;
+          height: ${SIZE}px;
+          border-radius: 50%;
           background: ${isUrgent ? "#f59e0b" : "#16a34a"};
           border: 3px solid #fff;
-          box-shadow: 0 3px 12px rgba(0,0,0,0.25);
-          display: flex; align-items: center; justify-content: center;
-          font-size: 18px; cursor: pointer;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 20px;
+          cursor: pointer;
           transition: transform 0.15s;
+          user-select: none;
         `;
         el.innerHTML = "🍽️";
         el.title = listing.food_name;
-        el.onmouseenter = () => { el.style.transform = "scale(1.15)"; };
-        el.onmouseleave = () => { el.style.transform = "scale(1)"; };
+        el.onmouseenter = () => { el.style.transform = "scale(1.18)"; el.style.zIndex = "10"; };
+        el.onmouseleave = () => { el.style.transform = "scale(1)"; el.style.zIndex = "1"; };
 
-        // Popup
         const popupHTML = `
-          <div style="font-family:-apple-system,sans-serif;min-width:200px;max-width:260px">
-            ${listing.image_url ? `<img src="${listing.image_url}" alt="${listing.food_name}" style="width:100%;height:120px;object-fit:cover;border-radius:8px;margin-bottom:10px;display:block"/>` : ""}
+          <div style="font-family:-apple-system,sans-serif;min-width:190px;max-width:250px;padding:2px">
+            ${listing.image_url ? `<img src="${listing.image_url}" alt="${listing.food_name}" style="width:100%;height:110px;object-fit:cover;border-radius:8px;margin-bottom:10px;display:block"/>` : ""}
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:6px">
               <strong style="font-size:14px;color:#0a2e1a;line-height:1.3">${listing.food_name}</strong>
-              <span style="background:#f0fdf4;color:#16a34a;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1px solid #bbf7d0;white-space:nowrap">FREE</span>
+              <span style="background:#f0fdf4;color:#16a34a;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1px solid #bbf7d0;white-space:nowrap;flex-shrink:0">FREE</span>
             </div>
-            <p style="margin:0 0 4px;font-size:12px;color:#6b7280">🏪 ${listing.business_name}</p>
-            <p style="margin:0 0 4px;font-size:12px;color:#6b7280">📦 ${listing.category}</p>
-            ${timeLeft ? `<p style="margin:0 0 8px;font-size:12px;color:${isUrgent ? "#92400e" : "#166534"};font-weight:600">⏰ ${timeLeft}</p>` : ""}
+            <p style="margin:0 0 3px;font-size:12px;color:#6b7280">🏪 ${listing.business_name}</p>
+            <p style="margin:0 0 3px;font-size:12px;color:#6b7280">📦 ${listing.category}</p>
+            ${timeLeft ? `<p style="margin:0 0 8px;font-size:12px;color:${isUrgent ? "#92400e" : "#166534"};font-weight:600">⏰ ${timeLeft}</p>` : "<div style='margin-bottom:8px'></div>"}
             <p style="margin:0 0 10px;font-size:11px;color:#9ca3af">📍 ${listing.address}</p>
             <a href="/browse" style="display:block;background:#16a34a;color:#fff;text-align:center;padding:8px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:700">Reserve Now →</a>
           </div>
         `;
 
-        const popup = new maplibre.Popup({ offset: 22, maxWidth: "280px", closeButton: true })
+        // KEY FIX: anchor:"center" aligns the circular marker's center to the coordinate point
+        const popup = new maplibre.Popup({ offset: 22, maxWidth: "270px", closeButton: true })
           .setHTML(popupHTML);
 
-        const marker = new maplibre.Marker({ element: el })
+        const marker = new maplibre.Marker({ element: el, anchor: "center" })
           .setLngLat(coords)
           .setPopup(popup)
           .addTo(map);
@@ -321,39 +305,38 @@ export default function BrowsePage() {
       }
 
       if (hasPoints) {
-        map.fitBounds(bounds, { padding: 60, maxZoom: 15, duration: 800 });
+        map.fitBounds(bounds, { padding: 80, maxZoom: 15, duration: 800 });
       }
     }
 
-    // Inject MapLibre GL CSS + JS if not already present
-    if (!(window as any).maplibregl) {
-      const existingCss = document.getElementById("maplibre-css");
-      if (!existingCss) {
+    function loadMapLibre(cb: () => void) {
+      if ((window as any).maplibregl) { cb(); return; }
+
+      if (!document.getElementById("maplibre-css")) {
         const link = document.createElement("link");
         link.id = "maplibre-css";
         link.rel = "stylesheet";
         link.href = "https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css";
         document.head.appendChild(link);
       }
-      const existingJs = document.getElementById("maplibre-js");
-      if (!existingJs) {
+
+      if (!document.getElementById("maplibre-js")) {
         const script = document.createElement("script");
         script.id = "maplibre-js";
         script.src = "https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js";
-        script.onload = () => initMap();
+        script.onload = cb;
         document.head.appendChild(script);
       } else {
-        // Script tag exists but may still be loading
-        const checkInterval = setInterval(() => {
-          if ((window as any).maplibregl) { clearInterval(checkInterval); initMap(); }
-        }, 100);
+        // Script tag exists, wait for it to finish loading
+        const check = setInterval(() => {
+          if ((window as any).maplibregl) { clearInterval(check); cb(); }
+        }, 80);
       }
-    } else {
-      initMap();
     }
+
+    loadMapLibre(initMap);
   }, [mapOpen, user, listings]);
 
-  // Clean up map on unmount
   useEffect(() => {
     return () => {
       if (mapInstanceRef.current) {
@@ -385,15 +368,10 @@ export default function BrowsePage() {
     e.preventDefault();
     setSigninLoading(true); setSigninError("");
     if (signinMode === "signin") {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: signinEmail.trim().toLowerCase(), password: signinPassword,
-      });
+      const { error } = await supabase.auth.signInWithPassword({ email: signinEmail.trim().toLowerCase(), password: signinPassword });
       if (error) { setSigninError("Invalid email or password."); setSigninLoading(false); return; }
     } else {
-      const { error } = await supabase.auth.signUp({
-        email: signinEmail.trim().toLowerCase(), password: signinPassword,
-        options: { emailRedirectTo: "https://gawaloop.com/browse" },
-      });
+      const { error } = await supabase.auth.signUp({ email: signinEmail.trim().toLowerCase(), password: signinPassword, options: { emailRedirectTo: "https://gawaloop.com/browse" } });
       if (error) { setSigninError(error.message); setSigninLoading(false); return; }
       setSigninDone(true);
     }
@@ -406,11 +384,7 @@ export default function BrowsePage() {
     setClaimLoading(true); setClaimMsg("");
     const res = await fetch("/api/claim-submit", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        listingId: selectedId, first_name: claimForm.first_name.trim(),
-        email: claimForm.email.trim().toLowerCase(), phone: claimForm.phone.trim(),
-        eta_minutes: claimForm.eta_minutes, customer_user_id: user?.id || null,
-      }),
+      body: JSON.stringify({ listingId: selectedId, first_name: claimForm.first_name.trim(), email: claimForm.email.trim().toLowerCase(), phone: claimForm.phone.trim(), eta_minutes: claimForm.eta_minutes, customer_user_id: user?.id || null }),
     });
     const data = await res.json();
     if (data.success) {
@@ -501,9 +475,7 @@ export default function BrowsePage() {
       </nav>
 
       <div style={{ maxWidth: "760px", margin: "0 auto", padding: "32px 16px" }}>
-        <h1 style={{ fontSize: "28px", fontWeight: 900, color: "#0a2e1a", margin: "0 0 4px" }}>
-          {T.browse || "Browse Free Food"}
-        </h1>
+        <h1 style={{ fontSize: "28px", fontWeight: 900, color: "#0a2e1a", margin: "0 0 4px" }}>{T.browse || "Browse Free Food"}</h1>
         <p style={{ color: "#6b7280", fontSize: "14px", margin: "0 0 20px" }}>
           {filtered.length} {filtered.length === 1 ? "item" : "items"} available now · refreshes every 30s
         </p>
@@ -582,71 +554,44 @@ export default function BrowsePage() {
             <div key={listing.id} style={{ background: "#fff", borderRadius: "20px", border: `1px solid ${isUrgent ? "#fde68a" : "#e5e7eb"}`, overflow: "hidden", marginBottom: "20px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
               {listing.image_url ? (
                 <div style={{ width: "100%", height: "220px", overflow: "hidden" }}>
-                  <img src={listing.image_url} alt={listing.food_name}
-                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                    onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}/>
+                  <img src={listing.image_url} alt={listing.food_name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}/>
                 </div>
               ) : (
                 <div style={{ width: "100%", height: "80px", background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "36px" }}>🍽️</div>
               )}
-
               <div style={{ padding: "20px 24px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px", gap: "8px" }}>
                   <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a", flex: 1 }}>{listing.food_name}</h2>
                   <div style={{ display: "flex", gap: "6px", flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
                     <span style={{ background: "#f0fdf4", color: "#16a34a", fontSize: "11px", fontWeight: 700, padding: "4px 10px", borderRadius: "20px", border: "1px solid #bbf7d0" }}>FREE</span>
                     <span style={{ background: "#f1f5f9", color: "#475569", fontSize: "11px", fontWeight: 700, padding: "4px 10px", borderRadius: "20px" }}>{listing.category}</span>
-                    {timeLeft && (
-                      <span style={{ background: isUrgent ? "#fef3c7" : "#f0fdf4", color: isUrgent ? "#92400e" : "#166534", fontSize: "11px", fontWeight: 700, padding: "4px 10px", borderRadius: "20px" }}>
-                        ⏰ {timeLeft}
-                      </span>
-                    )}
+                    {timeLeft && <span style={{ background: isUrgent ? "#fef3c7" : "#f0fdf4", color: isUrgent ? "#92400e" : "#166534", fontSize: "11px", fontWeight: 700, padding: "4px 10px", borderRadius: "20px" }}>⏰ {timeLeft}</span>}
                   </div>
                 </div>
-
                 <p style={{ margin: "0 0 6px", fontSize: "14px", color: "#6b7280" }}>
-                  {listing.quantity}
-                  {listing.weight_kg && listing.weight_kg > 0 && ` · ${(listing.weight_kg * 2.205).toFixed(1)} lbs`}
+                  {listing.quantity}{listing.weight_kg && listing.weight_kg > 0 && ` · ${(listing.weight_kg * 2.205).toFixed(1)} lbs`}
                 </p>
-                {listing.allergy_note && (
-                  <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "6px", padding: "4px 10px", display: "inline-block" }}>
-                    ⚠️ {listing.allergy_note}
-                  </p>
-                )}
+                {listing.allergy_note && <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "6px", padding: "4px 10px", display: "inline-block" }}>⚠️ {listing.allergy_note}</p>}
                 {listing.note && <p style={{ margin: "6px 0 10px", fontSize: "13px", color: "#374151" }}>📝 {listing.note}</p>}
 
                 {isSignedIn ? (
                   <div style={{ background: "#f9fafb", borderRadius: "12px", padding: "14px 16px", marginBottom: "16px" }}>
                     <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", marginBottom: bizInfo ? "12px" : 0 }}>
-                      {listing.business_logo_url ? (
-                        <img src={listing.business_logo_url} alt={listing.business_name}
-                          style={{ width: "36px", height: "36px", borderRadius: "8px", objectFit: "cover", flexShrink: 0 }}/>
-                      ) : (
-                        <div style={{ width: "36px", height: "36px", borderRadius: "8px", background: "#e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px", flexShrink: 0 }}>🏪</div>
-                      )}
+                      {listing.business_logo_url ? <img src={listing.business_logo_url} alt={listing.business_name} style={{ width: "36px", height: "36px", borderRadius: "8px", objectFit: "cover", flexShrink: 0 }}/> : <div style={{ width: "36px", height: "36px", borderRadius: "8px", background: "#e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px", flexShrink: 0 }}>🏪</div>}
                       <div style={{ flex: 1 }}>
                         <p style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: 700, color: "#0a2e1a" }}>{listing.business_name}</p>
                         <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#6b7280" }}>📍 {listing.address}</p>
                         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                          <a href={`https://maps.google.com/?q=${encodeURIComponent(listing.address || "")}`} target="_blank" rel="noreferrer"
-                            style={{ background: "#e8f0fe", color: "#1a73e8", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🗺️ Google Maps</a>
-                          <a href={`https://maps.apple.com/?q=${encodeURIComponent(listing.address || "")}`} target="_blank" rel="noreferrer"
-                            style={{ background: "#f3f4f6", color: "#374151", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🍎 Apple Maps</a>
-                          <a href={`https://waze.com/ul?q=${encodeURIComponent(listing.address || "")}`} target="_blank" rel="noreferrer"
-                            style={{ background: "#e8f8ff", color: "#0099cc", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🚗 Waze</a>
+                          <a href={`https://maps.google.com/?q=${encodeURIComponent(listing.address || "")}`} target="_blank" rel="noreferrer" style={{ background: "#e8f0fe", color: "#1a73e8", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🗺️ Google Maps</a>
+                          <a href={`https://maps.apple.com/?q=${encodeURIComponent(listing.address || "")}`} target="_blank" rel="noreferrer" style={{ background: "#f3f4f6", color: "#374151", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🍎 Apple Maps</a>
+                          <a href={`https://waze.com/ul?q=${encodeURIComponent(listing.address || "")}`} target="_blank" rel="noreferrer" style={{ background: "#e8f8ff", color: "#0099cc", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🚗 Waze</a>
                         </div>
                       </div>
                     </div>
                     {bizInfo && (
                       <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "10px", display: "flex", flexDirection: "column", gap: "5px" }}>
-                        {bizInfo.phone && (
-                          <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>
-                            📞 <a href={`tel:${bizInfo.phone}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>{bizInfo.phone}</a>
-                          </p>
-                        )}
-                        <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>
-                          ✉️ <a href={`mailto:${bizInfo.email}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>{bizInfo.email}</a>
-                        </p>
+                        {bizInfo.phone && <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>📞 <a href={`tel:${bizInfo.phone}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>{bizInfo.phone}</a></p>}
+                        <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>✉️ <a href={`mailto:${bizInfo.email}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>{bizInfo.email}</a></p>
                       </div>
                     )}
                   </div>
@@ -663,26 +608,12 @@ export default function BrowsePage() {
                 )}
 
                 {canClaim && !isAdmin && !isOwnNgoListing && (
-                  <button onClick={() => openClaim(listing.id)}
-                    style={{ width: "100%", background: "#16a34a", color: "#fff", border: "none", padding: "14px", borderRadius: "10px", cursor: "pointer", fontSize: "15px", fontWeight: 800 }}>
+                  <button onClick={() => openClaim(listing.id)} style={{ width: "100%", background: "#16a34a", color: "#fff", border: "none", padding: "14px", borderRadius: "10px", cursor: "pointer", fontSize: "15px", fontWeight: 800 }}>
                     {locale === "fr" ? "Réserver — Gratuit" : locale === "es" ? "Reservar — Gratis" : locale === "pt" ? "Reservar — Grátis" : locale === "ar" ? "احجز الآن — مجاناً" : "Reserve Now — It's Free"}
                   </button>
                 )}
-
-                {isOwnNgoListing && (
-                  <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
-                    <p style={{ margin: 0, fontSize: "13px", color: "#166534", fontWeight: 600 }}>
-                      🏛 This is your listing — other businesses and customers can claim it
-                    </p>
-                  </div>
-                )}
-
-                {isAdmin && isSignedIn && (
-                  <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
-                    <p style={{ margin: 0, fontSize: "13px", color: "#166534", fontWeight: 600 }}>👁️ Admin view — claims disabled for admin account</p>
-                  </div>
-                )}
-
+                {isOwnNgoListing && <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}><p style={{ margin: 0, fontSize: "13px", color: "#166534", fontWeight: 600 }}>🏛 This is your listing — other businesses and customers can claim it</p></div>}
+                {isAdmin && isSignedIn && <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}><p style={{ margin: 0, fontSize: "13px", color: "#166534", fontWeight: 600 }}>👁️ Admin view — claims disabled for admin account</p></div>}
                 {isSignedIn && isBusiness && !isNgo && !isAdmin && (
                   <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
                     <p style={{ margin: 0, fontSize: "13px", color: "#6b7280" }}>
@@ -701,12 +632,10 @@ export default function BrowsePage() {
           </p>
         )}
 
-        {/* ===== MAP SECTION — added below listings, collapsible ===== */}
+        {/* ===== MAP PANEL ===== */}
         {!loading && (
           <div style={{ marginBottom: "32px" }}>
-            {/* Toggle button */}
-            <button
-              onClick={() => setMapOpen(o => !o)}
+            <button onClick={() => setMapOpen(o => !o)}
               style={{
                 width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
                 background: mapOpen ? "#0a2e1a" : "#fff",
@@ -729,10 +658,8 @@ export default function BrowsePage() {
               <span style={{ fontSize: "12px", transition: "transform 0.2s", transform: mapOpen ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block" }}>▼</span>
             </button>
 
-            {/* Map panel */}
             {mapOpen && (
               <div style={{ border: "1px solid #0a2e1a", borderTop: "none", borderRadius: "0 0 16px 16px", overflow: "hidden", background: "#fff" }}>
-                {/* Signed-out lock */}
                 {!user || user === undefined ? (
                   <div style={{ height: "360px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #f0fdf4, #ecfdf5)", gap: "12px", padding: "24px" }}>
                     <div style={{ fontSize: "48px" }}>🔒</div>
@@ -759,7 +686,6 @@ export default function BrowsePage() {
                   </div>
                 ) : (
                   <div style={{ position: "relative" }}>
-                    {/* Legend */}
                     <div style={{ position: "absolute", top: "12px", left: "12px", zIndex: 10, background: "rgba(255,255,255,0.95)", borderRadius: "10px", padding: "10px 14px", boxShadow: "0 2px 8px rgba(0,0,0,0.12)", fontSize: "12px", display: "flex", flexDirection: "column", gap: "6px" }}>
                       <p style={{ margin: 0, fontWeight: 700, color: "#0a2e1a", fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                         {locale === "fr" ? "Légende" : locale === "es" ? "Leyenda" : locale === "pt" ? "Legenda" : locale === "ar" ? "المفتاح" : "Legend"}
@@ -773,7 +699,6 @@ export default function BrowsePage() {
                         <span style={{ color: "#374151" }}>{locale === "fr" ? "Expire bientôt (≤30min)" : locale === "es" ? "Vence pronto (≤30min)" : locale === "pt" ? "Vence em breve (≤30min)" : locale === "ar" ? "تنتهي قريباً (≤30د)" : "Expiring soon (≤30min)"}</span>
                       </div>
                     </div>
-                    {/* Map container */}
                     <div ref={mapContainerRef} style={{ width: "100%", height: "420px" }} />
                   </div>
                 )}
@@ -783,100 +708,67 @@ export default function BrowsePage() {
         )}
       </div>
 
-      {/* ===== SIGNIN MODAL — unchanged ===== */}
+      {/* SIGNIN MODAL */}
       {signinModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "20px", padding: "32px", width: "100%", maxWidth: "420px", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}>
             {signinDone ? (
               <div style={{ textAlign: "center" }}>
                 <div style={{ fontSize: "52px", marginBottom: "16px" }}>📬</div>
-                <h2 style={{ margin: "0 0 10px", fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>
-                  {locale === "fr" ? "Vérifiez votre email !" : locale === "es" ? "¡Revisa tu email!" : locale === "pt" ? "Verifique seu email!" : locale === "ar" ? "تحقق من بريدك!" : "Check your email!"}
-                </h2>
-                <p style={{ margin: "0 0 16px", fontSize: "15px", color: "#374151", lineHeight: 1.6 }}>
-                  {locale === "fr" ? "Lien envoyé à" : locale === "es" ? "Enlace enviado a" : locale === "pt" ? "Link enviado para" : locale === "ar" ? "أرسلنا رابطاً إلى" : "We sent a confirmation link to"} <b>{signinEmail}</b>
-                </p>
+                <h2 style={{ margin: "0 0 10px", fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>{locale === "fr" ? "Vérifiez votre email !" : locale === "es" ? "¡Revisa tu email!" : locale === "pt" ? "Verifique seu email!" : locale === "ar" ? "تحقق من بريدك!" : "Check your email!"}</h2>
+                <p style={{ margin: "0 0 16px", fontSize: "15px", color: "#374151", lineHeight: 1.6 }}>{locale === "fr" ? "Lien envoyé à" : locale === "es" ? "Enlace enviado a" : locale === "pt" ? "Link enviado para" : locale === "ar" ? "أرسلنا رابطاً إلى" : "We sent a confirmation link to"} <b>{signinEmail}</b></p>
                 <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "12px", padding: "16px", marginBottom: "20px", textAlign: "left" }}>
                   <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#374151" }}>1. {locale === "fr" ? "Ouvrez votre boîte mail" : locale === "es" ? "Abre tu bandeja" : locale === "pt" ? "Abra sua caixa" : locale === "ar" ? "افتح بريدك" : "Open your email inbox"}</p>
                   <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#374151" }}>2. {locale === "fr" ? "Cliquez sur le lien de confirmation" : locale === "es" ? "Haz clic en el enlace" : locale === "pt" ? "Clique no link" : locale === "ar" ? "انقر على الرابط" : "Click the confirmation link"}</p>
                   <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>3. {locale === "fr" ? "Vous serez connecté automatiquement" : locale === "es" ? "Serás conectado automáticamente" : locale === "pt" ? "Você será conectado" : locale === "ar" ? "ستُوقّع دخولك تلقائياً" : "You'll be signed in automatically"}</p>
                 </div>
-                <p style={{ margin: "0 0 16px", fontSize: "12px", color: "#9ca3af" }}>
-                  {locale === "fr" ? "Vérifiez vos spams si absent." : locale === "es" ? "¿No lo ves? Revisa spam." : locale === "pt" ? "Não viu? Verifique spam." : locale === "ar" ? "تحقق من البريد المزعج." : "Don't see it? Check your spam folder."}
-                </p>
-                <button onClick={() => { setSigninModal(false); setSigninDone(false); }}
-                  style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "10px 24px", borderRadius: "8px", cursor: "pointer", fontSize: "14px", fontWeight: 600 }}>
-                  {locale === "fr" ? "OK, compris" : locale === "es" ? "OK, entendido" : locale === "pt" ? "OK, entendi" : locale === "ar" ? "حسناً" : "OK, got it"}
-                </button>
+                <p style={{ margin: "0 0 16px", fontSize: "12px", color: "#9ca3af" }}>{locale === "fr" ? "Vérifiez vos spams si absent." : locale === "es" ? "¿No lo ves? Revisa spam." : locale === "pt" ? "Não viu? Verifique spam." : locale === "ar" ? "تحقق من البريد المزعج." : "Don't see it? Check your spam folder."}</p>
+                <button onClick={() => { setSigninModal(false); setSigninDone(false); }} style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "10px 24px", borderRadius: "8px", cursor: "pointer", fontSize: "14px", fontWeight: 600 }}>{locale === "fr" ? "OK, compris" : locale === "es" ? "OK, entendido" : locale === "pt" ? "OK, entendi" : locale === "ar" ? "حسناً" : "OK, got it"}</button>
               </div>
             ) : (
               <>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
-                  <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>
-                    {signinMode === "signin"
-                      ? (locale === "fr" ? "Se connecter" : locale === "es" ? "Iniciar sesión" : locale === "pt" ? "Entrar" : locale === "ar" ? "تسجيل الدخول" : "Sign In")
-                      : (locale === "fr" ? "Créer un compte" : locale === "es" ? "Crear cuenta" : locale === "pt" ? "Criar conta" : locale === "ar" ? "إنشاء حساب" : "Create Account")}
-                  </h2>
+                  <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>{signinMode === "signin" ? (locale === "fr" ? "Se connecter" : locale === "es" ? "Iniciar sesión" : locale === "pt" ? "Entrar" : locale === "ar" ? "تسجيل الدخول" : "Sign In") : (locale === "fr" ? "Créer un compte" : locale === "es" ? "Crear cuenta" : locale === "pt" ? "Criar conta" : locale === "ar" ? "إنشاء حساب" : "Create Account")}</h2>
                   <button onClick={() => setSigninModal(false)} style={{ background: "none", border: "none", fontSize: "22px", cursor: "pointer", color: "#9ca3af" }}>✕</button>
                 </div>
                 <form onSubmit={handleSignin}>
-                  {signinError && (
-                    <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px", padding: "10px 14px", marginBottom: "16px" }}>
-                      <p style={{ margin: 0, color: "#991b1b", fontSize: "13px" }}>{signinError}</p>
-                    </div>
-                  )}
+                  {signinError && <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px", padding: "10px 14px", marginBottom: "16px" }}><p style={{ margin: 0, color: "#991b1b", fontSize: "13px" }}>{signinError}</p></div>}
                   <div style={{ marginBottom: "14px" }}>
                     <label style={lbl}>{locale === "ar" ? "البريد الإلكتروني *" : "Email *"}</label>
-                    <input style={inp} type="email" required value={signinEmail}
-                      onChange={e => setSigninEmail(e.target.value)} placeholder="you@email.com"/>
+                    <input style={inp} type="email" required value={signinEmail} onChange={e => setSigninEmail(e.target.value)} placeholder="you@email.com"/>
                   </div>
                   <div style={{ marginBottom: signinMode === "signup" ? "16px" : "20px" }}>
                     <label style={lbl}>{locale === "fr" ? "Mot de passe *" : locale === "es" ? "Contraseña *" : locale === "pt" ? "Senha *" : locale === "ar" ? "كلمة المرور *" : "Password *"}</label>
-                    <input style={inp} type="password" required value={signinPassword}
-                      onChange={e => setSigninPassword(e.target.value)} placeholder="••••••••" minLength={6}/>
+                    <input style={inp} type="password" required value={signinPassword} onChange={e => setSigninPassword(e.target.value)} placeholder="••••••••" minLength={6}/>
                   </div>
                   {signinMode === "signup" && (
-                    <label style={{ display: "flex", gap: "10px", alignItems: "flex-start", marginBottom: "16px", cursor: "pointer" }}
-                      onClick={() => setTermsAccepted(v => !v)}>
+                    <label style={{ display: "flex", gap: "10px", alignItems: "flex-start", marginBottom: "16px", cursor: "pointer" }} onClick={() => setTermsAccepted(v => !v)}>
                       <div style={{ width: "20px", height: "20px", borderRadius: "5px", border: `2px solid ${termsAccepted ? "#16a34a" : "#d1d5db"}`, background: termsAccepted ? "#16a34a" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: "1px", transition: "all 0.15s" }}>
                         {termsAccepted && <span style={{ color: "#fff", fontSize: "12px", fontWeight: 900 }}>✓</span>}
                       </div>
                       <p style={{ margin: 0, fontSize: "13px", color: "#374151", lineHeight: 1.5 }}>
                         {locale === "fr" ? "J'accepte les " : locale === "es" ? "Acepto los " : locale === "pt" ? "Aceito os " : locale === "ar" ? "أوافق على " : "I agree to the "}
-                        <a href="/terms" target="_blank" onClick={e => e.stopPropagation()} style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>
-                          {locale === "fr" ? "Conditions d'utilisation" : locale === "es" ? "Términos de uso" : locale === "pt" ? "Termos de uso" : locale === "ar" ? "شروط الاستخدام" : "Terms of Use"}
-                        </a>
+                        <a href="/terms" target="_blank" onClick={e => e.stopPropagation()} style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>{locale === "fr" ? "Conditions d'utilisation" : locale === "es" ? "Términos de uso" : locale === "pt" ? "Termos de uso" : locale === "ar" ? "شروط الاستخدام" : "Terms of Use"}</a>
                         {" "}{locale === "fr" ? "et la " : locale === "es" ? "y la " : locale === "pt" ? "e a " : locale === "ar" ? "و" : "and "}
-                        <a href="/privacy" target="_blank" onClick={e => e.stopPropagation()} style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>
-                          {locale === "fr" ? "Politique de confidentialité" : locale === "es" ? "Política de privacidad" : locale === "pt" ? "Política de privacidade" : locale === "ar" ? "سياسة الخصوصية" : "Privacy Policy"}
-                        </a>
+                        <a href="/privacy" target="_blank" onClick={e => e.stopPropagation()} style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>{locale === "fr" ? "Politique de confidentialité" : locale === "es" ? "Política de privacidad" : locale === "pt" ? "Política de privacidade" : locale === "ar" ? "سياسة الخصوصية" : "Privacy Policy"}</a>
                         {" *"}
                       </p>
                     </label>
                   )}
                   <button type="submit" disabled={signinLoading || (signinMode === "signup" && !termsAccepted)}
                     style={{ width: "100%", background: (signinLoading || (signinMode === "signup" && !termsAccepted)) ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "13px", borderRadius: "10px", cursor: (signinLoading || (signinMode === "signup" && !termsAccepted)) ? "not-allowed" : "pointer", fontSize: "15px", fontWeight: 700, marginBottom: "14px" }}>
-                    {signinLoading ? "..." : signinMode === "signin"
-                      ? (locale === "fr" ? "Se connecter" : locale === "es" ? "Iniciar sesión" : locale === "pt" ? "Entrar" : locale === "ar" ? "دخول" : "Sign In")
-                      : (locale === "fr" ? "Créer le compte" : locale === "es" ? "Crear cuenta" : locale === "pt" ? "Criar conta" : locale === "ar" ? "إنشاء حساب" : "Create Account")}
+                    {signinLoading ? "..." : signinMode === "signin" ? (locale === "fr" ? "Se connecter" : locale === "es" ? "Iniciar sesión" : locale === "pt" ? "Entrar" : locale === "ar" ? "دخول" : "Sign In") : (locale === "fr" ? "Créer le compte" : locale === "es" ? "Crear cuenta" : locale === "pt" ? "Criar conta" : locale === "ar" ? "إنشاء حساب" : "Create Account")}
                   </button>
                   <p style={{ textAlign: "center", fontSize: "13px", color: "#6b7280", margin: 0 }}>
-                    {signinMode === "signin"
-                      ? (locale === "fr" ? "Pas de compte ?" : locale === "es" ? "¿Sin cuenta?" : locale === "pt" ? "Sem conta?" : locale === "ar" ? "ليس لديك حساب؟" : "No account?")
-                      : (locale === "fr" ? "Déjà un compte ?" : locale === "es" ? "¿Ya tienes cuenta?" : locale === "pt" ? "Já tem conta?" : locale === "ar" ? "لديك حساب؟" : "Already have one?")}{" "}
-                    <button type="button" onClick={() => { setSigninMode(signinMode === "signin" ? "signup" : "signin"); setSigninError(""); setTermsAccepted(false); }}
-                      style={{ background: "none", border: "none", color: "#16a34a", fontWeight: 700, cursor: "pointer", fontSize: "13px", padding: 0 }}>
-                      {signinMode === "signin"
-                        ? (locale === "fr" ? "Créer un compte" : locale === "es" ? "Crear cuenta" : locale === "pt" ? "Criar conta" : locale === "ar" ? "إنشاء حساب" : "Create one free")
-                        : (locale === "fr" ? "Se connecter" : locale === "es" ? "Iniciar sesión" : locale === "pt" ? "Entrar" : locale === "ar" ? "تسجيل الدخول" : "Sign in")}
+                    {signinMode === "signin" ? (locale === "fr" ? "Pas de compte ?" : locale === "es" ? "¿Sin cuenta?" : locale === "pt" ? "Sem conta?" : locale === "ar" ? "ليس لديك حساب؟" : "No account?") : (locale === "fr" ? "Déjà un compte ?" : locale === "es" ? "¿Ya tienes cuenta?" : locale === "pt" ? "Já tem conta?" : locale === "ar" ? "لديك حساب؟" : "Already have one?")}{" "}
+                    <button type="button" onClick={() => { setSigninMode(signinMode === "signin" ? "signup" : "signin"); setSigninError(""); setTermsAccepted(false); }} style={{ background: "none", border: "none", color: "#16a34a", fontWeight: 700, cursor: "pointer", fontSize: "13px", padding: 0 }}>
+                      {signinMode === "signin" ? (locale === "fr" ? "Créer un compte" : locale === "es" ? "Crear cuenta" : locale === "pt" ? "Criar conta" : locale === "ar" ? "إنشاء حساب" : "Create one free") : (locale === "fr" ? "Se connecter" : locale === "es" ? "Iniciar sesión" : locale === "pt" ? "Entrar" : locale === "ar" ? "تسجيل الدخول" : "Sign in")}
                     </button>
                   </p>
                 </form>
                 <p style={{ textAlign: "center", marginTop: "14px", fontSize: "12px", color: "#9ca3af" }}>
                   {locale === "fr" ? "Entreprise ?" : locale === "es" ? "¿Negocio?" : locale === "pt" ? "Empresa?" : locale === "ar" ? "شركة؟" : "Business?"}{" "}
-                  <a href="/business/login" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>
-                    {locale === "fr" ? "Connexion entreprise →" : locale === "es" ? "Login empresas →" : locale === "pt" ? "Login empresas →" : locale === "ar" ? "← دخول الأعمال" : "Business login →"}
-                  </a>
+                  <a href="/business/login" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>{locale === "fr" ? "Connexion entreprise →" : locale === "es" ? "Login empresas →" : locale === "pt" ? "Login empresas →" : locale === "ar" ? "← دخول الأعمال" : "Business login →"}</a>
                 </p>
               </>
             )}
@@ -884,59 +776,40 @@ export default function BrowsePage() {
         </div>
       )}
 
-      {/* ===== CLAIM MODAL — unchanged ===== */}
+      {/* CLAIM MODAL */}
       {selectedId && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "20px", padding: "32px", width: "100%", maxWidth: "480px", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}>
             {claimSuccess ? (
               <div style={{ textAlign: "center" }}>
                 <div style={{ fontSize: "56px", marginBottom: "12px" }}>🎉</div>
-                <h2 style={{ margin: "0 0 8px", fontSize: "22px", fontWeight: 800, color: "#0a2e1a" }}>
-                  {locale === "fr" ? "Réservation confirmée !" : locale === "es" ? "¡Reserva confirmada!" : locale === "pt" ? "Reserva confirmada!" : locale === "ar" ? "تم تأكيد الحجز!" : "Reservation Confirmed!"}
-                </h2>
-                <p style={{ margin: "0 0 16px", color: "#6b7280", fontSize: "14px" }}>
-                  {locale === "fr" ? "Votre code de retrait :" : locale === "es" ? "Tu código:" : locale === "pt" ? "Seu código:" : locale === "ar" ? "رمز الاستلام:" : "Your pickup code:"}
-                </p>
+                <h2 style={{ margin: "0 0 8px", fontSize: "22px", fontWeight: 800, color: "#0a2e1a" }}>{locale === "fr" ? "Réservation confirmée !" : locale === "es" ? "¡Reserva confirmada!" : locale === "pt" ? "Reserva confirmada!" : locale === "ar" ? "تم تأكيد الحجز!" : "Reservation Confirmed!"}</h2>
+                <p style={{ margin: "0 0 16px", color: "#6b7280", fontSize: "14px" }}>{locale === "fr" ? "Votre code de retrait :" : locale === "es" ? "Tu código:" : locale === "pt" ? "Seu código:" : locale === "ar" ? "رمز الاستلام:" : "Your pickup code:"}</p>
                 <div style={{ background: "#f0fdf4", border: "2px solid #16a34a", borderRadius: "12px", padding: "20px", marginBottom: "16px" }}>
                   <p style={{ margin: 0, fontSize: "48px", fontWeight: 900, letterSpacing: "8px", color: "#0a2e1a", fontFamily: "monospace" }}>{lastCode}</p>
                 </div>
-                <p style={{ color: "#6b7280", fontSize: "13px", marginBottom: "20px" }}>
-                  {locale === "fr" ? "Vérifiez votre email. Montrez ce code à votre arrivée." : locale === "es" ? "Revisa tu email. Muestra este código al llegar." : locale === "pt" ? "Verifique seu email. Mostre este código ao chegar." : locale === "ar" ? "تحقق من بريدك. أظهر هذا الرمز عند الوصول." : "Check your email for details. Show this code when you arrive."}
-                </p>
-                <button onClick={() => { setSelectedId(null); setClaimSuccess(false); }}
-                  style={{ background: "#16a34a", color: "#fff", border: "none", padding: "12px 28px", borderRadius: "10px", cursor: "pointer", fontWeight: 700, fontSize: "15px" }}>
-                  {locale === "fr" ? "Terminé" : locale === "es" ? "Listo" : locale === "pt" ? "Pronto" : locale === "ar" ? "تم" : "Done"}
-                </button>
+                <p style={{ color: "#6b7280", fontSize: "13px", marginBottom: "20px" }}>{locale === "fr" ? "Vérifiez votre email. Montrez ce code à votre arrivée." : locale === "es" ? "Revisa tu email. Muestra este código al llegar." : locale === "pt" ? "Verifique seu email. Mostre este código ao chegar." : locale === "ar" ? "تحقق من بريدك. أظهر هذا الرمز عند الوصول." : "Check your email for details. Show this code when you arrive."}</p>
+                <button onClick={() => { setSelectedId(null); setClaimSuccess(false); }} style={{ background: "#16a34a", color: "#fff", border: "none", padding: "12px 28px", borderRadius: "10px", cursor: "pointer", fontWeight: 700, fontSize: "15px" }}>{locale === "fr" ? "Terminé" : locale === "es" ? "Listo" : locale === "pt" ? "Pronto" : locale === "ar" ? "تم" : "Done"}</button>
               </div>
             ) : (
               <>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
-                  <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>
-                    {locale === "fr" ? "Réserver cette nourriture" : locale === "es" ? "Reservar esta comida" : locale === "pt" ? "Reservar esta comida" : locale === "ar" ? "احجز هذا الطعام" : "Reserve This Food"}
-                  </h2>
+                  <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>{locale === "fr" ? "Réserver cette nourriture" : locale === "es" ? "Reservar esta comida" : locale === "pt" ? "Reservar esta comida" : locale === "ar" ? "احجز هذا الطعام" : "Reserve This Food"}</h2>
                   <button onClick={() => setSelectedId(null)} style={{ background: "none", border: "none", fontSize: "22px", cursor: "pointer", color: "#9ca3af" }}>✕</button>
                 </div>
                 <form onSubmit={handleClaim}>
-                  {claimMsg && (
-                    <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px", padding: "10px 14px", marginBottom: "16px" }}>
-                      <p style={{ margin: 0, color: "#991b1b", fontSize: "13px" }}>{claimMsg}</p>
-                    </div>
-                  )}
+                  {claimMsg && <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px", padding: "10px 14px", marginBottom: "16px" }}><p style={{ margin: 0, color: "#991b1b", fontSize: "13px" }}>{claimMsg}</p></div>}
                   <div style={{ marginBottom: "14px" }}>
                     <label style={lbl}>{locale === "fr" ? "Votre prénom *" : locale === "es" ? "Tu nombre *" : locale === "pt" ? "Seu nome *" : locale === "ar" ? "اسمك الأول *" : "Your First Name *"}</label>
-                    <input style={inp} required value={claimForm.first_name}
-                      onChange={e => setClaimForm(f => ({ ...f, first_name: e.target.value }))}
-                      placeholder={locale === "fr" ? "Votre prénom" : locale === "es" ? "Tu nombre" : locale === "pt" ? "Seu nome" : locale === "ar" ? "اسمك" : "Your first name"}/>
+                    <input style={inp} required value={claimForm.first_name} onChange={e => setClaimForm(f => ({ ...f, first_name: e.target.value }))} placeholder={locale === "fr" ? "Votre prénom" : locale === "es" ? "Tu nombre" : locale === "pt" ? "Seu nome" : locale === "ar" ? "اسمك" : "Your first name"}/>
                   </div>
                   <div style={{ marginBottom: "14px" }}>
                     <label style={lbl}>Email *</label>
-                    <input style={inp} type="email" required value={claimForm.email}
-                      onChange={e => setClaimForm(f => ({ ...f, email: e.target.value }))}/>
+                    <input style={inp} type="email" required value={claimForm.email} onChange={e => setClaimForm(f => ({ ...f, email: e.target.value }))}/>
                   </div>
                   <div style={{ marginBottom: "14px" }}>
                     <label style={lbl}>{locale === "fr" ? "Téléphone *" : locale === "es" ? "Teléfono *" : locale === "pt" ? "Telefone *" : locale === "ar" ? "الهاتف *" : "Phone Number *"}</label>
-                    <input style={inp} type="tel" required value={claimForm.phone}
-                      onChange={e => setClaimForm(f => ({ ...f, phone: e.target.value }))} placeholder="e.g. 3478015325"/>
+                    <input style={inp} type="tel" required value={claimForm.phone} onChange={e => setClaimForm(f => ({ ...f, phone: e.target.value }))} placeholder="e.g. 3478015325"/>
                   </div>
                   {(claimForm.first_name || claimForm.phone) && (
                     <p style={{ margin: "-8px 0 12px", fontSize: "12px", color: "#16a34a", fontWeight: 600 }}>
@@ -945,15 +818,11 @@ export default function BrowsePage() {
                   )}
                   <div style={{ marginBottom: "20px" }}>
                     <label style={lbl}>{locale === "fr" ? "Heure d'arrivée" : locale === "es" ? "Hora de llegada" : locale === "pt" ? "Horário de chegada" : locale === "ar" ? "وقت الوصول" : "Your Arrival Time"}</label>
-                    <select style={{ ...inp, cursor: "pointer" }} value={claimForm.eta_minutes}
-                      onChange={e => setClaimForm(f => ({ ...f, eta_minutes: Number(e.target.value) }))}>
-                      {getEtaOptions(selectedId).map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label(locale)}</option>
-                      ))}
+                    <select style={{ ...inp, cursor: "pointer" }} value={claimForm.eta_minutes} onChange={e => setClaimForm(f => ({ ...f, eta_minutes: Number(e.target.value) }))}>
+                      {getEtaOptions(selectedId).map(opt => <option key={opt.value} value={opt.value}>{opt.label(locale)}</option>)}
                     </select>
                   </div>
-                  <button type="submit" disabled={claimLoading}
-                    style={{ width: "100%", background: claimLoading ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "14px", borderRadius: "10px", cursor: claimLoading ? "not-allowed" : "pointer", fontSize: "15px", fontWeight: 800 }}>
+                  <button type="submit" disabled={claimLoading} style={{ width: "100%", background: claimLoading ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "14px", borderRadius: "10px", cursor: claimLoading ? "not-allowed" : "pointer", fontSize: "15px", fontWeight: 800 }}>
                     {claimLoading ? "..." : (locale === "fr" ? "Réserver — Gratuit" : locale === "es" ? "Reservar — Gratis" : locale === "pt" ? "Reservar — Grátis" : locale === "ar" ? "احجز — مجاناً" : "Reserve Now — It's Free")}
                   </button>
                 </form>
