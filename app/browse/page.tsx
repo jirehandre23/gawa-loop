@@ -98,10 +98,10 @@ export default function BrowsePage() {
           }
         }
         setSigninModal(false); setSigninDone(false);
-      } else {
-        setIsBusiness(false); setIsNgo(false); setIsAdmin(false); setNgoName(null);
-        setClaimForm(f => ({ ...f, email: "" }));
-      }
+    } else if (_event === "SIGNED_OUT") {
+      setIsBusiness(false); setIsNgo(false); setIsAdmin(false); setNgoName(null);
+      setClaimForm(f => ({ ...f, email: "" }));
+    }
     });
     return () => subscription.unsubscribe();
   }, []);
