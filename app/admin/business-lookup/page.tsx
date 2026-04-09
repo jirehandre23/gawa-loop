@@ -11,8 +11,8 @@ const ADMIN_EMAIL = "admin@gawaloop.com";
 
 type Business = {
   id: string; name: string; email: string; phone: string; address: string;
-  status: string; suspended_until: string | null; suspension_reason: string | null;
-  created_at: string;
+  status: string; account_type: string; suspended_until: string | null;
+  suspension_reason: string | null; created_at: string;
 };
 type Customer = {
   id: string; user_id: string; first_name: string; last_name: string;
@@ -20,6 +20,8 @@ type Customer = {
   suspension_count: number; suspended_until: string | null;
   suspension_reason: string | null; permanently_banned: boolean; created_at: string;
 };
+
+declare global { interface Window { L: any; } }
 
 export default function AdminPanel() {
   const [tab, setTab]               = useState<"summary" | "businesses" | "customers">("summary");
@@ -31,6 +33,7 @@ export default function AdminPanel() {
   const [loading, setLoading]       = useState(true);
   const [stats, setStats]           = useState<any>(null);
   const [bizPwds, setBizPwds]       = useState<Record<string, string>>({});
+  const [mapReady, setMapReady]     = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -40,6 +43,68 @@ export default function AdminPanel() {
       setLoading(false);
     })();
   }, []);
+
+  // Load Leaflet CSS + JS once
+  useEffect(() => {
+    if (document.getElementById("leaflet-css")) { setMapReady(true); return; }
+    const link = document.createElement("link");
+    link.id   = "leaflet-css";
+    link.rel  = "stylesheet";
+    link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+    document.head.appendChild(link);
+    const script = document.createElement("script");
+    script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+    script.onload = () => setMapReady(true);
+    document.head.appendChild(script);
+  }, []);
+
+  // Build map when tab = summary and Leaflet + businesses are ready
+  useEffect(() => {
+    if (tab !== "summary" || !mapReady || !businesses.length) return;
+    const container = document.getElementById("admin-map");
+    if (!container || (container as any)._leaflet_id) return;
+    const L = window.L;
+    const map = L.map("admin-map").setView([40.6782, -73.9442], 11);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "© OpenStreetMap contributors", maxZoom: 18,
+    }).addTo(map);
+
+    const colors: Record<string, string> = {
+      restaurant: "#16a34a",
+      ngo:        "#2563eb",
+    };
+
+    businesses.forEach(biz => {
+      if (!biz.address) return;
+      // Use Google Geocoding via fetch to get coords
+      fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(biz.address + ", Brooklyn, NY")}`)
+        .then(r => r.json())
+        .then(data => {
+          if (!data?.length) return;
+          const lat = parseFloat(data[0].lat);
+          const lng = parseFloat(data[0].lon);
+          const color = colors[biz.account_type] || "#6b7280";
+          const icon = L.divIcon({
+            html: `<div style="background:${color};width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.3)"></div>`,
+            className: "", iconSize: [14, 14], iconAnchor: [7, 7],
+          });
+          const marker = L.marker([lat, lng], { icon }).addTo(map);
+          const statusBadge = biz.suspended_until ? `<span style="color:#d97706;font-weight:700">⚠️ Suspended</span>` : `<span style="color:#16a34a;font-weight:700">✅ Active</span>`;
+          marker.bindPopup(`
+            <div style="font-family:sans-serif;min-width:180px">
+              <p style="margin:0 0 4px;font-size:14px;font-weight:800;color:#0a2e1a">${biz.name}</p>
+              <p style="margin:0 0 2px;font-size:12px;color:#6b7280">${biz.account_type === "ngo" ? "🏛 NGO" : "🍽️ Restaurant"}</p>
+              <p style="margin:0 0 4px;font-size:12px;color:#374151">📍 ${biz.address}</p>
+              <p style="margin:0 0 4px;font-size:12px;color:#374151">📧 ${biz.email}</p>
+              ${statusBadge}
+            </div>
+          `);
+        })
+        .catch(() => {});
+    });
+
+    return () => { try { map.remove(); } catch {} };
+  }, [tab, mapReady, businesses]);
 
   async function loadBusinesses() {
     const { data } = await supabase.from("businesses").select("*").order("name");
@@ -56,7 +121,7 @@ export default function AdminPanel() {
       { count: bizTotal }, { count: cusTotal }, { count: listTotal },
       { count: pickups }, { count: claims }, { data: weights },
       { count: active }, { count: suspended_biz }, { count: suspended_cus },
-      { count: banned },
+      { count: banned }, { data: valueSavedData }, { data: totalValueData },
     ] = await Promise.all([
       supabase.from("businesses").select("*", { count: "exact", head: true }),
       supabase.from("customer_profiles").select("*", { count: "exact", head: true }),
@@ -68,9 +133,13 @@ export default function AdminPanel() {
       supabase.from("businesses").select("*", { count: "exact", head: true }).not("suspended_until", "is", null),
       supabase.from("customer_profiles").select("*", { count: "exact", head: true }).not("suspended_until", "is", null),
       supabase.from("customer_profiles").select("*", { count: "exact", head: true }).eq("permanently_banned", true),
+      supabase.from("listings").select("estimated_value").eq("status", "PICKED_UP"),
+      supabase.from("listings").select("estimated_value").not("estimated_value", "is", null),
     ]);
-    const lbs = (weights || []).reduce((s: number, l: any) => s + (Number(l.weight_kg || 0) * 2.205), 0);
-    setStats({ bizTotal, cusTotal, listTotal, pickups, claims, lbs, active, suspended_biz, suspended_cus, banned });
+    const lbs        = (weights || []).reduce((s: number, l: any) => s + (Number(l.weight_kg || 0) * 2.205), 0);
+    const valueSaved = (valueSavedData || []).reduce((s: number, l: any) => s + Number(l.estimated_value || 0), 0);
+    const totalValue = (totalValueData || []).reduce((s: number, l: any) => s + Number(l.estimated_value || 0), 0);
+    setStats({ bizTotal, cusTotal, listTotal, pickups, claims, lbs, active, suspended_biz, suspended_cus, banned, valueSaved, totalValue });
   }
 
   function flash(text: string) { setMsg(text); setTimeout(() => setMsg(""), 4000); }
@@ -154,10 +223,8 @@ export default function AdminPanel() {
 
   const searchInp: React.CSSProperties = {
     padding: "10px 14px", borderRadius: "8px", border: "1.5px solid #9ca3af",
-    fontSize: "14px", color: "#111827", background: "#fff", outline: "none",
-    minWidth: "280px",
+    fontSize: "14px", color: "#111827", background: "#fff", outline: "none", minWidth: "280px",
   };
-
   const pwdInp: React.CSSProperties = {
     padding: "8px 12px", borderRadius: "7px", border: "1.5px solid #9ca3af",
     fontSize: "13px", color: "#111827", flex: 1, outline: "none", background: "#fff",
@@ -216,19 +283,23 @@ export default function AdminPanel() {
         {tab === "summary" && stats && (
           <div>
             <h2 style={{ margin: "0 0 20px", fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>Platform Overview</h2>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px", marginBottom: "24px" }}>
+
+            {/* STATS GRID */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px", marginBottom: "28px" }}>
               {[
-                { label: "Total Businesses",    value: stats.bizTotal,      icon: "🏪", color: "#0a2e1a" },
-                { label: "Total Customers",      value: stats.cusTotal,      icon: "👥", color: "#2563eb" },
-                { label: "Total Listings",       value: stats.listTotal,     icon: "📋", color: "#7c3aed" },
-                { label: "Total Pickups",        value: stats.pickups,       icon: "✅", color: "#16a34a" },
-                { label: "Total Claims",         value: stats.claims,        icon: "🎯", color: "#ea580c" },
-                { label: "Active Listings Now",  value: stats.active,        icon: "🟢", color: "#16a34a" },
-                { label: "Food Donated (lbs)",   value: `${Number(stats.lbs).toFixed(1)} lbs`, icon: "⚖️", color: "#059669" },
-                { label: "CO₂e Saved (lbs)",     value: `${Math.round(stats.lbs * 2.5)} lbs`, icon: "🌍", color: "#0369a1" },
-                { label: "Suspended Businesses", value: stats.suspended_biz, icon: "⚠️", color: "#d97706" },
-                { label: "Suspended Customers",  value: stats.suspended_cus, icon: "⚠️", color: "#d97706" },
-                { label: "Permanently Banned",   value: stats.banned,        icon: "🚫", color: "#dc2626" },
+                { label: "Total Businesses",       value: stats.bizTotal,                               icon: "🏪", color: "#0a2e1a" },
+                { label: "Total Customers",         value: stats.cusTotal,                               icon: "👥", color: "#2563eb" },
+                { label: "Total Listings",          value: stats.listTotal,                              icon: "📋", color: "#7c3aed" },
+                { label: "Total Pickups",           value: stats.pickups,                                icon: "✅", color: "#16a34a" },
+                { label: "Total Claims",            value: stats.claims,                                 icon: "🎯", color: "#ea580c" },
+                { label: "Active Listings Now",     value: stats.active,                                 icon: "🟢", color: "#16a34a" },
+                { label: "Food Donated (lbs)",      value: `${Number(stats.lbs).toFixed(1)} lbs`,        icon: "⚖️", color: "#059669" },
+                { label: "CO₂e Saved (lbs)",        value: `${Math.round(stats.lbs * 2.5)} lbs`,         icon: "🌍", color: "#0369a1" },
+                { label: "💰 Value Saved",          value: `$${Number(stats.valueSaved).toFixed(2)}`,    icon: "💰", color: "#16a34a" },
+                { label: "💰 Total Est. Value",     value: `$${Number(stats.totalValue).toFixed(2)}`,    icon: "💵", color: "#059669" },
+                { label: "Suspended Businesses",    value: stats.suspended_biz,                          icon: "⚠️", color: "#d97706" },
+                { label: "Suspended Customers",     value: stats.suspended_cus,                          icon: "⚠️", color: "#d97706" },
+                { label: "Permanently Banned",      value: stats.banned,                                 icon: "🚫", color: "#dc2626" },
               ].map((s, i) => (
                 <div key={i} style={{ background: "#fff", borderRadius: "14px", padding: "20px", border: "1px solid #e5e7eb", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
                   <p style={{ margin: "0 0 6px", fontSize: "22px" }}>{s.icon}</p>
@@ -237,6 +308,40 @@ export default function AdminPanel() {
                 </div>
               ))}
             </div>
+
+            {/* BUSINESS MAP */}
+            <div style={{ background: "#fff", borderRadius: "16px", padding: "24px", border: "1px solid #e5e7eb", marginBottom: "24px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "8px" }}>
+                <div>
+                  <h3 style={{ margin: "0 0 2px", fontSize: "16px", fontWeight: 800, color: "#0a2e1a" }}>📍 Business Locations</h3>
+                  <p style={{ margin: 0, fontSize: "12px", color: "#6b7280" }}>All {businesses.length} registered businesses — click a pin for details</p>
+                </div>
+                <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: "#16a34a", border: "2px solid #fff", boxShadow: "0 1px 3px rgba(0,0,0,0.3)" }}></div>
+                    <span style={{ fontSize: "12px", color: "#374151", fontWeight: 600 }}>Restaurant</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: "#2563eb", border: "2px solid #fff", boxShadow: "0 1px 3px rgba(0,0,0,0.3)" }}></div>
+                    <span style={{ fontSize: "12px", color: "#374151", fontWeight: 600 }}>NGO</span>
+                  </div>
+                </div>
+              </div>
+              <div
+                id="admin-map"
+                style={{ width: "100%", height: "480px", borderRadius: "12px", background: "#f0fdf4", overflow: "hidden", border: "1px solid #e5e7eb" }}
+              >
+                {!mapReady && (
+                  <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <p style={{ color: "#9ca3af", fontSize: "14px" }}>Loading map...</p>
+                  </div>
+                )}
+              </div>
+              <p style={{ margin: "8px 0 0", fontSize: "11px", color: "#9ca3af", textAlign: "right" }}>
+                Pins load via address geocoding — may take a few seconds to appear
+              </p>
+            </div>
+
             <button onClick={() => Promise.all([loadBusinesses(), loadCustomers(), loadStats()])}
               style={{ background: "#0a2e1a", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: 700 }}>
               🔄 Refresh Stats
@@ -248,12 +353,7 @@ export default function AdminPanel() {
         {tab === "businesses" && (
           <div>
             <div style={{ display: "flex", gap: "12px", marginBottom: "20px", alignItems: "center", flexWrap: "wrap" }}>
-              <input
-                placeholder="Search by name or email..."
-                value={bizSearch}
-                onChange={e => setBizSearch(e.target.value)}
-                style={searchInp}
-              />
+              <input placeholder="Search by name or email..." value={bizSearch} onChange={e => setBizSearch(e.target.value)} style={searchInp}/>
               <span style={{ fontSize: "13px", color: "#374151", fontWeight: 600 }}>{filteredBiz.length} result{filteredBiz.length !== 1 ? "s" : ""}</span>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
@@ -266,12 +366,13 @@ export default function AdminPanel() {
                       <div>
                         <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px", flexWrap: "wrap" }}>
                           <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 800, color: "#0a2e1a" }}>{biz.name}</h3>
+                          {biz.account_type === "ngo" && <Badge label="NGO" color="#2563eb"/>}
                           {banned    && <Badge label="PERMANENTLY BANNED" color="#dc2626" />}
                           {suspended && !banned && <Badge label={`SUSPENDED until ${new Date(biz.suspended_until!).toLocaleDateString()}`} color="#d97706" />}
                           {!banned   && !suspended && <Badge label="ACTIVE" color="#16a34a" />}
                         </div>
                         <p style={{ margin: "3px 0", fontSize: "13px", color: "#111827", fontWeight: 500 }}>📧 {biz.email}</p>
-                        {biz.phone && <p style={{ margin: "3px 0", fontSize: "13px", color: "#111827", fontWeight: 500 }}>📞 {biz.phone}</p>}
+                        {biz.phone   && <p style={{ margin: "3px 0", fontSize: "13px", color: "#111827", fontWeight: 500 }}>📞 {biz.phone}</p>}
                         {biz.address && <p style={{ margin: "3px 0", fontSize: "13px", color: "#111827", fontWeight: 500 }}>📍 {biz.address}</p>}
                         {biz.suspension_reason && <p style={{ margin: "8px 0 0", fontSize: "12px", color: "#b91c1c", fontWeight: 600, fontStyle: "italic" }}>Reason: {biz.suspension_reason}</p>}
                       </div>
@@ -279,8 +380,8 @@ export default function AdminPanel() {
                         {(banned || suspended)
                           ? <Btn label="✅ Reinstate" color="#16a34a" onClick={() => reinstateBusiness(biz)} />
                           : <>
-                              <Btn label="Suspend 1wk"    color="#d97706" onClick={() => suspendBusiness(biz, 1)} />
-                              <Btn label="Suspend 1mo"    color="#ea580c" onClick={() => suspendBusiness(biz, 4)} />
+                              <Btn label="Suspend 1wk"      color="#d97706" onClick={() => suspendBusiness(biz, 1)} />
+                              <Btn label="Suspend 1mo"      color="#ea580c" onClick={() => suspendBusiness(biz, 4)} />
                               <Btn label="🚫 Permanent Ban" color="#dc2626" onClick={() => suspendBusiness(biz, "permanent")} />
                             </>
                         }
@@ -289,12 +390,7 @@ export default function AdminPanel() {
                     <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px solid #f3f4f6" }}>
                       <p style={{ margin: "0 0 8px", fontSize: "12px", fontWeight: 700, color: "#374151", textTransform: "uppercase", letterSpacing: "0.4px" }}>Set New Password</p>
                       <div style={{ display: "flex", gap: "8px" }}>
-                        <input
-                          placeholder="New password (min 6 chars)"
-                          value={bizPwds[biz.id] || ""}
-                          onChange={e => setBizPwds(p => ({ ...p, [biz.id]: e.target.value }))}
-                          style={pwdInp}
-                        />
+                        <input placeholder="New password (min 6 chars)" value={bizPwds[biz.id] || ""} onChange={e => setBizPwds(p => ({ ...p, [biz.id]: e.target.value }))} style={pwdInp}/>
                         <button onClick={() => setBusinessPassword(biz.email, bizPwds[biz.id] || "")}
                           style={{ background: "#2563eb", color: "#fff", border: "none", padding: "8px 16px", borderRadius: "7px", cursor: "pointer", fontSize: "13px", fontWeight: 700, whiteSpace: "nowrap" }}>
                           Set Password
@@ -312,12 +408,7 @@ export default function AdminPanel() {
         {tab === "customers" && (
           <div>
             <div style={{ display: "flex", gap: "12px", marginBottom: "20px", alignItems: "center", flexWrap: "wrap" }}>
-              <input
-                placeholder="Search by name or email..."
-                value={cusSearch}
-                onChange={e => setCusSearch(e.target.value)}
-                style={searchInp}
-              />
+              <input placeholder="Search by name or email..." value={cusSearch} onChange={e => setCusSearch(e.target.value)} style={searchInp}/>
               <span style={{ fontSize: "13px", color: "#374151", fontWeight: 600 }}>{filteredCus.length} result{filteredCus.length !== 1 ? "s" : ""}</span>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
@@ -349,8 +440,8 @@ export default function AdminPanel() {
                         {(banned || suspended)
                           ? <Btn label="✅ Reinstate" color="#16a34a" onClick={() => reinstateCustomer(cus)} />
                           : <>
-                              <Btn label="Suspend 1wk"    color="#d97706" onClick={() => suspendCustomer(cus, 1)} />
-                              <Btn label="Suspend 1mo"    color="#ea580c" onClick={() => suspendCustomer(cus, 4)} />
+                              <Btn label="Suspend 1wk"      color="#d97706" onClick={() => suspendCustomer(cus, 1)} />
+                              <Btn label="Suspend 1mo"      color="#ea580c" onClick={() => suspendCustomer(cus, 4)} />
                               <Btn label="🚫 Permanent Ban" color="#dc2626" onClick={() => suspendCustomer(cus, "permanent")} />
                             </>
                         }
@@ -360,9 +451,7 @@ export default function AdminPanel() {
                 );
               })}
               {filteredCus.length === 0 && (
-                <div style={{ background: "#fff", borderRadius: "14px", padding: "40px", textAlign: "center", color: "#374151", fontWeight: 600 }}>
-                  No customers found.
-                </div>
+                <div style={{ background: "#fff", borderRadius: "14px", padding: "40px", textAlign: "center", color: "#374151", fontWeight: 600 }}>No customers found.</div>
               )}
             </div>
           </div>
