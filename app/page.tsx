@@ -20,6 +20,10 @@ export default function HomePage() {
   const [statsLoaded, setStatsLoaded] = useState(false);
   const [user, setUser]               = useState<any>(null);
 
+  // --- NEW: nav state ---
+  const [menuOpen, setMenuOpen]           = useState(false);
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+
   const [signinEmail, setSigninEmail]       = useState("");
   const [signinPassword, setSigninPassword] = useState("");
   const [signinLoading, setSigninLoading]   = useState(false);
@@ -47,6 +51,19 @@ export default function HomePage() {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
   }, []);
 
+  // Close dropdown/menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as HTMLElement;
+      if (!target.closest("#main-nav")) {
+        setActiveDropdown(null);
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const T     = t[locale];
   const isRTL = locale === "ar";
 
@@ -54,6 +71,13 @@ export default function HomePage() {
     saveLocale(loc);
     setLocaleState(loc);
     setLangOpen(false);
+  }
+
+  function scrollTo(id: string) {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    setActiveDropdown(null);
+    setMenuOpen(false);
   }
 
   async function handleCustomerAuth(e: React.FormEvent) {
@@ -119,6 +143,37 @@ export default function HomePage() {
     background: "#fff", outline: "none", boxSizing: "border-box",
   };
 
+  // --- NAV DROPDOWN DEFINITIONS ---
+  const navSections = [
+    {
+      id: "explore",
+      label: locale==="ar"?"استكشف":locale==="fr"?"Explorer":locale==="es"?"Explorar":locale==="pt"?"Explorar":"Explore",
+      items: [
+        { label: locale==="ar"?"تصفح الطعام المجاني":locale==="fr"?"Voir la nourriture gratuite":locale==="es"?"Ver comida gratis":locale==="pt"?"Ver comida grátis":"Browse Free Food", href: "/browse", icon: "🍽️" },
+        { label: locale==="ar"?"كيف يعمل":locale==="fr"?"Comment ça marche":locale==="es"?"Cómo funciona":locale==="pt"?"Como funciona":"How It Works", onClick: () => scrollTo("how-it-works"), icon: "📖" },
+        { label: locale==="ar"?"خريطة المجتمع":locale==="fr"?"Carte communautaire":locale==="es"?"Mapa comunitario":locale==="pt"?"Mapa comunitário":"Community Map", href: "/community-map", icon: "🗺️" },
+      ],
+    },
+    {
+      id: "businesses",
+      label: locale==="ar"?"للشركات":locale==="fr"?"Entreprises":locale==="es"?"Negocios":locale==="pt"?"Empresas":"Businesses",
+      items: [
+        { label: locale==="ar"?"سجل مطعمك":locale==="fr"?"Inscrire mon restaurant":locale==="es"?"Registrar negocio":locale==="pt"?"Cadastrar empresa":"Register Your Business", href: "/business/signup", icon: "🏪" },
+        { label: locale==="ar"?"دخول الشركات":locale==="fr"?"Connexion entreprise":locale==="es"?"Login empresas":locale==="pt"?"Login empresas":"Business Login", href: "/business/login", icon: "🔑" },
+        { label: locale==="ar"?"لماذا GAWA Loop؟":locale==="fr"?"Pourquoi GAWA Loop ?":locale==="es"?"¿Por qué GAWA?":locale==="pt"?"Por que GAWA?":"Why GAWA Loop?", onClick: () => scrollTo("why-gawa"), icon: "💡" },
+      ],
+    },
+    {
+      id: "info",
+      label: locale==="ar"?"معلومات":locale==="fr"?"Infos":locale==="es"?"Info":locale==="pt"?"Info":"Info",
+      items: [
+        { label: locale==="ar"?"الأسئلة الشائعة":locale==="fr"?"FAQ":locale==="es"?"Preguntas frecuentes":locale==="pt"?"Perguntas frequentes":"FAQ", onClick: () => scrollTo("faq"), icon: "❓" },
+        { label: locale==="ar"?"اتصل بنا":locale==="fr"?"Nous contacter":locale==="es"?"Contáctanos":locale==="pt"?"Contate-nos":"Contact Us", onClick: () => scrollTo("contact"), icon: "✉️" },
+        { label: locale==="ar"?"حسابي":locale==="fr"?"Mon compte":locale==="es"?"Mi cuenta":locale==="pt"?"Minha conta":"My Account", href: user ? "/customer/profile" : undefined, onClick: user ? undefined : () => scrollTo("signin"), icon: "👤" },
+      ],
+    },
+  ];
+
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
@@ -133,47 +188,165 @@ export default function HomePage() {
         "address": { "@type": "PostalAddress", "addressLocality": "Brooklyn", "addressRegion": "NY", "addressCountry": "US" }
       })}} />
 
+      <style>{`
+        @keyframes pulse { 0%,100%{opacity:1;}50%{opacity:0.4;} }
+        @keyframes fadeInDown { from{opacity:0;transform:translateY(-8px);}to{opacity:1;transform:translateY(0);} }
+        .nav-dropdown { animation: fadeInDown 0.18s ease; }
+        .nav-item:hover { background: #f0fdf4 !important; color: #16a34a !important; }
+        .hamburger-item:hover { background: #f0fdf4 !important; }
+        @media (max-width: 768px) {
+          .desktop-nav { display: none !important; }
+          .hamburger-btn { display: flex !important; }
+        }
+        @media (min-width: 769px) {
+          .hamburger-btn { display: none !important; }
+          .mobile-menu { display: none !important; }
+        }
+      `}</style>
+
       <main dir={isRTL ? "rtl" : "ltr"} className="min-h-screen bg-white text-slate-900"
         style={{ fontFamily: isRTL ? "'Noto Sans Arabic', sans-serif" : undefined }}>
 
-        <nav className="sticky top-0 z-50 border-b border-slate-100 bg-white/95 backdrop-blur-sm">
+        {/* ===== NAV ===== */}
+        <nav id="main-nav" className="sticky top-0 z-50 border-b border-slate-100 bg-white/95 backdrop-blur-sm">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-            <a href="/" className="flex items-center gap-3">
+            {/* Logo */}
+            <a href="/" className="flex items-center gap-3" style={{ textDecoration: "none" }}>
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-50 ring-2 ring-green-100">
                 <Image src="/gawa-logo-green.png" width={28} height={28} alt="GAWA Loop logo" style={{ objectFit:"contain" }} priority />
               </div>
               <span className="text-lg font-bold text-slate-900">GAWA Loop</span>
             </a>
-            <div className="flex items-center gap-3">
-              <Link href="/browse" className="hidden text-sm font-medium text-slate-600 hover:text-green-600 sm:block transition">{T.browse}</Link>
-              <Link href="/business/login" className="hidden text-sm font-medium text-slate-600 hover:text-green-600 sm:block transition">{T.login}</Link>
-              {user ? (
-                <Link href="/customer/profile" className="rounded-lg bg-green-500 px-4 py-2 text-sm font-semibold text-white hover:bg-green-600 transition">
-                  {locale==="fr"?"Mon Compte":locale==="es"?"Mi Cuenta":locale==="pt"?"Minha Conta":locale==="ar"?"حسابي":"My Account"}
+
+            {/* Desktop nav */}
+            <div className="desktop-nav" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+              {navSections.map(section => (
+                <div key={section.id} style={{ position: "relative" }}>
+                  <button
+                    onClick={() => setActiveDropdown(activeDropdown === section.id ? null : section.id)}
+                    style={{
+                      background: "none", border: "none", cursor: "pointer",
+                      padding: "8px 12px", borderRadius: "8px", fontSize: "14px",
+                      fontWeight: 600, color: activeDropdown === section.id ? "#16a34a" : "#374151",
+                      display: "flex", alignItems: "center", gap: "4px",
+                      background: activeDropdown === section.id ? "#f0fdf4" : "transparent",
+                      transition: "all 0.15s",
+                    }}
+                    onMouseEnter={e => { if (activeDropdown !== section.id) (e.currentTarget as HTMLElement).style.background = "#f9fafb"; }}
+                    onMouseLeave={e => { if (activeDropdown !== section.id) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                  >
+                    {section.label}
+                    <span style={{ fontSize: "10px", opacity: 0.6, transform: activeDropdown === section.id ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.2s", display: "inline-block" }}>▼</span>
+                  </button>
+                  {activeDropdown === section.id && (
+                    <div className="nav-dropdown" style={{
+                      position: "absolute", top: "calc(100% + 8px)", left: 0,
+                      background: "#fff", border: "1px solid #e5e7eb", borderRadius: "14px",
+                      boxShadow: "0 12px 40px rgba(0,0,0,0.12)", overflow: "hidden",
+                      minWidth: "220px", zIndex: 999,
+                    }}>
+                      {section.items.map((item, i) => (
+                        <button key={i} className="nav-item"
+                          onClick={() => { item.onClick ? item.onClick() : item.href ? (window.location.href = item.href) : null; setActiveDropdown(null); }}
+                          style={{
+                            display: "flex", alignItems: "center", gap: "10px", width: "100%",
+                            padding: "12px 16px", background: "#fff", border: "none", cursor: "pointer",
+                            fontSize: "13px", color: "#111827", fontWeight: 500, textAlign: "left",
+                            borderBottom: i < section.items.length - 1 ? "1px solid #f3f4f6" : "none",
+                            transition: "all 0.12s",
+                          }}>
+                          <span style={{ fontSize: "16px", flexShrink: 0 }}>{item.icon}</span>
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {/* CTA */}
+              <div style={{ marginLeft: "8px", display: "flex", gap: "8px", alignItems: "center" }}>
+                <Link href="/browse"
+                  style={{ background: "#16a34a", color: "#fff", padding: "8px 18px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 700, transition: "background 0.15s" }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#15803d"}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "#16a34a"}>
+                  {T.browse}
                 </Link>
-              ) : (
-                <Link href="/business/signup" className="rounded-lg bg-green-500 px-4 py-2 text-sm font-semibold text-white hover:bg-green-600 transition">{T.hero_cta2}</Link>
-              )}
-              <div style={{ position:"relative" }}>
+                {/* Language picker */}
+                <div style={{ position: "relative" }}>
+                  <button onClick={() => setLangOpen(o => !o)}
+                    style={{ background: "transparent", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "6px 10px", cursor: "pointer", fontSize: "13px", fontWeight: 600, display: "flex", alignItems: "center", gap: "4px", color: "#374151" }}>
+                    {FLAG[locale]} ▾
+                  </button>
+                  {langOpen && (
+                    <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, background: "#fff", border: "1px solid #e5e7eb", borderRadius: "10px", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", overflow: "hidden", minWidth: "150px", zIndex: 999 }}>
+                      {LOCALES.map(loc => (
+                        <button key={loc} onClick={() => switchLocale(loc)}
+                          style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "10px 14px", background: loc===locale?"#f0fdf4":"#fff", border: "none", cursor: "pointer", fontSize: "13px", color: loc===locale?"#16a34a":"#111827", fontWeight: loc===locale?700:400, borderBottom: "1px solid #f3f4f6", textAlign: "left" }}>
+                          {FLAG[loc]} {LANG_NAME[loc]}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Hamburger button (mobile only) */}
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              {/* Language picker always visible */}
+              <div style={{ position: "relative" }}>
                 <button onClick={() => setLangOpen(o => !o)}
-                  style={{ background:"transparent", border:"1px solid #e5e7eb", borderRadius:"8px", padding:"6px 10px", cursor:"pointer", fontSize:"13px", fontWeight:600, display:"flex", alignItems:"center", gap:"4px", color:"#374151" }}>
+                  style={{ background: "transparent", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "6px 10px", cursor: "pointer", fontSize: "13px", fontWeight: 600, display: "flex", alignItems: "center", gap: "4px", color: "#374151" }}>
                   {FLAG[locale]} ▾
                 </button>
                 {langOpen && (
-                  <div style={{ position:"absolute", top:"calc(100% + 6px)", right:0, background:"#fff", border:"1px solid #e5e7eb", borderRadius:"10px", boxShadow:"0 8px 24px rgba(0,0,0,0.12)", overflow:"hidden", minWidth:"150px", zIndex:999 }}>
+                  <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, background: "#fff", border: "1px solid #e5e7eb", borderRadius: "10px", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", overflow: "hidden", minWidth: "150px", zIndex: 999 }}>
                     {LOCALES.map(loc => (
                       <button key={loc} onClick={() => switchLocale(loc)}
-                        style={{ display:"flex", alignItems:"center", gap:"8px", width:"100%", padding:"10px 14px", background: loc===locale?"#f0fdf4":"#fff", border:"none", cursor:"pointer", fontSize:"13px", color: loc===locale?"#16a34a":"#111827", fontWeight: loc===locale?700:400, borderBottom:"1px solid #f3f4f6", textAlign:"left" }}>
+                        style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "10px 14px", background: loc===locale?"#f0fdf4":"#fff", border: "none", cursor: "pointer", fontSize: "13px", color: loc===locale?"#16a34a":"#111827", fontWeight: loc===locale?700:400, borderBottom: "1px solid #f3f4f6", textAlign: "left" }}>
                         {FLAG[loc]} {LANG_NAME[loc]}
                       </button>
                     ))}
                   </div>
                 )}
               </div>
+              <button className="hamburger-btn"
+                onClick={() => setMenuOpen(o => !o)}
+                style={{ display: "none", flexDirection: "column", gap: "5px", background: "none", border: "1px solid #e5e7eb", padding: "8px 10px", borderRadius: "8px", cursor: "pointer" }}>
+                <span style={{ display: "block", width: "20px", height: "2px", background: menuOpen ? "#16a34a" : "#374151", transition: "all 0.2s", transform: menuOpen ? "rotate(45deg) translate(5px, 5px)" : "none" }} />
+                <span style={{ display: "block", width: "20px", height: "2px", background: menuOpen ? "#16a34a" : "#374151", transition: "all 0.2s", opacity: menuOpen ? 0 : 1 }} />
+                <span style={{ display: "block", width: "20px", height: "2px", background: menuOpen ? "#16a34a" : "#374151", transition: "all 0.2s", transform: menuOpen ? "rotate(-45deg) translate(5px, -5px)" : "none" }} />
+              </button>
             </div>
           </div>
+
+          {/* Mobile menu */}
+          {menuOpen && (
+            <div className="mobile-menu" style={{ borderTop: "1px solid #e5e7eb", background: "#fff", padding: "8px 0 16px" }}>
+              {navSections.map(section => (
+                <div key={section.id} style={{ padding: "0 16px" }}>
+                  <p style={{ margin: "12px 0 4px", fontSize: "11px", fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.8px" }}>{section.label}</p>
+                  {section.items.map((item, i) => (
+                    <button key={i} className="hamburger-item"
+                      onClick={() => { item.onClick ? item.onClick() : item.href ? (window.location.href = item.href) : null; setMenuOpen(false); }}
+                      style={{ display: "flex", alignItems: "center", gap: "10px", width: "100%", padding: "10px 12px", background: "none", border: "none", cursor: "pointer", fontSize: "14px", color: "#111827", fontWeight: 500, borderRadius: "8px", textAlign: "left", transition: "background 0.12s" }}>
+                      <span style={{ fontSize: "18px" }}>{item.icon}</span>
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              ))}
+              <div style={{ padding: "12px 16px 0", borderTop: "1px solid #f3f4f6", marginTop: "8px" }}>
+                <a href="/browse" style={{ display: "block", background: "#16a34a", color: "#fff", padding: "12px 16px", borderRadius: "10px", textDecoration: "none", fontSize: "14px", fontWeight: 700, textAlign: "center" }}>
+                  🍽️ {T.browse}
+                </a>
+              </div>
+            </div>
+          )}
         </nav>
 
+        {/* ===== HERO ===== */}
         <section style={{ position:"relative", width:"100%", height:"480px", overflow:"hidden" }}>
           <video autoPlay muted loop playsInline
             style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }}>
@@ -206,7 +379,6 @@ export default function HomePage() {
               </Link>
             </div>
           </div>
-          <style>{`@keyframes pulse { 0%,100%{opacity:1;}50%{opacity:0.4;} }`}</style>
         </section>
 
         <section style={{ borderBottom:"1px solid #e5e7eb", background:"#fff" }}>
@@ -250,7 +422,8 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="mx-auto max-w-6xl px-6 py-20">
+        {/* Added id for scroll targeting */}
+        <section id="how-it-works" className="mx-auto max-w-6xl px-6 py-20">
           <div className="mb-4 text-center text-sm font-semibold uppercase tracking-widest text-green-500">
             {locale==="ar"?"للباحثين عن طعام":locale==="fr"?"Pour les chercheurs de nourriture":locale==="es"?"Para buscadores de comida":locale==="pt"?"Para quem procura comida":"For food seekers"}
           </div>
@@ -351,7 +524,8 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="mx-auto max-w-6xl px-6 py-20">
+        {/* Added id for scroll targeting */}
+        <section id="why-gawa" className="mx-auto max-w-6xl px-6 py-20">
           <h2 className="mb-4 text-center text-4xl font-extrabold text-slate-900">
             {locale==="ar"?"لماذا GAWA Loop؟":locale==="fr"?"Pourquoi GAWA Loop ?":locale==="es"?"¿Por qué GAWA Loop?":locale==="pt"?"Por que GAWA Loop?":"Why GAWA Loop?"}
           </h2>
@@ -382,7 +556,8 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section style={{ background:"#f8fafc", padding:"80px 24px" }}>
+        {/* Added id for scroll targeting */}
+        <section id="faq" style={{ background:"#f8fafc", padding:"80px 24px" }}>
           <div style={{ maxWidth:"720px", margin:"0 auto" }}>
             <h2 style={{ margin:"0 0 8px", fontSize:"36px", fontWeight:800, color:"#0f172a", textAlign:"center" }}>
               {locale==="ar"?"الأسئلة الشائعة":locale==="fr"?"Questions fréquentes":locale==="es"?"Preguntas frecuentes":locale==="pt"?"Perguntas frequentes":"Frequently Asked Questions"}
@@ -409,7 +584,8 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section style={{ background:"#f0fdf4", padding:"80px 24px", borderTop:"1px solid #bbf7d0" }}>
+        {/* Added id for scroll targeting */}
+        <section id="signin" style={{ background:"#f0fdf4", padding:"80px 24px", borderTop:"1px solid #bbf7d0" }}>
           <div style={{ maxWidth:"480px", margin:"0 auto" }}>
             <p style={{ margin:"0 0 8px", fontSize:"13px", fontWeight:700, color:"#16a34a", textTransform:"uppercase", letterSpacing:"0.8px", textAlign:"center" }}>
               {locale==="ar"?"أعضاء المجتمع":locale==="fr"?"Membres de la communauté":locale==="es"?"Miembros de la comunidad":locale==="pt"?"Membros da comunidade":"Community Members"}
@@ -457,8 +633,6 @@ export default function HomePage() {
                     </label>
                     <input style={inp} type="password" required value={signinPassword} onChange={e => setSigninPassword(e.target.value)} placeholder="••••••••" minLength={6} />
                   </div>
-
-                  {/* TERMS CHECKBOX — only shown on signup */}
                   {signinMode === "signup" && (
                     <label style={{ display:"flex", gap:"10px", alignItems:"flex-start", marginBottom:"16px", cursor:"pointer" }}
                       onClick={() => setTermsAccepted(v => !v)}>
@@ -478,7 +652,6 @@ export default function HomePage() {
                       </p>
                     </label>
                   )}
-
                   <button type="submit" disabled={signinLoading || (signinMode === "signup" && !termsAccepted)}
                     style={{ width:"100%", background:(signinLoading || (signinMode === "signup" && !termsAccepted))?"#9ca3af":"#16a34a", color:"#fff", border:"none", padding:"13px", borderRadius:"10px", cursor:(signinLoading || (signinMode === "signup" && !termsAccepted))?"not-allowed":"pointer", fontSize:"15px", fontWeight:700, marginBottom:"16px" }}>
                     {signinLoading ? "..." : signinMode === "signin"
@@ -508,7 +681,8 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section style={{ background:"#fff", padding:"80px 24px", borderTop:"1px solid #e5e7eb" }}>
+        {/* Added id for scroll targeting */}
+        <section id="contact" style={{ background:"#fff", padding:"80px 24px", borderTop:"1px solid #e5e7eb" }}>
           <div style={{ maxWidth:"560px", margin:"0 auto" }}>
             <p style={{ margin:"0 0 8px", fontSize:"13px", fontWeight:700, color:"#16a34a", textTransform:"uppercase", letterSpacing:"0.8px", textAlign:"center" }}>
               {locale==="ar"?"تواصل معنا":locale==="fr"?"Contactez-nous":locale==="es"?"Contáctenos":locale==="pt"?"Entre em contato":"Get in touch"}
