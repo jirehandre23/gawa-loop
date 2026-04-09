@@ -37,7 +37,7 @@ export default function BrowsePage() {
   const [activeCategory, setCategory]   = useState("All");
   const [sortBy, setSortBy]             = useState("Newest");
   const [loading, setLoading]           = useState(true);
-  const [user, setUser]                 = useState<any>(undefined); // undefined = not yet resolved
+  const [user, setUser]                 = useState<any>(null);
   const [isBusiness, setIsBusiness]     = useState(false);
   const [isNgo, setIsNgo]               = useState(false);
   const [ngoName, setNgoName]           = useState<string | null>(null);
@@ -61,9 +61,6 @@ export default function BrowsePage() {
   const searchRef     = useRef("");
   const categoryRef   = useRef("All");
   const sortRef       = useRef("Newest");
-  // Track whether we've already done the initial fetch so the user-change
-  // effect doesn't double-fetch on first load.
-  const didInitialFetch = useRef(false);
 
   useEffect(() => { setLocale(detectLocale()); }, []);
   useEffect(() => { searchRef.current = search; },           [search]);
@@ -88,6 +85,8 @@ export default function BrowsePage() {
             setNgoName(ngoAccount ? (biz.name as string) : null);
           } else {
             setIsBusiness(false); setIsNgo(false); setNgoName(null);
+            // FIX: try by customer_user_id first, then fall back to email
+            // This covers accounts whose early claims had no customer_user_id set
             let prevClaim: { first_name: string | null; phone: string | null } | null = null;
             if (u.id) {
               const { data: byId } = await supabase
@@ -114,7 +113,7 @@ export default function BrowsePage() {
             if (prevClaim?.first_name || prevClaim?.phone) {
               setClaimForm(f => ({
                 ...f, email: u.email!,
-                first_name: prevClaim!.first_name?.trim() || f.first_name,
+                first_name: prevClaim!.first_name || f.first_name,
                 phone: prevClaim!.phone || f.phone,
               }));
             }
@@ -178,30 +177,15 @@ export default function BrowsePage() {
     }
   }
 
-  // Initial fetch + interval
   useEffect(() => {
     const timeout = setTimeout(() => setLoading(false), 5000);
-    (async () => {
-      await fetchListings();
-      didInitialFetch.current = true;
-      clearTimeout(timeout);
-    })();
+    (async () => { await fetchListings(); clearTimeout(timeout); })();
     intervalRef.current = setInterval(fetchListings, 30000);
     return () => {
       clearTimeout(timeout);
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, []);
-
-  // Re-fetch when auth state resolves — fixes dashboard→browse showing 0 listings.
-  // When navigating from the dashboard the Supabase session fires INITIAL_SESSION
-  // which can race with the initial fetch. Re-fetching after user resolves ensures
-  // listings are always loaded regardless of navigation source.
-  useEffect(() => {
-    if (user === undefined) return;       // not resolved yet
-    if (!didInitialFetch.current) return; // initial fetch still in progress
-    fetchListings();
-  }, [user]);
 
   useEffect(() => {
     if (user && listings.length > 0) fetchBizInfo(listings);
