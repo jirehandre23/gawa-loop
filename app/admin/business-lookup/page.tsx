@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -11,8 +11,9 @@ const ADMIN_EMAIL = "admin@gawaloop.com";
 
 type Business = {
   id: string; name: string; email: string; phone: string; address: string;
-  status: string; account_type: string; suspended_until: string | null;
-  suspension_reason: string | null; created_at: string;
+  status: string; account_type: string;
+  suspended_until: string | null; suspension_reason: string | null;
+  created_at: string;
 };
 type Customer = {
   id: string; user_id: string; first_name: string; last_name: string;
@@ -24,16 +25,113 @@ type Customer = {
 declare global { interface Window { L: any; } }
 
 export default function AdminPanel() {
-  const [tab, setTab]               = useState<"summary" | "businesses" | "customers">("summary");
-  const [businesses, setBusinesses] = useState<Business[]>([]);
-  const [customers, setCustomers]   = useState<Customer[]>([]);
-  const [bizSearch, setBizSearch]   = useState("");
-  const [cusSearch, setCusSearch]   = useState("");
-  const [msg, setMsg]               = useState("");
-  const [loading, setLoading]       = useState(true);
-  const [stats, setStats]           = useState<any>(null);
-  const [bizPwds, setBizPwds]       = useState<Record<string, string>>({});
-  const [mapReady, setMapReady]     = useState(false);
+  const [tab, setTab]                     = useState<"summary" | "businesses" | "customers">("summary");
+  const [businesses, setBusinesses]       = useState<Business[]>([]);
+  const [customers, setCustomers]         = useState<Customer[]>([]);
+  const [bizSearch, setBizSearch]         = useState("");
+  const [cusSearch, setCusSearch]         = useState("");
+  const [bizTypeFilter, setBizTypeFilter] = useState<"all" | "restaurant" | "ngo">("all");
+  const [msg, setMsg]                     = useState("");
+  const [loading, setLoading]             = useState(true);
+  const [stats, setStats]                 = useState<any>(null);
+  const [bizPwds, setBizPwds]             = useState<Record<string, string>>({});
+  const [leafletReady, setLeafletReady]   = useState(false);
+  const [mapPins, setMapPins]             = useState<{ biz: Business; lat: number; lng: number }[]>([]);
+  const [geocoding, setGeocoding]         = useState(false);
+  const mapRef                            = useRef<any>(null);
+  const mapContainerRef                   = useRef<HTMLDivElement>(null);
+
+  // Load Leaflet CSS + JS once on mount
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.L) { setLeafletReady(true); return; }
+    if (document.getElementById("leaflet-css")) {
+      const check = setInterval(() => { if (window.L) { setLeafletReady(true); clearInterval(check); } }, 100);
+      return () => clearInterval(check);
+    }
+    const link  = document.createElement("link");
+    link.id     = "leaflet-css";
+    link.rel    = "stylesheet";
+    link.href   = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+    document.head.appendChild(link);
+    const script   = document.createElement("script");
+    script.src     = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+    script.onload  = () => setLeafletReady(true);
+    document.head.appendChild(script);
+  }, []);
+
+  // Geocode businesses sequentially — 1 per second to respect Nominatim
+  useEffect(() => {
+    if (!businesses.length || geocoding || mapPins.length > 0) return;
+    setGeocoding(true);
+    (async () => {
+      const pins: { biz: Business; lat: number; lng: number }[] = [];
+      for (const biz of businesses) {
+        if (!biz.address) continue;
+        try {
+          const res  = await fetch(
+            `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(biz.address + ", New York, NY")}`,
+            { headers: { "Accept-Language": "en" } }
+          );
+          const data = await res.json();
+          if (data?.length) {
+            pins.push({ biz, lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) });
+            // Update map progressively as each pin resolves
+            setMapPins([...pins]);
+          }
+        } catch {}
+        await new Promise(r => setTimeout(r, 1200)); // 1.2s between requests
+      }
+      setGeocoding(false);
+    })();
+  }, [businesses]);
+
+  // Build/rebuild map whenever Leaflet is ready or pins change
+  useEffect(() => {
+    if (!leafletReady || !mapContainerRef.current) return;
+    const L = window.L;
+
+    // Destroy old instance to avoid "Map container already initialized" error
+    if (mapRef.current) {
+      try { mapRef.current.remove(); } catch {}
+      mapRef.current = null;
+    }
+
+    const map = L.map(mapContainerRef.current, { zoomControl: true }).setView([40.6782, -73.9442], 11);
+    mapRef.current = map;
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "© OpenStreetMap contributors", maxZoom: 18,
+    }).addTo(map);
+
+    mapPins.forEach(({ biz, lat, lng }) => {
+      const isNgo  = biz.account_type === "ngo";
+      const color  = isNgo ? "#2563eb" : "#16a34a";
+      const susp   = biz.suspended_until && new Date(biz.suspended_until) > new Date();
+      const icon   = L.divIcon({
+        html: `<div style="background:${color};width:16px;height:16px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4)"></div>`,
+        className: "", iconSize: [16, 16], iconAnchor: [8, 8],
+      });
+      L.marker([lat, lng], { icon }).addTo(map).bindPopup(`
+        <div style="font-family:-apple-system,sans-serif;min-width:200px;padding:4px 0">
+          <p style="margin:0 0 6px;font-size:14px;font-weight:800;color:#0a2e1a">${biz.name}</p>
+          <span style="display:inline-block;background:${isNgo ? "#eff6ff" : "#f0fdf4"};color:${isNgo ? "#2563eb" : "#16a34a"};font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;margin-bottom:8px">
+            ${isNgo ? "🏛 NGO / Food Bank" : "🍽️ Restaurant"}
+          </span><br/>
+          <span style="font-size:12px;color:#374151">📍 ${biz.address}</span><br/>
+          <span style="font-size:12px;color:#374151">📧 ${biz.email}</span><br/>
+          <span style="font-size:12px;font-weight:700;color:${susp ? "#d97706" : "#16a34a"}">${susp ? "⚠️ Suspended" : "✅ Active"}</span>
+        </div>
+      `);
+    });
+
+    // Fix tiles not rendering on initial load
+    setTimeout(() => { try { map.invalidateSize(); } catch {} }, 200);
+  }, [leafletReady, mapPins]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => { if (mapRef.current) { try { mapRef.current.remove(); } catch {} } };
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -44,70 +142,8 @@ export default function AdminPanel() {
     })();
   }, []);
 
-  // Load Leaflet CSS + JS once
-  useEffect(() => {
-    if (document.getElementById("leaflet-css")) { setMapReady(true); return; }
-    const link = document.createElement("link");
-    link.id   = "leaflet-css";
-    link.rel  = "stylesheet";
-    link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-    document.head.appendChild(link);
-    const script = document.createElement("script");
-    script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-    script.onload = () => setMapReady(true);
-    document.head.appendChild(script);
-  }, []);
-
-  // Build map when tab = summary and Leaflet + businesses are ready
-  useEffect(() => {
-    if (tab !== "summary" || !mapReady || !businesses.length) return;
-    const container = document.getElementById("admin-map");
-    if (!container || (container as any)._leaflet_id) return;
-    const L = window.L;
-    const map = L.map("admin-map").setView([40.6782, -73.9442], 11);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "© OpenStreetMap contributors", maxZoom: 18,
-    }).addTo(map);
-
-    const colors: Record<string, string> = {
-      restaurant: "#16a34a",
-      ngo:        "#2563eb",
-    };
-
-    businesses.forEach(biz => {
-      if (!biz.address) return;
-      // Use Google Geocoding via fetch to get coords
-      fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(biz.address + ", Brooklyn, NY")}`)
-        .then(r => r.json())
-        .then(data => {
-          if (!data?.length) return;
-          const lat = parseFloat(data[0].lat);
-          const lng = parseFloat(data[0].lon);
-          const color = colors[biz.account_type] || "#6b7280";
-          const icon = L.divIcon({
-            html: `<div style="background:${color};width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.3)"></div>`,
-            className: "", iconSize: [14, 14], iconAnchor: [7, 7],
-          });
-          const marker = L.marker([lat, lng], { icon }).addTo(map);
-          const statusBadge = biz.suspended_until ? `<span style="color:#d97706;font-weight:700">⚠️ Suspended</span>` : `<span style="color:#16a34a;font-weight:700">✅ Active</span>`;
-          marker.bindPopup(`
-            <div style="font-family:sans-serif;min-width:180px">
-              <p style="margin:0 0 4px;font-size:14px;font-weight:800;color:#0a2e1a">${biz.name}</p>
-              <p style="margin:0 0 2px;font-size:12px;color:#6b7280">${biz.account_type === "ngo" ? "🏛 NGO" : "🍽️ Restaurant"}</p>
-              <p style="margin:0 0 4px;font-size:12px;color:#374151">📍 ${biz.address}</p>
-              <p style="margin:0 0 4px;font-size:12px;color:#374151">📧 ${biz.email}</p>
-              ${statusBadge}
-            </div>
-          `);
-        })
-        .catch(() => {});
-    });
-
-    return () => { try { map.remove(); } catch {} };
-  }, [tab, mapReady, businesses]);
-
   async function loadBusinesses() {
-    const { data } = await supabase.from("businesses").select("*").order("name");
+    const { data } = await supabase.from("businesses").select("*").order("account_type").order("name");
     setBusinesses(data || []);
   }
 
@@ -118,12 +154,13 @@ export default function AdminPanel() {
 
   async function loadStats() {
     const [
-      { count: bizTotal }, { count: cusTotal }, { count: listTotal },
+      { count: bizTotal }, { count: ngoTotal }, { count: cusTotal }, { count: listTotal },
       { count: pickups }, { count: claims }, { data: weights },
-      { count: active }, { count: suspended_biz }, { count: suspended_cus },
-      { count: banned }, { data: valueSavedData }, { data: totalValueData },
+      { count: active }, { count: suspended_biz }, { count: suspended_cus }, { count: banned },
+      { data: valueSavedData }, { data: totalValueData },
     ] = await Promise.all([
       supabase.from("businesses").select("*", { count: "exact", head: true }),
+      supabase.from("businesses").select("*", { count: "exact", head: true }).eq("account_type", "ngo"),
       supabase.from("customer_profiles").select("*", { count: "exact", head: true }),
       supabase.from("listings").select("*", { count: "exact", head: true }),
       supabase.from("listings").select("*", { count: "exact", head: true }).eq("status", "PICKED_UP"),
@@ -139,7 +176,7 @@ export default function AdminPanel() {
     const lbs        = (weights || []).reduce((s: number, l: any) => s + (Number(l.weight_kg || 0) * 2.205), 0);
     const valueSaved = (valueSavedData || []).reduce((s: number, l: any) => s + Number(l.estimated_value || 0), 0);
     const totalValue = (totalValueData || []).reduce((s: number, l: any) => s + Number(l.estimated_value || 0), 0);
-    setStats({ bizTotal, cusTotal, listTotal, pickups, claims, lbs, active, suspended_biz, suspended_cus, banned, valueSaved, totalValue });
+    setStats({ bizTotal, ngoTotal, cusTotal, listTotal, pickups, claims, lbs, active, suspended_biz, suspended_cus, banned, valueSaved, totalValue });
   }
 
   function flash(text: string) { setMsg(text); setTimeout(() => setMsg(""), 4000); }
@@ -149,27 +186,19 @@ export default function AdminPanel() {
     if (!reason) return;
     const until = weeks === "permanent" ? "9999-12-31T00:00:00Z"
       : new Date(Date.now() + (weeks as number) * 7 * 24 * 3600000).toISOString();
-    await supabase.from("businesses").update({
-      suspended_until: until, suspension_reason: reason,
-      suspended_by: ADMIN_EMAIL, status: "suspended",
-    }).eq("id", biz.id);
+    await supabase.from("businesses").update({ suspended_until: until, suspension_reason: reason, suspended_by: ADMIN_EMAIL, status: "suspended" }).eq("id", biz.id);
     flash(`✅ ${biz.name} ${weeks === "permanent" ? "permanently banned" : `suspended ${weeks}wk`}.`);
     await loadBusinesses();
   }
 
   async function reinstateBusiness(biz: Business) {
-    await supabase.from("businesses").update({
-      suspended_until: null, suspension_reason: null, suspended_by: null, status: "approved",
-    }).eq("id", biz.id);
+    await supabase.from("businesses").update({ suspended_until: null, suspension_reason: null, suspended_by: null, status: "approved" }).eq("id", biz.id);
     flash(`✅ ${biz.name} reinstated.`);
     await loadBusinesses();
   }
 
   async function setBusinessPassword(bizEmail: string, password: string) {
-    const res = await fetch("/api/admin/set-password", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: bizEmail, password }),
-    });
+    const res  = await fetch("/api/admin/set-password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: bizEmail, password }) });
     const data = await res.json();
     flash(data.success ? `✅ Password updated for ${bizEmail}` : `❌ ${data.error}`);
   }
@@ -179,18 +208,13 @@ export default function AdminPanel() {
     if (!reason) return;
     const until = weeks === "permanent" ? "9999-12-31T00:00:00Z"
       : new Date(Date.now() + (weeks as number) * 7 * 24 * 3600000).toISOString();
-    await supabase.from("customer_profiles").update({
-      suspended_until: until, suspension_reason: reason,
-      permanently_banned: weeks === "permanent",
-    }).eq("id", cus.id);
+    await supabase.from("customer_profiles").update({ suspended_until: until, suspension_reason: reason, permanently_banned: weeks === "permanent" }).eq("id", cus.id);
     flash(`✅ ${cus.first_name} ${weeks === "permanent" ? "permanently banned" : `suspended ${weeks}wk`}.`);
     await loadCustomers();
   }
 
   async function reinstateCustomer(cus: Customer) {
-    await supabase.from("customer_profiles").update({
-      suspended_until: null, suspension_reason: null, permanently_banned: false,
-    }).eq("id", cus.id);
+    await supabase.from("customer_profiles").update({ suspended_until: null, suspension_reason: null, permanently_banned: false }).eq("id", cus.id);
     flash(`✅ ${cus.first_name} reinstated.`);
     await loadCustomers();
   }
@@ -198,32 +222,32 @@ export default function AdminPanel() {
   const isBanned    = (until: string | null) => until === "9999-12-31T00:00:00+00:00" || until === "9999-12-31T00:00:00Z";
   const isSuspended = (until: string | null) => !!until && new Date(until) > new Date() && !isBanned(until);
 
-  const filteredBiz = businesses.filter(b =>
-    !bizSearch || b.name?.toLowerCase().includes(bizSearch.toLowerCase()) || b.email?.toLowerCase().includes(bizSearch.toLowerCase())
-  );
+  const filteredBiz = businesses.filter(b => {
+    const matchSearch = !bizSearch || b.name?.toLowerCase().includes(bizSearch.toLowerCase()) || b.email?.toLowerCase().includes(bizSearch.toLowerCase());
+    const matchType   = bizTypeFilter === "all" || b.account_type === bizTypeFilter;
+    return matchSearch && matchType;
+  });
+
   const filteredCus = customers.filter(c =>
     !cusSearch || c.first_name?.toLowerCase().includes(cusSearch.toLowerCase()) ||
     c.last_name?.toLowerCase().includes(cusSearch.toLowerCase()) || c.email?.toLowerCase().includes(cusSearch.toLowerCase())
   );
 
-  const tabStyle = (t: string): React.CSSProperties => ({
-    padding: "10px 20px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 700,
-    borderRadius: "8px",
-    background: tab === t ? "#0a2e1a" : "transparent",
-    color: tab === t ? "#fff" : "#374151",
+  const tabBtn = (t: string): React.CSSProperties => ({
+    padding: "10px 20px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 700, borderRadius: "8px",
+    background: tab === t ? "#0a2e1a" : "transparent", color: tab === t ? "#fff" : "#374151",
   });
 
   const Badge = ({ label, color }: { label: string; color: string }) => (
     <span style={{ background: color, color: "#fff", fontSize: "11px", fontWeight: 700, padding: "3px 10px", borderRadius: "20px", whiteSpace: "nowrap" }}>{label}</span>
   );
-
   const Btn = ({ label, color, onClick }: { label: string; color: string; onClick: () => void }) => (
     <button onClick={onClick} style={{ background: color, color: "#fff", border: "none", padding: "7px 14px", borderRadius: "7px", cursor: "pointer", fontSize: "12px", fontWeight: 700, whiteSpace: "nowrap" }}>{label}</button>
   );
 
   const searchInp: React.CSSProperties = {
     padding: "10px 14px", borderRadius: "8px", border: "1.5px solid #9ca3af",
-    fontSize: "14px", color: "#111827", background: "#fff", outline: "none", minWidth: "280px",
+    fontSize: "14px", color: "#111827", background: "#fff", outline: "none", minWidth: "240px",
   };
   const pwdInp: React.CSSProperties = {
     padding: "8px 12px", borderRadius: "7px", border: "1.5px solid #9ca3af",
@@ -261,7 +285,6 @@ export default function AdminPanel() {
 
       <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "28px 24px" }}>
 
-        {/* FLASH MSG */}
         {msg && (
           <div style={{ background: msg.startsWith("✅") ? "#f0fdf4" : "#fef2f2", border: `1px solid ${msg.startsWith("✅") ? "#bbf7d0" : "#fecaca"}`, borderRadius: "10px", padding: "12px 20px", marginBottom: "20px", color: msg.startsWith("✅") ? "#166534" : "#991b1b", fontWeight: 700, fontSize: "14px" }}>
             {msg}
@@ -275,7 +298,7 @@ export default function AdminPanel() {
             { key: "businesses", label: `🏪 Businesses (${businesses.length})` },
             { key: "customers",  label: `👥 Customers (${customers.length})` },
           ].map(t => (
-            <button key={t.key} onClick={() => setTab(t.key as any)} style={tabStyle(t.key)}>{t.label}</button>
+            <button key={t.key} onClick={() => setTab(t.key as any)} style={tabBtn(t.key)}>{t.label}</button>
           ))}
         </div>
 
@@ -284,62 +307,65 @@ export default function AdminPanel() {
           <div>
             <h2 style={{ margin: "0 0 20px", fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>Platform Overview</h2>
 
-            {/* STATS GRID */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px", marginBottom: "28px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(185px, 1fr))", gap: "14px", marginBottom: "28px" }}>
               {[
-                { label: "Total Businesses",       value: stats.bizTotal,                               icon: "🏪", color: "#0a2e1a" },
-                { label: "Total Customers",         value: stats.cusTotal,                               icon: "👥", color: "#2563eb" },
-                { label: "Total Listings",          value: stats.listTotal,                              icon: "📋", color: "#7c3aed" },
-                { label: "Total Pickups",           value: stats.pickups,                                icon: "✅", color: "#16a34a" },
-                { label: "Total Claims",            value: stats.claims,                                 icon: "🎯", color: "#ea580c" },
-                { label: "Active Listings Now",     value: stats.active,                                 icon: "🟢", color: "#16a34a" },
-                { label: "Food Donated (lbs)",      value: `${Number(stats.lbs).toFixed(1)} lbs`,        icon: "⚖️", color: "#059669" },
-                { label: "CO₂e Saved (lbs)",        value: `${Math.round(stats.lbs * 2.5)} lbs`,         icon: "🌍", color: "#0369a1" },
-                { label: "💰 Value Saved",          value: `$${Number(stats.valueSaved).toFixed(2)}`,    icon: "💰", color: "#16a34a" },
-                { label: "💰 Total Est. Value",     value: `$${Number(stats.totalValue).toFixed(2)}`,    icon: "💵", color: "#059669" },
-                { label: "Suspended Businesses",    value: stats.suspended_biz,                          icon: "⚠️", color: "#d97706" },
-                { label: "Suspended Customers",     value: stats.suspended_cus,                          icon: "⚠️", color: "#d97706" },
-                { label: "Permanently Banned",      value: stats.banned,                                 icon: "🚫", color: "#dc2626" },
+                { label: "Total Businesses",    value: stats.bizTotal,                               icon: "🏪", color: "#0a2e1a" },
+                { label: "NGO / Food Banks",     value: stats.ngoTotal,                               icon: "🏛", color: "#2563eb" },
+                { label: "Restaurants",          value: (stats.bizTotal||0)-(stats.ngoTotal||0),      icon: "🍽️", color: "#16a34a" },
+                { label: "Total Customers",      value: stats.cusTotal,                               icon: "👥", color: "#7c3aed" },
+                { label: "Total Listings",       value: stats.listTotal,                              icon: "📋", color: "#374151" },
+                { label: "Total Pickups",        value: stats.pickups,                                icon: "✅", color: "#16a34a" },
+                { label: "Total Claims",         value: stats.claims,                                 icon: "🎯", color: "#ea580c" },
+                { label: "Active Listings Now",  value: stats.active,                                 icon: "🟢", color: "#16a34a" },
+                { label: "Food Donated (lbs)",   value: `${Number(stats.lbs).toFixed(1)} lbs`,        icon: "⚖️", color: "#059669" },
+                { label: "CO₂e Saved (lbs)",     value: `${Math.round(stats.lbs * 2.5)} lbs`,         icon: "🌍", color: "#0369a1" },
+                { label: "💰 Value Saved",       value: `$${Number(stats.valueSaved).toFixed(2)}`,    icon: "💰", color: "#16a34a" },
+                { label: "💰 Total Est. Value",  value: `$${Number(stats.totalValue).toFixed(2)}`,    icon: "💵", color: "#059669" },
+                { label: "Suspended Businesses", value: stats.suspended_biz,                          icon: "⚠️", color: "#d97706" },
+                { label: "Suspended Customers",  value: stats.suspended_cus,                          icon: "⚠️", color: "#d97706" },
+                { label: "Permanently Banned",   value: stats.banned,                                 icon: "🚫", color: "#dc2626" },
               ].map((s, i) => (
-                <div key={i} style={{ background: "#fff", borderRadius: "14px", padding: "20px", border: "1px solid #e5e7eb", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-                  <p style={{ margin: "0 0 6px", fontSize: "22px" }}>{s.icon}</p>
-                  <p style={{ margin: "0 0 4px", fontSize: "26px", fontWeight: 900, color: s.color }}>{s.value}</p>
+                <div key={i} style={{ background: "#fff", borderRadius: "14px", padding: "18px", border: "1px solid #e5e7eb", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                  <p style={{ margin: "0 0 4px", fontSize: "20px" }}>{s.icon}</p>
+                  <p style={{ margin: "0 0 4px", fontSize: "24px", fontWeight: 900, color: s.color }}>{s.value}</p>
                   <p style={{ margin: 0, fontSize: "12px", color: "#374151", fontWeight: 700 }}>{s.label}</p>
                 </div>
               ))}
             </div>
 
-            {/* BUSINESS MAP */}
+            {/* MAP */}
             <div style={{ background: "#fff", borderRadius: "16px", padding: "24px", border: "1px solid #e5e7eb", marginBottom: "24px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "8px" }}>
                 <div>
                   <h3 style={{ margin: "0 0 2px", fontSize: "16px", fontWeight: 800, color: "#0a2e1a" }}>📍 Business Locations</h3>
-                  <p style={{ margin: 0, fontSize: "12px", color: "#6b7280" }}>All {businesses.length} registered businesses — click a pin for details</p>
+                  <p style={{ margin: 0, fontSize: "12px", color: "#6b7280" }}>
+                    {geocoding
+                      ? `⏳ Geocoding... ${mapPins.length} of ${businesses.filter(b => b.address).length} businesses mapped so far`
+                      : `${mapPins.length} of ${businesses.length} businesses mapped — click a pin for details`}
+                  </p>
                 </div>
-                <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
+                <div style={{ display: "flex", gap: "16px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: "#16a34a", border: "2px solid #fff", boxShadow: "0 1px 3px rgba(0,0,0,0.3)" }}></div>
+                    <div style={{ width: "14px", height: "14px", borderRadius: "50%", background: "#16a34a", border: "3px solid #fff", boxShadow: "0 1px 3px rgba(0,0,0,0.3)" }}/>
                     <span style={{ fontSize: "12px", color: "#374151", fontWeight: 600 }}>Restaurant</span>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: "#2563eb", border: "2px solid #fff", boxShadow: "0 1px 3px rgba(0,0,0,0.3)" }}></div>
+                    <div style={{ width: "14px", height: "14px", borderRadius: "50%", background: "#2563eb", border: "3px solid #fff", boxShadow: "0 1px 3px rgba(0,0,0,0.3)" }}/>
                     <span style={{ fontSize: "12px", color: "#374151", fontWeight: 600 }}>NGO</span>
                   </div>
                 </div>
               </div>
-              <div
-                id="admin-map"
-                style={{ width: "100%", height: "480px", borderRadius: "12px", background: "#f0fdf4", overflow: "hidden", border: "1px solid #e5e7eb" }}
-              >
-                {!mapReady && (
-                  <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <p style={{ color: "#9ca3af", fontSize: "14px" }}>Loading map...</p>
-                  </div>
-                )}
-              </div>
-              <p style={{ margin: "8px 0 0", fontSize: "11px", color: "#9ca3af", textAlign: "right" }}>
-                Pins load via address geocoding — may take a few seconds to appear
-              </p>
+
+              {/* Stable map container — always in DOM */}
+              <div ref={mapContainerRef} style={{ width: "100%", height: "480px", borderRadius: "12px", overflow: "hidden", border: "1px solid #e5e7eb", background: "#e8f5e9" }} />
+
+              {geocoding && (
+                <div style={{ marginTop: "10px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "8px", padding: "10px 16px" }}>
+                  <p style={{ margin: 0, fontSize: "12px", color: "#92400e", fontWeight: 600 }}>
+                    Pins appear as addresses are resolved — 1 per second to stay within Nominatim's rate limit. This only runs once per page visit.
+                  </p>
+                </div>
+              )}
             </div>
 
             <button onClick={() => Promise.all([loadBusinesses(), loadCustomers(), loadStats()])}
@@ -352,21 +378,45 @@ export default function AdminPanel() {
         {/* ── BUSINESSES TAB ── */}
         {tab === "businesses" && (
           <div>
-            <div style={{ display: "flex", gap: "12px", marginBottom: "20px", alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: "10px", marginBottom: "20px", alignItems: "center", flexWrap: "wrap" }}>
               <input placeholder="Search by name or email..." value={bizSearch} onChange={e => setBizSearch(e.target.value)} style={searchInp}/>
-              <span style={{ fontSize: "13px", color: "#374151", fontWeight: 600 }}>{filteredBiz.length} result{filteredBiz.length !== 1 ? "s" : ""}</span>
+              <div style={{ display: "flex", gap: "6px" }}>
+                {[
+                  { key: "all",        label: `All (${businesses.length})`,                                                          active: "#0a2e1a" },
+                  { key: "restaurant", label: `🍽️ Restaurants (${businesses.filter(b => b.account_type !== "ngo").length})`,         active: "#16a34a" },
+                  { key: "ngo",        label: `🏛 NGOs (${businesses.filter(b => b.account_type === "ngo").length})`,                active: "#2563eb" },
+                ].map(f => (
+                  <button key={f.key} onClick={() => setBizTypeFilter(f.key as any)}
+                    style={{ padding: "8px 14px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "12px", fontWeight: 700,
+                      background: bizTypeFilter === f.key ? f.active : "#e5e7eb",
+                      color: bizTypeFilter === f.key ? "#fff" : "#374151" }}>
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+              <span style={{ fontSize: "13px", color: "#374151", fontWeight: 600 }}>{filteredBiz.length} shown</span>
             </div>
+
             <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
               {filteredBiz.map(biz => {
                 const banned    = isBanned(biz.suspended_until);
                 const suspended = isSuspended(biz.suspended_until);
+                const isNgo     = biz.account_type === "ngo";
                 return (
-                  <div key={biz.id} style={{ background: "#fff", borderRadius: "14px", padding: "20px 24px", border: `1.5px solid ${banned ? "#fca5a5" : suspended ? "#fde68a" : "#e5e7eb"}` }}>
+                  <div key={biz.id} style={{
+                    background: "#fff", borderRadius: "14px", padding: "20px 24px",
+                    border: `1.5px solid ${banned ? "#fca5a5" : suspended ? "#fde68a" : isNgo ? "#bfdbfe" : "#e5e7eb"}`,
+                    borderLeft: `6px solid ${isNgo ? "#2563eb" : "#16a34a"}`,
+                  }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
                       <div>
                         <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px", flexWrap: "wrap" }}>
                           <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 800, color: "#0a2e1a" }}>{biz.name}</h3>
-                          {biz.account_type === "ngo" && <Badge label="NGO" color="#2563eb"/>}
+                          {/* Always-visible type badge */}
+                          {isNgo
+                            ? <span style={{ background: "#eff6ff", color: "#2563eb", border: "1px solid #bfdbfe", fontSize: "12px", fontWeight: 800, padding: "3px 12px", borderRadius: "20px" }}>🏛 NGO / Food Bank</span>
+                            : <span style={{ background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", fontSize: "12px", fontWeight: 800, padding: "3px 12px", borderRadius: "20px" }}>🍽️ Restaurant</span>
+                          }
                           {banned    && <Badge label="PERMANENTLY BANNED" color="#dc2626" />}
                           {suspended && !banned && <Badge label={`SUSPENDED until ${new Date(biz.suspended_until!).toLocaleDateString()}`} color="#d97706" />}
                           {!banned   && !suspended && <Badge label="ACTIVE" color="#16a34a" />}
