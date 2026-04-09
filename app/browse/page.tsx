@@ -57,9 +57,15 @@ export default function BrowsePage() {
   const [signinMode, setSigninMode]         = useState<"signin" | "signup">("signin");
   const [signinDone, setSigninDone]         = useState(false);
   const [termsAccepted, setTermsAccepted]   = useState(false);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef   = useRef<NodeJS.Timeout | null>(null);
+  const searchRef     = useRef("");
+  const categoryRef   = useRef("All");
+  const sortRef       = useRef("Newest");
 
   useEffect(() => { setLocale(detectLocale()); }, []);
+  useEffect(() => { searchRef.current = search; },           [search]);
+  useEffect(() => { categoryRef.current = activeCategory; }, [activeCategory]);
+  useEffect(() => { sortRef.current = sortBy; },             [sortBy]);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
@@ -79,21 +85,37 @@ export default function BrowsePage() {
             setNgoName(ngoAccount ? (biz.name as string) : null);
           } else {
             setIsBusiness(false); setIsNgo(false); setNgoName(null);
+            // FIX: try by customer_user_id first, then fall back to email
+            // This covers accounts whose early claims had no customer_user_id set
+            let prevClaim: { first_name: string | null; phone: string | null } | null = null;
             if (u.id) {
-              const { data: prevClaim } = await supabase
+              const { data: byId } = await supabase
                 .from("claims")
                 .select("first_name, phone")
                 .eq("customer_user_id", u.id)
+                .not("first_name", "is", null)
                 .order("created_at", { ascending: false })
                 .limit(1)
                 .maybeSingle();
-              if (prevClaim?.first_name || prevClaim?.phone) {
-                setClaimForm(f => ({
-                  ...f, email: u.email!,
-                  first_name: prevClaim.first_name || f.first_name,
-                  phone: prevClaim.phone || f.phone,
-                }));
-              }
+              prevClaim = byId;
+            }
+            if (!prevClaim?.first_name && !prevClaim?.phone) {
+              const { data: byEmail } = await supabase
+                .from("claims")
+                .select("first_name, phone")
+                .eq("email", u.email)
+                .not("first_name", "is", null)
+                .order("created_at", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              prevClaim = byEmail;
+            }
+            if (prevClaim?.first_name || prevClaim?.phone) {
+              setClaimForm(f => ({
+                ...f, email: u.email!,
+                first_name: prevClaim!.first_name || f.first_name,
+                phone: prevClaim!.phone || f.phone,
+              }));
             }
           }
         }
@@ -134,7 +156,7 @@ export default function BrowsePage() {
       if (error) throw error;
       const all = (data || []) as Listing[];
       setListings(all);
-      applyFilters(all, search, activeCategory, sortBy);
+      applyFilters(all, searchRef.current, categoryRef.current, sortRef.current);
     } catch (e) {
       console.error("fetchListings error:", e);
       setListings([]); setFiltered([]);
