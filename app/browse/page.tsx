@@ -40,7 +40,9 @@ export default function BrowsePage() {
   const [user, setUser]                 = useState<any>(null);
   const [isBusiness, setIsBusiness]     = useState(false);
   const [isNgo, setIsNgo]               = useState(false);
+  const [ngoName, setNgoName]           = useState<string | null>(null);
   const [isAdmin, setIsAdmin]           = useState(false);
+  const [authResolved, setAuthResolved] = useState(false);
   const [bizInfoMap, setBizInfoMap]     = useState<Record<string, BizInfo>>({});
   const [selectedId, setSelectedId]     = useState<string | null>(null);
   const [claimForm, setClaimForm]       = useState({ first_name: "", email: "", phone: "", eta_minutes: 15 });
@@ -56,7 +58,7 @@ export default function BrowsePage() {
   const [signinMode, setSigninMode]         = useState<"signin" | "signup">("signin");
   const [signinDone, setSigninDone]         = useState(false);
   const [termsAccepted, setTermsAccepted]   = useState(false);
-  const intervalRef                     = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => { setLocale(detectLocale()); }, []);
 
@@ -70,16 +72,21 @@ export default function BrowsePage() {
           setIsAdmin(true);
           setIsBusiness(false);
           setIsNgo(false);
+          setNgoName(null);
         } else {
           const { data: biz } = await supabase
-            .from("businesses").select("id, account_type").eq("email", u.email).single();
+            .from("businesses").select("id, name, account_type").eq("email", u.email).single();
           if (biz) {
+            const ngoAccount = biz.account_type === "ngo";
+            // Set all business-related state atomically before resolving auth
             setIsBusiness(true);
-            setIsNgo(biz.account_type === "ngo");
+            setIsNgo(ngoAccount);
+            setNgoName(ngoAccount ? (biz.name as string) : null);
           } else {
             setIsBusiness(false);
             setIsNgo(false);
-            // CHANGE 5: auto-fill name and phone from most recent claim
+            setNgoName(null);
+            // Auto-fill from last claim for regular customers
             if (u.id) {
               const { data: prevClaim } = await supabase
                 .from("claims")
@@ -105,8 +112,11 @@ export default function BrowsePage() {
         setIsBusiness(false);
         setIsNgo(false);
         setIsAdmin(false);
+        setNgoName(null);
         setClaimForm(f => ({ ...f, email: "" }));
       }
+      // Auth is fully settled — safe to render now
+      setAuthResolved(true);
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -179,7 +189,6 @@ export default function BrowsePage() {
   function handleCategory(cat: string) { setCategory(cat); applyFilters(listings, search, cat, sortBy); }
   function handleSort(sort: string) { setSortBy(sort); applyFilters(listings, search, activeCategory, sort); }
 
-  // CHANGE 6: openClaim sets ETA capped by listing expiry and 10h max
   function openClaim(id: string) {
     setSelectedId(id);
     setClaimMsg("");
@@ -187,10 +196,9 @@ export default function BrowsePage() {
     const listing = listings.find(l => l.id === id);
     if (listing) {
       const minsUntilExpiry = Math.floor((new Date(listing.expires_at).getTime() - Date.now()) / 60000);
-      const maxEta = Math.min(minsUntilExpiry, 600); // 600 mins = 10 hours
+      const maxEta = Math.min(minsUntilExpiry, 600);
       const currentEta = claimForm.eta_minutes;
       if (currentEta > maxEta) {
-        // reset to first valid option
         const validOptions = [10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 300, 360, 420, 480, 540, 600];
         const firstValid = validOptions.find(o => o <= maxEta) || Math.min(maxEta, 10);
         setClaimForm(f => ({ ...f, eta_minutes: firstValid }));
@@ -241,11 +249,20 @@ export default function BrowsePage() {
     setClaimLoading(false);
   }
 
-  const T      = t[locale];
-  const FT     = FILTER_T[locale] || FILTER_T.en;
-  const isRTL  = locale === "ar";
-  const canClaim = !!user && (!isBusiness || isNgo || isAdmin);
-  const isSignedIn = canClaim;
+  const T     = t[locale];
+  const FT    = FILTER_T[locale] || FILTER_T.en;
+  const isRTL = locale === "ar";
+
+  // Wait for auth to fully settle before computing permissions
+  // This prevents the race condition where isBusiness=true but isNgo=false momentarily
+  const canClaim   = authResolved && !!user && (!isBusiness || isNgo || isAdmin);
+  const isSignedIn = authResolved && !!user;
+
+  // NGOs see all listings EXCEPT their own business's food
+  const displayedListings = isNgo && ngoName
+    ? filtered.filter(l => l.business_name !== ngoName)
+    : filtered;
+
   const liveCats = ["All", ...Array.from(new Set(listings.map(l => l.category).filter(Boolean)))];
 
   function minsLeft(expires_at: string) {
@@ -256,7 +273,6 @@ export default function BrowsePage() {
     return `${Math.floor(mins / 60)}h ${mins % 60}m left`;
   }
 
-  // CHANGE 6: build ETA options capped by listing expiry and 10h max
   function getEtaOptions(listingId: string | null) {
     const ALL_OPTIONS = [
       { value: 10,  label: (l: string) => `10 ${l === "ar" ? "دقائق" : "minutes"}` },
@@ -322,8 +338,18 @@ export default function BrowsePage() {
           {T.browse || "Browse Free Food"}
         </h1>
         <p style={{ color: "#6b7280", fontSize: "14px", margin: "0 0 20px" }}>
-          {filtered.length} {filtered.length === 1 ? "item" : "items"} available now · refreshes every 30s
+          {displayedListings.length} {displayedListings.length === 1 ? "item" : "items"} available now · refreshes every 30s
         </p>
+
+        {/* NGO info banner */}
+        {isNgo && ngoName && (
+          <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "12px", padding: "12px 18px", marginBottom: "20px", display: "flex", alignItems: "center", gap: "10px" }}>
+            <span style={{ fontSize: "20px" }}>🏛</span>
+            <p style={{ margin: 0, fontSize: "13px", color: "#1d4ed8", fontWeight: 600 }}>
+              Browsing as <b>{ngoName}</b> — claim food from other businesses for your community. Your own listings are hidden here.
+            </p>
+          </div>
+        )}
 
         {/* SEARCH */}
         <div style={{ position: "relative", marginBottom: "14px" }}>
@@ -375,13 +401,15 @@ export default function BrowsePage() {
               {locale === "fr" ? "Recherche de nourriture..." : locale === "es" ? "Buscando comida..." : locale === "pt" ? "Procurando comida..." : locale === "ar" ? "جارٍ البحث..." : "Finding available food near you..."}
             </p>
           </div>
-        ) : filtered.length === 0 ? (
+        ) : displayedListings.length === 0 ? (
           <div style={{ background: "#fff", borderRadius: "20px", border: "1px solid #e5e7eb", padding: "60px 24px", textAlign: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
             <p style={{ fontSize: "48px", margin: "0 0 16px" }}>🍽️</p>
             <p style={{ fontSize: "18px", fontWeight: 800, color: "#0a2e1a", margin: "0 0 8px" }}>
               {activeCategory !== "All"
                 ? `${locale === "fr" ? "Aucun résultat dans" : locale === "es" ? "Sin resultados en" : locale === "pt" ? "Sem resultados em" : locale === "ar" ? "لا نتائج في" : "No results in"} "${activeCategory}"`
-                : (locale === "fr" ? "Aucune nourriture disponible" : locale === "es" ? "Sin comida disponible" : locale === "pt" ? "Sem comida disponível" : locale === "ar" ? "لا طعام متاح الآن" : "No food available right now")}
+                : isNgo
+                  ? "No food from other businesses available right now"
+                  : (locale === "fr" ? "Aucune nourriture disponible" : locale === "es" ? "Sin comida disponible" : locale === "pt" ? "Sem comida disponível" : locale === "ar" ? "لا طعام متاح الآن" : "No food available right now")}
             </p>
             <p style={{ fontSize: "14px", color: "#6b7280", margin: "0 0 20px", lineHeight: 1.6 }}>
               {activeCategory !== "All" ? (
@@ -394,8 +422,8 @@ export default function BrowsePage() {
               <a href="/" style={{ background: "#16a34a", color: "#fff", padding: "10px 24px", borderRadius: "8px", textDecoration: "none", fontSize: "14px", fontWeight: 700 }}>← Back to Home</a>
             )}
           </div>
-        ) : filtered.map(listing => {
-          const bizInfo = bizInfoMap[listing.business_name];
+        ) : displayedListings.map(listing => {
+          const bizInfo  = bizInfoMap[listing.business_name];
           const timeLeft = minsLeft(listing.expires_at);
           const isUrgent = timeLeft !== null && timeLeft.includes("m left") && parseInt(timeLeft) <= 30;
           return (
@@ -436,7 +464,8 @@ export default function BrowsePage() {
                 )}
                 {listing.note && <p style={{ margin: "6px 0 10px", fontSize: "13px", color: "#374151" }}>📝 {listing.note}</p>}
 
-                {isSignedIn ? (
+                {/* Business info block — shown only when signed in AND can claim */}
+                {isSignedIn && canClaim ? (
                   <div style={{ background: "#f9fafb", borderRadius: "12px", padding: "14px 16px", marginBottom: "16px" }}>
                     <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", marginBottom: bizInfo ? "12px" : 0 }}>
                       {listing.business_logo_url ? (
@@ -471,7 +500,7 @@ export default function BrowsePage() {
                       </div>
                     )}
                   </div>
-                ) : (
+                ) : !isSignedIn ? (
                   <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "12px", padding: "14px 16px", marginBottom: "16px", textAlign: "center" }}>
                     <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#374151", fontWeight: 600 }}>
                       🔒 {locale === "fr" ? "Connectez-vous pour voir les détails et réserver" : locale === "es" ? "Inicia sesión para ver detalles y reservar" : locale === "pt" ? "Entre para ver detalhes e reservar" : locale === "ar" ? "سجّل للدخول لرؤية التفاصيل والحجز" : "Sign in to see the restaurant details & claim this food"}
@@ -481,22 +510,24 @@ export default function BrowsePage() {
                       {locale === "fr" ? "Se connecter — Gratuit" : locale === "es" ? "Iniciar sesión — Gratis" : locale === "pt" ? "Entrar — Grátis" : locale === "ar" ? "تسجيل الدخول — مجاني" : "Sign In — It's Free"}
                     </button>
                   </div>
-                )}
+                ) : null}
 
-                {isSignedIn && !isAdmin && (
+                {/* Reserve button — only for customers and NGOs, not plain restaurant businesses or admin */}
+                {canClaim && !isAdmin && (
                   <button onClick={() => openClaim(listing.id)}
                     style={{ width: "100%", background: "#16a34a", color: "#fff", border: "none", padding: "14px", borderRadius: "10px", cursor: "pointer", fontSize: "15px", fontWeight: 800 }}>
                     {locale === "fr" ? "Réserver — Gratuit" : locale === "es" ? "Reservar — Gratis" : locale === "pt" ? "Reservar — Grátis" : locale === "ar" ? "احجز الآن — مجاناً" : "Reserve Now — It's Free"}
                   </button>
                 )}
 
-                {isAdmin && (
+                {isAdmin && isSignedIn && (
                   <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
                     <p style={{ margin: 0, fontSize: "13px", color: "#166534", fontWeight: 600 }}>👁️ Admin view — claims disabled for admin account</p>
                   </div>
                 )}
 
-                {isBusiness && !isNgo && !isAdmin && (
+                {/* Plain restaurant business — signed in but can't claim */}
+                {isSignedIn && isBusiness && !isNgo && !isAdmin && (
                   <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
                     <p style={{ margin: 0, fontSize: "13px", color: "#6b7280" }}>
                       {locale === "fr" ? "Les comptes professionnels ne peuvent pas réserver." : locale === "es" ? "Las cuentas de negocios no pueden reservar." : locale === "pt" ? "Contas empresariais não podem reservar." : locale === "ar" ? "حسابات الأعمال لا يمكنها الحجز." : "Business accounts cannot claim food."}
@@ -508,7 +539,7 @@ export default function BrowsePage() {
           );
         })}
 
-        {!loading && filtered.length > 0 && (
+        {!loading && displayedListings.length > 0 && (
           <p style={{ textAlign: "center", fontSize: "13px", color: "#9ca3af", marginTop: "8px", marginBottom: "24px" }}>
             {locale === "fr" ? "Actualisation toutes les 30s — Tout est gratuit" : locale === "es" ? "Actualización cada 30s — Todo gratis" : locale === "pt" ? "Atualiza a cada 30s — Tudo grátis" : locale === "ar" ? "تحديث كل 30 ثانية — كل الطعام مجاني" : "Listings refresh every 30 seconds — All food is free"}
           </p>
@@ -656,7 +687,6 @@ export default function BrowsePage() {
                       <p style={{ margin: 0, color: "#991b1b", fontSize: "13px" }}>{claimMsg}</p>
                     </div>
                   )}
-                  {/* CHANGE 5: auto-filled fields with edit hint */}
                   <div style={{ marginBottom: "14px" }}>
                     <label style={lbl}>{locale === "fr" ? "Votre prénom *" : locale === "es" ? "Tu nombre *" : locale === "pt" ? "Seu nome *" : locale === "ar" ? "اسمك الأول *" : "Your First Name *"}</label>
                     <input style={inp} required value={claimForm.first_name}
@@ -673,13 +703,11 @@ export default function BrowsePage() {
                     <input style={inp} type="tel" required value={claimForm.phone}
                       onChange={e => setClaimForm(f => ({ ...f, phone: e.target.value }))} placeholder="e.g. 3478015325"/>
                   </div>
-                  {/* CHANGE 5: hint if fields were auto-filled */}
                   {(claimForm.first_name || claimForm.phone) && (
                     <p style={{ margin: "-8px 0 12px", fontSize: "12px", color: "#16a34a", fontWeight: 600 }}>
                       ✓ {locale === "fr" ? "Informations pré-remplies — modifiez si nécessaire" : locale === "es" ? "Información precargada — edita si es necesario" : locale === "pt" ? "Informações preenchidas — edite se necessário" : locale === "ar" ? "تم ملء البيانات تلقائياً — عدّل إن أردت" : "Pre-filled from your last claim — edit if needed"}
                     </p>
                   )}
-                  {/* CHANGE 6: ETA options capped by listing expiry and 10h max */}
                   <div style={{ marginBottom: "20px" }}>
                     <label style={lbl}>{locale === "fr" ? "Heure d'arrivée" : locale === "es" ? "Hora de llegada" : locale === "pt" ? "Horário de chegada" : locale === "ar" ? "وقت الوصول" : "Your Arrival Time"}</label>
                     <select style={{ ...inp, cursor: "pointer" }} value={claimForm.eta_minutes}
