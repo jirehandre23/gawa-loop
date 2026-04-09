@@ -38,6 +38,7 @@ export default function BrowsePage() {
   const [sortBy, setSortBy]             = useState("Newest");
   const [loading, setLoading]           = useState(true);
   const [user, setUser]                 = useState<any>(null);
+  const [authReady, setAuthReady]       = useState(false);
   const [isBusiness, setIsBusiness]     = useState(false);
   const [isNgo, setIsNgo]               = useState(false);
   const [ngoName, setNgoName]           = useState<string | null>(null);
@@ -57,75 +58,72 @@ export default function BrowsePage() {
   const [signinMode, setSigninMode]         = useState<"signin" | "signup">("signin");
   const [signinDone, setSigninDone]         = useState(false);
   const [termsAccepted, setTermsAccepted]   = useState(false);
-  const intervalRef   = useRef<NodeJS.Timeout | null>(null);
-  const searchRef     = useRef("");
-  const categoryRef   = useRef("All");
-  const sortRef       = useRef("Newest");
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const searchRef   = useRef("");
+  const catRef      = useRef("All");
+  const sortRef     = useRef("Newest");
 
   useEffect(() => { setLocale(detectLocale()); }, []);
-  useEffect(() => { searchRef.current = search; },           [search]);
-  useEffect(() => { categoryRef.current = activeCategory; }, [activeCategory]);
-  useEffect(() => { sortRef.current = sortBy; },             [sortBy]);
+  useEffect(() => { searchRef.current = search; },      [search]);
+  useEffect(() => { catRef.current = activeCategory; }, [activeCategory]);
+  useEffect(() => { sortRef.current = sortBy; },        [sortBy]);
 
+  // FIX: load session on mount first, then subscribe to changes
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const u = session?.user ?? null;
+    let mounted = true;
+
+    async function resolveUser(u: any) {
+      if (!mounted) return;
       setUser(u);
       if (u?.email) {
-        setClaimForm(f => ({ ...f, email: u.email! }));
+        setClaimForm(f => ({ ...f, email: u.email }));
         if (u.email === ADMIN_EMAIL) {
           setIsAdmin(true); setIsBusiness(false); setIsNgo(false); setNgoName(null);
         } else {
           const { data: biz } = await supabase
             .from("businesses").select("id, name, account_type").eq("email", u.email).maybeSingle();
           if (biz) {
-            const ngoAccount = biz.account_type === "ngo";
-            setIsBusiness(true);
-            setIsNgo(ngoAccount);
-            setNgoName(ngoAccount ? (biz.name as string) : null);
+            const ngo = biz.account_type === "ngo";
+            setIsBusiness(true); setIsNgo(ngo); setNgoName(ngo ? biz.name : null);
           } else {
             setIsBusiness(false); setIsNgo(false); setNgoName(null);
-            // FIX: try by customer_user_id first, then fall back to email
-            // This covers accounts whose early claims had no customer_user_id set
-            let prevClaim: { first_name: string | null; phone: string | null } | null = null;
+            let prev: any = null;
             if (u.id) {
-              const { data: byId } = await supabase
-                .from("claims")
-                .select("first_name, phone")
-                .eq("customer_user_id", u.id)
-                .not("first_name", "is", null)
-                .order("created_at", { ascending: false })
-                .limit(1)
-                .maybeSingle();
-              prevClaim = byId;
+              const { data: byId } = await supabase.from("claims")
+                .select("first_name, phone").eq("customer_user_id", u.id)
+                .not("first_name", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
+              prev = byId;
             }
-            if (!prevClaim?.first_name && !prevClaim?.phone) {
-              const { data: byEmail } = await supabase
-                .from("claims")
-                .select("first_name, phone")
-                .eq("email", u.email)
-                .not("first_name", "is", null)
-                .order("created_at", { ascending: false })
-                .limit(1)
-                .maybeSingle();
-              prevClaim = byEmail;
+            if (!prev?.first_name) {
+              const { data: byEmail } = await supabase.from("claims")
+                .select("first_name, phone").eq("email", u.email)
+                .not("first_name", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
+              prev = byEmail;
             }
-            if (prevClaim?.first_name || prevClaim?.phone) {
-              setClaimForm(f => ({
-                ...f, email: u.email!,
-                first_name: prevClaim!.first_name || f.first_name,
-                phone: prevClaim!.phone || f.phone,
-              }));
+            if (prev?.first_name || prev?.phone) {
+              setClaimForm(f => ({ ...f, email: u.email, first_name: prev.first_name || f.first_name, phone: prev.phone || f.phone }));
             }
           }
         }
         setSigninModal(false); setSigninDone(false);
-      } else if (_event === "SIGNED_OUT") {
+      } else {
         setIsBusiness(false); setIsNgo(false); setIsAdmin(false); setNgoName(null);
         setClaimForm(f => ({ ...f, email: "" }));
       }
+      if (mounted) setAuthReady(true);
+    }
+
+    // Get initial session immediately
+    supabase.auth.getSession().then(({ data }) => {
+      resolveUser(data.session?.user ?? null);
     });
-    return () => subscription.unsubscribe();
+
+    // Then subscribe to changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      resolveUser(session?.user ?? null);
+    });
+
+    return () => { mounted = false; subscription.unsubscribe(); };
   }, []);
 
   function applyFilters(all: Listing[], q: string, cat: string, sort: string) {
@@ -153,13 +151,14 @@ export default function BrowsePage() {
         .from("listings").select("*")
         .eq("status", "AVAILABLE")
         .order("created_at", { ascending: false });
-      if (error) throw error;
-      const all = (data || []) as Listing[];
-      setListings(all);
-      applyFilters(all, searchRef.current, categoryRef.current, sortRef.current);
-    } catch (e) {
-      console.error("fetchListings error:", e);
-      setListings([]); setFiltered([]);
+      if (error) {
+        console.error("fetchListings error:", error);
+        setListings([]); setFiltered([]);
+      } else {
+        const all = (data || []) as Listing[];
+        setListings(all);
+        applyFilters(all, searchRef.current, catRef.current, sortRef.current);
+      }
     } finally {
       setLoading(false);
     }
@@ -178,13 +177,9 @@ export default function BrowsePage() {
   }
 
   useEffect(() => {
-    const timeout = setTimeout(() => setLoading(false), 5000);
-    (async () => { await fetchListings(); clearTimeout(timeout); })();
+    fetchListings();
     intervalRef.current = setInterval(fetchListings, 30000);
-    return () => {
-      clearTimeout(timeout);
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
 
   useEffect(() => {
@@ -193,17 +188,16 @@ export default function BrowsePage() {
 
   function handleSearch(q: string) { setSearch(q); applyFilters(listings, q, activeCategory, sortBy); }
   function handleCategory(cat: string) { setCategory(cat); applyFilters(listings, search, cat, sortBy); }
-  function handleSort(sort: string) { setSortBy(sort); applyFilters(listings, search, activeCategory, sort); }
+  function handleSort(s: string) { setSortBy(s); applyFilters(listings, search, activeCategory, s); }
 
   function openClaim(id: string) {
     setSelectedId(id); setClaimMsg(""); setClaimSuccess(false);
     const listing = listings.find(l => l.id === id);
     if (listing) {
-      const minsUntilExpiry = Math.floor((new Date(listing.expires_at).getTime() - Date.now()) / 60000);
-      const maxEta = Math.min(minsUntilExpiry, 600);
+      const maxEta = Math.min(Math.floor((new Date(listing.expires_at).getTime() - Date.now()) / 60000), 600);
       if (claimForm.eta_minutes > maxEta) {
         const opts = [10,15,20,30,45,60,90,120,180,240,300,360,420,480,540,600];
-        setClaimForm(f => ({ ...f, eta_minutes: opts.find(o => o <= maxEta) || Math.min(maxEta, 10) }));
+        setClaimForm(f => ({ ...f, eta_minutes: opts.find(o => o <= maxEta) || 10 }));
       }
     }
   }
@@ -230,6 +224,8 @@ export default function BrowsePage() {
   async function handleClaim(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedId || (isBusiness && !isNgo)) return;
+    if (!claimForm.phone.trim()) { setClaimMsg("Phone number is required."); return; }
+    if (!claimForm.phone.startsWith("+")) { setClaimMsg("Please include your country code (e.g. +1 718 555 0123)."); return; }
     setClaimLoading(true); setClaimMsg("");
     const res = await fetch("/api/claim-submit", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -254,7 +250,6 @@ export default function BrowsePage() {
   const T     = t[locale];
   const FT    = FILTER_T[locale] || FILTER_T.en;
   const isRTL = locale === "ar";
-
   const isSignedIn = !!user;
   const canClaim   = !!user && (!isBusiness || isNgo || isAdmin);
   const liveCats   = ["All", ...Array.from(new Set(listings.map(l => l.category).filter(Boolean)))];
@@ -268,30 +263,26 @@ export default function BrowsePage() {
   }
 
   function getEtaOptions(listingId: string | null) {
-    const ALL_OPTIONS = [
-      { value: 10,  label: (l: string) => `10 ${l === "ar" ? "دقائق" : "minutes"}` },
-      { value: 15,  label: (l: string) => `15 ${l === "ar" ? "دقائق" : "minutes"}` },
-      { value: 20,  label: (l: string) => `20 ${l === "ar" ? "دقائق" : "minutes"}` },
-      { value: 30,  label: (l: string) => `30 ${l === "ar" ? "دقائق" : "minutes"}` },
-      { value: 45,  label: (l: string) => `45 ${l === "ar" ? "دقائق" : "minutes"}` },
-      { value: 60,  label: (l: string) => `1 ${l === "fr" ? "heure" : l === "es" ? "hora" : l === "pt" ? "hora" : l === "ar" ? "ساعة" : "hour"}` },
-      { value: 90,  label: (l: string) => `1.5 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
+    const ALL = [
+      { value: 10, label: (l: string) => `10 ${l === "ar" ? "دقائق" : "minutes"}` },
+      { value: 15, label: (l: string) => `15 ${l === "ar" ? "دقائق" : "minutes"}` },
+      { value: 20, label: (l: string) => `20 ${l === "ar" ? "دقائق" : "minutes"}` },
+      { value: 30, label: (l: string) => `30 ${l === "ar" ? "دقائق" : "minutes"}` },
+      { value: 45, label: (l: string) => `45 ${l === "ar" ? "دقائق" : "minutes"}` },
+      { value: 60, label: (l: string) => `1 ${l === "fr" ? "heure" : l === "es" ? "hora" : l === "pt" ? "hora" : l === "ar" ? "ساعة" : "hour"}` },
+      { value: 90, label: (l: string) => `1.5 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
       { value: 120, label: (l: string) => `2 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
       { value: 180, label: (l: string) => `3 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
       { value: 240, label: (l: string) => `4 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
       { value: 300, label: (l: string) => `5 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
       { value: 360, label: (l: string) => `6 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
-      { value: 420, label: (l: string) => `7 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
-      { value: 480, label: (l: string) => `8 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
-      { value: 540, label: (l: string) => `9 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
       { value: 600, label: (l: string) => `10 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
     ];
-    if (!listingId) return ALL_OPTIONS;
+    if (!listingId) return ALL;
     const listing = listings.find(l => l.id === listingId);
-    if (!listing) return ALL_OPTIONS;
-    const minsUntilExpiry = Math.floor((new Date(listing.expires_at).getTime() - Date.now()) / 60000);
-    const maxEta = Math.min(minsUntilExpiry, 600);
-    return ALL_OPTIONS.filter(o => o.value <= maxEta);
+    if (!listing) return ALL;
+    const maxEta = Math.min(Math.floor((new Date(listing.expires_at).getTime() - Date.now()) / 60000), 600);
+    return ALL.filter(o => o.value <= maxEta);
   }
 
   const inp: React.CSSProperties = {
@@ -316,21 +307,19 @@ export default function BrowsePage() {
           {user ? (
             <a href={isAdmin ? "/admin/business-lookup" : isBusiness ? "/business/dashboard" : "/customer/profile"}
               style={{ background: "#16a34a", color: "#fff", padding: "7px 14px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 700 }}>
-              {isAdmin ? "🔑 Admin" : isBusiness ? "Dashboard" : "My Profile"}
+              {isAdmin ? "Admin" : isBusiness ? "Dashboard" : "My Profile"}
             </a>
           ) : (
             <button onClick={() => { setSigninModal(true); setSigninError(""); setSigninDone(false); setTermsAccepted(false); }}
               style={{ background: "rgba(255,255,255,0.1)", color: "#fff", padding: "7px 14px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 600 }}>
-              Sign In
+              {T.customer_login || "Sign In"}
             </button>
           )}
         </div>
       </nav>
 
       <div style={{ maxWidth: "760px", margin: "0 auto", padding: "32px 16px" }}>
-        <h1 style={{ fontSize: "28px", fontWeight: 900, color: "#0a2e1a", margin: "0 0 4px" }}>
-          {T.browse || "Browse Free Food"}
-        </h1>
+        <h1 style={{ fontSize: "28px", fontWeight: 900, color: "#0a2e1a", margin: "0 0 4px" }}>{T.browse}</h1>
         <p style={{ color: "#6b7280", fontSize: "14px", margin: "0 0 20px" }}>
           {filtered.length} {filtered.length === 1 ? "item" : "items"} available now · refreshes every 30s
         </p>
@@ -338,7 +327,7 @@ export default function BrowsePage() {
         <div style={{ position: "relative", marginBottom: "14px" }}>
           <span style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", fontSize: "16px" }}>🔍</span>
           <input style={{ ...inp, paddingLeft: "40px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}
-            placeholder={locale === "fr" ? "Rechercher..." : locale === "es" ? "Buscar..." : locale === "pt" ? "Pesquisar..." : locale === "ar" ? "بحث..." : "Search food, category..."}
+            placeholder={T.search_placeholder || "Search food, category..."}
             value={search} onChange={e => handleSearch(e.target.value)}/>
         </div>
 
@@ -377,36 +366,28 @@ export default function BrowsePage() {
           <div style={{ textAlign: "center", padding: "80px 0" }}>
             <div style={{ display: "inline-block", width: "36px", height: "36px", border: "3px solid #e5e7eb", borderTopColor: "#16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
             <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-            <p style={{ marginTop: "16px", color: "#9ca3af", fontSize: "14px" }}>
-              {locale === "fr" ? "Recherche de nourriture..." : locale === "es" ? "Buscando comida..." : locale === "pt" ? "Procurando comida..." : locale === "ar" ? "جارٍ البحث..." : "Finding available food near you..."}
-            </p>
+            <p style={{ marginTop: "16px", color: "#9ca3af", fontSize: "14px" }}>Finding available food...</p>
           </div>
         ) : filtered.length === 0 ? (
-          <div style={{ background: "#fff", borderRadius: "20px", border: "1px solid #e5e7eb", padding: "60px 24px", textAlign: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+          <div style={{ background: "#fff", borderRadius: "20px", border: "1px solid #e5e7eb", padding: "60px 24px", textAlign: "center" }}>
             <p style={{ fontSize: "48px", margin: "0 0 16px" }}>🍽️</p>
             <p style={{ fontSize: "18px", fontWeight: 800, color: "#0a2e1a", margin: "0 0 8px" }}>
-              {activeCategory !== "All"
-                ? `${locale === "fr" ? "Aucun résultat dans" : locale === "es" ? "Sin resultados en" : locale === "pt" ? "Sem resultados em" : locale === "ar" ? "لا نتائج في" : "No results in"} "${activeCategory}"`
-                : (locale === "fr" ? "Aucune nourriture disponible" : locale === "es" ? "Sin comida disponible" : locale === "pt" ? "Sem comida disponível" : locale === "ar" ? "لا طعام متاح الآن" : "No food available right now")}
+              {T.no_listings || "No food available right now"}
             </p>
-            <p style={{ fontSize: "14px", color: "#6b7280", margin: "0 0 20px", lineHeight: 1.6 }}>
-              {activeCategory !== "All" ? (
-                <button onClick={() => handleCategory("All")} style={{ background: "none", border: "none", color: "#16a34a", fontWeight: 700, cursor: "pointer", fontSize: "14px", padding: 0 }}>
-                  {locale === "fr" ? "Voir toutes les catégories →" : locale === "es" ? "Ver todas →" : locale === "pt" ? "Ver todas →" : locale === "ar" ? "← عرض الكل" : "View all categories →"}
-                </button>
-              ) : (locale === "fr" ? "Les annonces se rafraîchissent toutes les 30 secondes." : locale === "es" ? "Los anuncios se actualizan cada 30 segundos." : locale === "pt" ? "Anúncios atualizam a cada 30 segundos." : locale === "ar" ? "تتجدد الإعلانات كل 30 ثانية." : "Listings refresh automatically every 30 seconds.")}
+            <p style={{ fontSize: "14px", color: "#6b7280", margin: 0 }}>
+              {T.no_listings_sub || "Listings refresh automatically every 30 seconds."}
             </p>
-            {activeCategory === "All" && (
-              <a href="/" style={{ background: "#16a34a", color: "#fff", padding: "10px 24px", borderRadius: "8px", textDecoration: "none", fontSize: "14px", fontWeight: 700 }}>← Back to Home</a>
-            )}
           </div>
         ) : filtered.map(listing => {
-          const bizInfo         = bizInfoMap[listing.business_name];
-          const timeLeft        = minsLeft(listing.expires_at);
-          const isUrgent        = timeLeft !== null && timeLeft.includes("m left") && parseInt(timeLeft) <= 30;
-          const isOwnNgoListing = isNgo && !!ngoName && listing.business_name === ngoName;
+          const bizInfo      = bizInfoMap[listing.business_name];
+          const timeLeft     = minsLeft(listing.expires_at);
+          const isUrgent     = timeLeft !== null && timeLeft.includes("m left") && parseInt(timeLeft) <= 30;
+          const isOwnNgo     = isNgo && !!ngoName && listing.business_name === ngoName;
+          const weightLbs    = listing.weight_kg && listing.weight_kg > 0 ? (listing.weight_kg * 2.205).toFixed(1) : null;
+
           return (
             <div key={listing.id} style={{ background: "#fff", borderRadius: "20px", border: `1px solid ${isUrgent ? "#fde68a" : "#e5e7eb"}`, overflow: "hidden", marginBottom: "20px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+
               {listing.image_url ? (
                 <div style={{ width: "100%", height: "220px", overflow: "hidden" }}>
                   <img src={listing.image_url} alt={listing.food_name}
@@ -414,7 +395,7 @@ export default function BrowsePage() {
                     onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}/>
                 </div>
               ) : (
-                <div style={{ width: "100%", height: "80px", background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "36px" }}>🍽️</div>
+                <div style={{ width: "100%", height: "72px", background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "32px" }}>🍽️</div>
               )}
 
               <div style={{ padding: "20px 24px" }}>
@@ -432,9 +413,9 @@ export default function BrowsePage() {
                 </div>
 
                 <p style={{ margin: "0 0 6px", fontSize: "14px", color: "#6b7280" }}>
-                  {listing.quantity}
-                  {listing.weight_kg && listing.weight_kg > 0 && ` · ${(listing.weight_kg * 2.205).toFixed(1)} lbs`}
+                  {listing.quantity}{weightLbs ? ` · ⚖️ ${weightLbs} lbs` : ""}
                 </p>
+
                 {listing.allergy_note && (
                   <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "6px", padding: "4px 10px", display: "inline-block" }}>
                     ⚠️ {listing.allergy_note}
@@ -456,16 +437,16 @@ export default function BrowsePage() {
                         <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#6b7280" }}>📍 {listing.address}</p>
                         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                           <a href={`https://maps.google.com/?q=${encodeURIComponent(listing.address || "")}`} target="_blank" rel="noreferrer"
-                            style={{ background: "#e8f0fe", color: "#1a73e8", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🗺️ Google Maps</a>
+                            style={{ background: "#e8f0fe", color: "#1a73e8", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🗺️ Google</a>
                           <a href={`https://maps.apple.com/?q=${encodeURIComponent(listing.address || "")}`} target="_blank" rel="noreferrer"
-                            style={{ background: "#f3f4f6", color: "#374151", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🍎 Apple Maps</a>
+                            style={{ background: "#f3f4f6", color: "#374151", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🍎 Apple</a>
                           <a href={`https://waze.com/ul?q=${encodeURIComponent(listing.address || "")}`} target="_blank" rel="noreferrer"
                             style={{ background: "#e8f8ff", color: "#0099cc", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🚗 Waze</a>
                         </div>
                       </div>
                     </div>
                     {bizInfo && (
-                      <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "10px", display: "flex", flexDirection: "column", gap: "5px" }}>
+                      <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "10px", display: "flex", flexDirection: "column", gap: "4px" }}>
                         {bizInfo.phone && (
                           <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>
                             📞 <a href={`tel:${bizInfo.phone}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>{bizInfo.phone}</a>
@@ -480,33 +461,31 @@ export default function BrowsePage() {
                 ) : (
                   <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "12px", padding: "14px 16px", marginBottom: "16px", textAlign: "center" }}>
                     <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#374151", fontWeight: 600 }}>
-                      🔒 {locale === "fr" ? "Connectez-vous pour voir les détails et réserver" : locale === "es" ? "Inicia sesión para ver detalles y reservar" : locale === "pt" ? "Entre para ver detalhes e reservar" : locale === "ar" ? "سجّل للدخول لرؤية التفاصيل والحجز" : "Sign in to see the restaurant details & claim this food"}
+                      🔒 {locale === "fr" ? "Connectez-vous pour voir les détails" : locale === "es" ? "Inicia sesión para ver detalles" : locale === "pt" ? "Entre para ver detalhes" : locale === "ar" ? "سجّل للدخول لرؤية التفاصيل" : "Sign in to see business details and claim"}
                     </p>
                     <button onClick={() => { setSigninModal(true); setSigninError(""); setSigninDone(false); setTermsAccepted(false); }}
                       style={{ background: "#16a34a", color: "#fff", padding: "8px 20px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 700 }}>
-                      {locale === "fr" ? "Se connecter — Gratuit" : locale === "es" ? "Iniciar sesión — Gratis" : locale === "pt" ? "Entrar — Grátis" : locale === "ar" ? "تسجيل الدخول — مجاني" : "Sign In — It's Free"}
+                      {T.customer_login || "Sign In"} — Free
                     </button>
                   </div>
                 )}
 
-                {canClaim && !isAdmin && !isOwnNgoListing && (
+                {canClaim && !isAdmin && !isOwnNgo && (
                   <button onClick={() => openClaim(listing.id)}
                     style={{ width: "100%", background: "#16a34a", color: "#fff", border: "none", padding: "14px", borderRadius: "10px", cursor: "pointer", fontSize: "15px", fontWeight: 800 }}>
                     {locale === "fr" ? "Réserver — Gratuit" : locale === "es" ? "Reservar — Gratis" : locale === "pt" ? "Reservar — Grátis" : locale === "ar" ? "احجز الآن — مجاناً" : "Reserve Now — It's Free"}
                   </button>
                 )}
 
-                {isOwnNgoListing && (
+                {isOwnNgo && (
                   <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
-                    <p style={{ margin: 0, fontSize: "13px", color: "#166534", fontWeight: 600 }}>
-                      🏛 This is your listing — other businesses and customers can claim it
-                    </p>
+                    <p style={{ margin: 0, fontSize: "13px", color: "#166534", fontWeight: 600 }}>🏛 This is your listing</p>
                   </div>
                 )}
 
                 {isAdmin && isSignedIn && (
                   <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
-                    <p style={{ margin: 0, fontSize: "13px", color: "#166534", fontWeight: 600 }}>👁️ Admin view — claims disabled for admin account</p>
+                    <p style={{ margin: 0, fontSize: "13px", color: "#166534", fontWeight: 600 }}>👁️ Admin view — claims disabled</p>
                   </div>
                 )}
 
@@ -524,7 +503,7 @@ export default function BrowsePage() {
 
         {!loading && filtered.length > 0 && (
           <p style={{ textAlign: "center", fontSize: "13px", color: "#9ca3af", marginTop: "8px", marginBottom: "24px" }}>
-            {locale === "fr" ? "Actualisation toutes les 30s — Tout est gratuit" : locale === "es" ? "Actualización cada 30s — Todo gratis" : locale === "pt" ? "Atualiza a cada 30s — Tudo grátis" : locale === "ar" ? "تحديث كل 30 ثانية — كل الطعام مجاني" : "Listings refresh every 30 seconds — All food is free"}
+            {T.browse_footer || "Listings refresh every 30 seconds — All food is free"}
           </p>
         )}
       </div>
@@ -535,32 +514,26 @@ export default function BrowsePage() {
             {signinDone ? (
               <div style={{ textAlign: "center" }}>
                 <div style={{ fontSize: "52px", marginBottom: "16px" }}>📬</div>
-                <h2 style={{ margin: "0 0 10px", fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>
-                  {locale === "fr" ? "Vérifiez votre email !" : locale === "es" ? "¡Revisa tu email!" : locale === "pt" ? "Verifique seu email!" : locale === "ar" ? "تحقق من بريدك!" : "Check your email!"}
-                </h2>
+                <h2 style={{ margin: "0 0 10px", fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>Check your email!</h2>
                 <p style={{ margin: "0 0 16px", fontSize: "15px", color: "#374151", lineHeight: 1.6 }}>
-                  {locale === "fr" ? "Lien envoyé à" : locale === "es" ? "Enlace enviado a" : locale === "pt" ? "Link enviado para" : locale === "ar" ? "أرسلنا رابطاً إلى" : "We sent a confirmation link to"} <b>{signinEmail}</b>
+                  We sent a confirmation link to <b>{signinEmail}</b>
                 </p>
                 <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "12px", padding: "16px", marginBottom: "20px", textAlign: "left" }}>
-                  <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#374151" }}>1. {locale === "fr" ? "Ouvrez votre boîte mail" : locale === "es" ? "Abre tu bandeja" : locale === "pt" ? "Abra sua caixa" : locale === "ar" ? "افتح بريدك" : "Open your email inbox"}</p>
-                  <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#374151" }}>2. {locale === "fr" ? "Cliquez sur le lien de confirmation" : locale === "es" ? "Haz clic en el enlace" : locale === "pt" ? "Clique no link" : locale === "ar" ? "انقر على الرابط" : "Click the confirmation link"}</p>
-                  <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>3. {locale === "fr" ? "Vous serez connecté automatiquement" : locale === "es" ? "Serás conectado automáticamente" : locale === "pt" ? "Você será conectado" : locale === "ar" ? "ستُوقّع دخولك تلقائياً" : "You'll be signed in automatically"}</p>
+                  <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#374151" }}>1. Open your email inbox</p>
+                  <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#374151" }}>2. Click the confirmation link</p>
+                  <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>3. You will be signed in automatically</p>
                 </div>
-                <p style={{ margin: "0 0 16px", fontSize: "12px", color: "#9ca3af" }}>
-                  {locale === "fr" ? "Vérifiez vos spams si absent." : locale === "es" ? "¿No lo ves? Revisa spam." : locale === "pt" ? "Não viu? Verifique spam." : locale === "ar" ? "تحقق من البريد المزعج." : "Don't see it? Check your spam folder."}
-                </p>
+                <p style={{ margin: "0 0 16px", fontSize: "12px", color: "#9ca3af" }}>Do not see it? Check your spam folder.</p>
                 <button onClick={() => { setSigninModal(false); setSigninDone(false); }}
                   style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "10px 24px", borderRadius: "8px", cursor: "pointer", fontSize: "14px", fontWeight: 600 }}>
-                  {locale === "fr" ? "OK, compris" : locale === "es" ? "OK, entendido" : locale === "pt" ? "OK, entendi" : locale === "ar" ? "حسناً" : "OK, got it"}
+                  OK, got it
                 </button>
               </div>
             ) : (
               <>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
                   <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>
-                    {signinMode === "signin"
-                      ? (locale === "fr" ? "Se connecter" : locale === "es" ? "Iniciar sesión" : locale === "pt" ? "Entrar" : locale === "ar" ? "تسجيل الدخول" : "Sign In")
-                      : (locale === "fr" ? "Créer un compte" : locale === "es" ? "Crear cuenta" : locale === "pt" ? "Criar conta" : locale === "ar" ? "إنشاء حساب" : "Create Account")}
+                    {signinMode === "signin" ? (T.customer_login || "Sign In") : "Create Account"}
                   </h2>
                   <button onClick={() => setSigninModal(false)} style={{ background: "none", border: "none", fontSize: "22px", cursor: "pointer", color: "#9ca3af" }}>✕</button>
                 </div>
@@ -571,57 +544,48 @@ export default function BrowsePage() {
                     </div>
                   )}
                   <div style={{ marginBottom: "14px" }}>
-                    <label style={lbl}>{locale === "ar" ? "البريد الإلكتروني *" : "Email *"}</label>
+                    <label style={lbl}>Email *</label>
                     <input style={inp} type="email" required value={signinEmail}
                       onChange={e => setSigninEmail(e.target.value)} placeholder="you@email.com"/>
                   </div>
-                  <div style={{ marginBottom: signinMode === "signup" ? "16px" : "20px" }}>
+                  <div style={{ marginBottom: signinMode === "signup" ? "16px" : "8px" }}>
                     <label style={lbl}>{locale === "fr" ? "Mot de passe *" : locale === "es" ? "Contraseña *" : locale === "pt" ? "Senha *" : locale === "ar" ? "كلمة المرور *" : "Password *"}</label>
                     <input style={inp} type="password" required value={signinPassword}
-                      onChange={e => setSigninPassword(e.target.value)} placeholder="••••••••" minLength={6}/>
+                      onChange={e => setSigninPassword(e.target.value)} placeholder="Min. 6 characters" minLength={6}/>
                   </div>
+                  {signinMode === "signin" && (
+                    <div style={{ textAlign: "right", marginBottom: "16px" }}>
+                      <a href="/customer/reset-password" style={{ fontSize: "13px", color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>
+                        {T.forgot_password || "Forgot password?"}
+                      </a>
+                    </div>
+                  )}
                   {signinMode === "signup" && (
                     <label style={{ display: "flex", gap: "10px", alignItems: "flex-start", marginBottom: "16px", cursor: "pointer" }}
                       onClick={() => setTermsAccepted(v => !v)}>
-                      <div style={{ width: "20px", height: "20px", borderRadius: "5px", border: `2px solid ${termsAccepted ? "#16a34a" : "#d1d5db"}`, background: termsAccepted ? "#16a34a" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: "1px", transition: "all 0.15s" }}>
+                      <div style={{ width: "20px", height: "20px", borderRadius: "5px", border: `2px solid ${termsAccepted ? "#16a34a" : "#d1d5db"}`, background: termsAccepted ? "#16a34a" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: "1px" }}>
                         {termsAccepted && <span style={{ color: "#fff", fontSize: "12px", fontWeight: 900 }}>✓</span>}
                       </div>
                       <p style={{ margin: 0, fontSize: "13px", color: "#374151", lineHeight: 1.5 }}>
-                        {locale === "fr" ? "J'accepte les " : locale === "es" ? "Acepto los " : locale === "pt" ? "Aceito os " : locale === "ar" ? "أوافق على " : "I agree to the "}
-                        <a href="/terms" target="_blank" onClick={e => e.stopPropagation()} style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>
-                          {locale === "fr" ? "Conditions d'utilisation" : locale === "es" ? "Términos de uso" : locale === "pt" ? "Termos de uso" : locale === "ar" ? "شروط الاستخدام" : "Terms of Use"}
-                        </a>
-                        {" "}{locale === "fr" ? "et la " : locale === "es" ? "y la " : locale === "pt" ? "e a " : locale === "ar" ? "و" : "and "}
-                        <a href="/privacy" target="_blank" onClick={e => e.stopPropagation()} style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>
-                          {locale === "fr" ? "Politique de confidentialité" : locale === "es" ? "Política de privacidad" : locale === "pt" ? "Política de privacidade" : locale === "ar" ? "سياسة الخصوصية" : "Privacy Policy"}
-                        </a>
-                        {" *"}
+                        I agree to the <a href="/customer/signup" target="_blank" onClick={e => e.stopPropagation()} style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>Terms of Use</a> *
                       </p>
                     </label>
                   )}
                   <button type="submit" disabled={signinLoading || (signinMode === "signup" && !termsAccepted)}
                     style={{ width: "100%", background: (signinLoading || (signinMode === "signup" && !termsAccepted)) ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "13px", borderRadius: "10px", cursor: (signinLoading || (signinMode === "signup" && !termsAccepted)) ? "not-allowed" : "pointer", fontSize: "15px", fontWeight: 700, marginBottom: "14px" }}>
-                    {signinLoading ? "..." : signinMode === "signin"
-                      ? (locale === "fr" ? "Se connecter" : locale === "es" ? "Iniciar sesión" : locale === "pt" ? "Entrar" : locale === "ar" ? "دخول" : "Sign In")
-                      : (locale === "fr" ? "Créer le compte" : locale === "es" ? "Crear cuenta" : locale === "pt" ? "Criar conta" : locale === "ar" ? "إنشاء حساب" : "Create Account")}
+                    {signinLoading ? "..." : signinMode === "signin" ? (T.customer_login || "Sign In") : "Create Account"}
                   </button>
                   <p style={{ textAlign: "center", fontSize: "13px", color: "#6b7280", margin: 0 }}>
-                    {signinMode === "signin"
-                      ? (locale === "fr" ? "Pas de compte ?" : locale === "es" ? "¿Sin cuenta?" : locale === "pt" ? "Sem conta?" : locale === "ar" ? "ليس لديك حساب؟" : "No account?")
-                      : (locale === "fr" ? "Déjà un compte ?" : locale === "es" ? "¿Ya tienes cuenta?" : locale === "pt" ? "Já tem conta?" : locale === "ar" ? "لديك حساب؟" : "Already have one?")}{" "}
+                    {signinMode === "signin" ? "No account?" : "Already have one?"}{" "}
                     <button type="button" onClick={() => { setSigninMode(signinMode === "signin" ? "signup" : "signin"); setSigninError(""); setTermsAccepted(false); }}
                       style={{ background: "none", border: "none", color: "#16a34a", fontWeight: 700, cursor: "pointer", fontSize: "13px", padding: 0 }}>
-                      {signinMode === "signin"
-                        ? (locale === "fr" ? "Créer un compte" : locale === "es" ? "Crear cuenta" : locale === "pt" ? "Criar conta" : locale === "ar" ? "إنشاء حساب" : "Create one free")
-                        : (locale === "fr" ? "Se connecter" : locale === "es" ? "Iniciar sesión" : locale === "pt" ? "Entrar" : locale === "ar" ? "تسجيل الدخول" : "Sign in")}
+                      {signinMode === "signin" ? "Create one free" : "Sign in"}
                     </button>
                   </p>
                 </form>
                 <p style={{ textAlign: "center", marginTop: "14px", fontSize: "12px", color: "#9ca3af" }}>
-                  {locale === "fr" ? "Entreprise ?" : locale === "es" ? "¿Negocio?" : locale === "pt" ? "Empresa?" : locale === "ar" ? "شركة؟" : "Business?"}{" "}
-                  <a href="/business/login" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>
-                    {locale === "fr" ? "Connexion entreprise →" : locale === "es" ? "Login empresas →" : locale === "pt" ? "Login empresas →" : locale === "ar" ? "← دخول الأعمال" : "Business login →"}
-                  </a>
+                  Business?{" "}
+                  <a href="/business/login" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>Business login →</a>
                 </p>
               </>
             )}
@@ -638,25 +602,21 @@ export default function BrowsePage() {
                 <h2 style={{ margin: "0 0 8px", fontSize: "22px", fontWeight: 800, color: "#0a2e1a" }}>
                   {locale === "fr" ? "Réservation confirmée !" : locale === "es" ? "¡Reserva confirmada!" : locale === "pt" ? "Reserva confirmada!" : locale === "ar" ? "تم تأكيد الحجز!" : "Reservation Confirmed!"}
                 </h2>
-                <p style={{ margin: "0 0 16px", color: "#6b7280", fontSize: "14px" }}>
-                  {locale === "fr" ? "Votre code de retrait :" : locale === "es" ? "Tu código:" : locale === "pt" ? "Seu código:" : locale === "ar" ? "رمز الاستلام:" : "Your pickup code:"}
-                </p>
+                <p style={{ margin: "0 0 16px", color: "#6b7280", fontSize: "14px" }}>Your pickup code:</p>
                 <div style={{ background: "#f0fdf4", border: "2px solid #16a34a", borderRadius: "12px", padding: "20px", marginBottom: "16px" }}>
                   <p style={{ margin: 0, fontSize: "48px", fontWeight: 900, letterSpacing: "8px", color: "#0a2e1a", fontFamily: "monospace" }}>{lastCode}</p>
                 </div>
-                <p style={{ color: "#6b7280", fontSize: "13px", marginBottom: "20px" }}>
-                  {locale === "fr" ? "Vérifiez votre email. Montrez ce code à votre arrivée." : locale === "es" ? "Revisa tu email. Muestra este código al llegar." : locale === "pt" ? "Verifique seu email. Mostre este código ao chegar." : locale === "ar" ? "تحقق من بريدك. أظهر هذا الرمز عند الوصول." : "Check your email for details. Show this code when you arrive."}
-                </p>
+                <p style={{ color: "#6b7280", fontSize: "13px", marginBottom: "20px" }}>Check your email for details. Show this code when you arrive.</p>
                 <button onClick={() => { setSelectedId(null); setClaimSuccess(false); }}
                   style={{ background: "#16a34a", color: "#fff", border: "none", padding: "12px 28px", borderRadius: "10px", cursor: "pointer", fontWeight: 700, fontSize: "15px" }}>
-                  {locale === "fr" ? "Terminé" : locale === "es" ? "Listo" : locale === "pt" ? "Pronto" : locale === "ar" ? "تم" : "Done"}
+                  Done
                 </button>
               </div>
             ) : (
               <>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
                   <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>
-                    {locale === "fr" ? "Réserver cette nourriture" : locale === "es" ? "Reservar esta comida" : locale === "pt" ? "Reservar esta comida" : locale === "ar" ? "احجز هذا الطعام" : "Reserve This Food"}
+                    {locale === "fr" ? "Réserver" : locale === "es" ? "Reservar" : locale === "pt" ? "Reservar" : locale === "ar" ? "احجز" : "Reserve This Food"}
                   </h2>
                   <button onClick={() => setSelectedId(null)} style={{ background: "none", border: "none", fontSize: "22px", cursor: "pointer", color: "#9ca3af" }}>✕</button>
                 </div>
@@ -667,10 +627,9 @@ export default function BrowsePage() {
                     </div>
                   )}
                   <div style={{ marginBottom: "14px" }}>
-                    <label style={lbl}>{locale === "fr" ? "Votre prénom *" : locale === "es" ? "Tu nombre *" : locale === "pt" ? "Seu nome *" : locale === "ar" ? "اسمك الأول *" : "Your First Name *"}</label>
+                    <label style={lbl}>{T.claim_name || "Your First Name"} *</label>
                     <input style={inp} required value={claimForm.first_name}
-                      onChange={e => setClaimForm(f => ({ ...f, first_name: e.target.value }))}
-                      placeholder={locale === "fr" ? "Votre prénom" : locale === "es" ? "Tu nombre" : locale === "pt" ? "Seu nome" : locale === "ar" ? "اسمك" : "Your first name"}/>
+                      onChange={e => setClaimForm(f => ({ ...f, first_name: e.target.value }))} placeholder="Your first name"/>
                   </div>
                   <div style={{ marginBottom: "14px" }}>
                     <label style={lbl}>Email *</label>
@@ -678,17 +637,17 @@ export default function BrowsePage() {
                       onChange={e => setClaimForm(f => ({ ...f, email: e.target.value }))}/>
                   </div>
                   <div style={{ marginBottom: "14px" }}>
-                    <label style={lbl}>{locale === "fr" ? "Téléphone *" : locale === "es" ? "Teléfono *" : locale === "pt" ? "Telefone *" : locale === "ar" ? "الهاتف *" : "Phone Number *"}</label>
-                    <input style={inp} type="tel" required value={claimForm.phone}
-                      onChange={e => setClaimForm(f => ({ ...f, phone: e.target.value }))} placeholder="e.g. 3478015325"/>
+                    <label style={lbl}>{T.claim_phone || "Phone Number"} * <span style={{ fontWeight: 400, color: "#9ca3af" }}>(with country code)</span></label>
+                    <input style={{ ...inp, borderColor: claimForm.phone && !claimForm.phone.startsWith("+") ? "#f87171" : "#d1d5db" }}
+                      type="tel" required value={claimForm.phone}
+                      onChange={e => setClaimForm(f => ({ ...f, phone: e.target.value }))}
+                      placeholder={T.phone_placeholder || "e.g. +1 718 555 0123"}/>
+                    {claimForm.phone && !claimForm.phone.startsWith("+") && (
+                      <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#ef4444" }}>Must start with + and country code</p>
+                    )}
                   </div>
-                  {(claimForm.first_name || claimForm.phone) && (
-                    <p style={{ margin: "-8px 0 12px", fontSize: "12px", color: "#16a34a", fontWeight: 600 }}>
-                      ✓ {locale === "fr" ? "Informations pré-remplies — modifiez si nécessaire" : locale === "es" ? "Información precargada — edita si es necesario" : locale === "pt" ? "Informações preenchidas — edite se necessário" : locale === "ar" ? "تم ملء البيانات تلقائياً — عدّل إن أردت" : "Pre-filled from your last claim — edit if needed"}
-                    </p>
-                  )}
                   <div style={{ marginBottom: "20px" }}>
-                    <label style={lbl}>{locale === "fr" ? "Heure d'arrivée" : locale === "es" ? "Hora de llegada" : locale === "pt" ? "Horário de chegada" : locale === "ar" ? "وقت الوصول" : "Your Arrival Time"}</label>
+                    <label style={lbl}>{T.claim_eta || "Your Arrival Time"}</label>
                     <select style={{ ...inp, cursor: "pointer" }} value={claimForm.eta_minutes}
                       onChange={e => setClaimForm(f => ({ ...f, eta_minutes: Number(e.target.value) }))}>
                       {getEtaOptions(selectedId).map(opt => (
@@ -698,7 +657,7 @@ export default function BrowsePage() {
                   </div>
                   <button type="submit" disabled={claimLoading}
                     style={{ width: "100%", background: claimLoading ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "14px", borderRadius: "10px", cursor: claimLoading ? "not-allowed" : "pointer", fontSize: "15px", fontWeight: 800 }}>
-                    {claimLoading ? "..." : (locale === "fr" ? "Réserver — Gratuit" : locale === "es" ? "Reservar — Gratis" : locale === "pt" ? "Reservar — Grátis" : locale === "ar" ? "احجز — مجاناً" : "Reserve Now — It's Free")}
+                    {claimLoading ? "..." : (T.claim_btn || "Reserve Now — It's Free")}
                   </button>
                 </form>
               </>
