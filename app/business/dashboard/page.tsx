@@ -10,13 +10,8 @@ const supabase = createClient(
 );
 
 const ADMIN_EMAIL = "admin@gawaloop.com";
-
-// Only fully done statuses move to history
-// CLAIMED stays in Active — food is claimed but not yet picked up
-const TERMINAL = ["PICKED_UP", "EXPIRED", "CANCELLED", "NOSHOW"];
-
-// Statuses where the business can still act (edit, cancel, mark picked up)
-const EDITABLE  = ["AVAILABLE", "RESERVED", "CLAIMED"];
+const TERMINAL    = ["PICKED_UP", "EXPIRED", "CANCELLED", "NOSHOW"];
+const EDITABLE    = ["AVAILABLE", "RESERVED", "CLAIMED"];
 
 const STATUS_COLOR: Record<string, { bg: string; text: string }> = {
   AVAILABLE: { bg: "#16a34a", text: "#fff" },
@@ -555,6 +550,7 @@ export default function BusinessDashboard() {
             );
           }
 
+          // Completed — name + status badge only
           return (
             <div key={claim.id} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px 16px", marginBottom: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <p style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#374151" }}>
@@ -569,6 +565,43 @@ export default function BusinessDashboard() {
             </div>
           );
         })}
+      </div>
+    );
+  }
+
+  // Renders a compact outcome summary for terminal listings in history
+  function renderOutcomeSummary(listing: ListingRow) {
+    const claims = listing.claims || [];
+    if (claims.length === 0) return null;
+
+    const totalOriginal = listing.quantity_total || 1;
+    const pickedUpQty   = claims.filter(c => c.status === "picked_up").reduce((s, c) => s + (c.quantity_claimed || 1), 0);
+    const noshowQty     = claims.filter(c => c.status === "noshow"    ).reduce((s, c) => s + (c.quantity_claimed || 1), 0);
+    const cancelledQty  = claims.filter(c => c.status === "cancelled" ).reduce((s, c) => s + (c.quantity_claimed || 1), 0);
+    const neverClaimedQty = Math.max(0, totalOriginal - pickedUpQty - noshowQty - cancelledQty);
+
+    const rows = [
+      pickedUpQty   > 0 && { label: "✅ Picked up",     qty: pickedUpQty,    color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0" },
+      noshowQty     > 0 && { label: "👻 No-show",        qty: noshowQty,      color: "#92400e", bg: "#fffbeb", border: "#fde68a" },
+      cancelledQty  > 0 && { label: "❌ Cancelled",      qty: cancelledQty,   color: "#b91c1c", bg: "#fef2f2", border: "#fecaca" },
+      neverClaimedQty > 0 && { label: "⬜ Never claimed", qty: neverClaimedQty, color: "#6b7280", bg: "#f9fafb", border: "#e5e7eb" },
+    ].filter(Boolean) as { label: string; qty: number; color: string; bg: string; border: string }[];
+
+    if (rows.length === 0) return null;
+
+    return (
+      <div style={{ marginTop: "14px", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px 16px" }}>
+        <p style={{ margin: "0 0 10px", fontSize: "12px", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.6px" }}>
+          Outcome — {totalOriginal} portion{totalOriginal !== 1 ? "s" : ""} total
+        </p>
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          {rows.map(row => (
+            <div key={row.label} style={{ background: row.bg, border: `1px solid ${row.border}`, borderRadius: "8px", padding: "6px 14px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <span style={{ fontSize: "16px", fontWeight: 900, color: row.color }}>{row.qty}</span>
+              <span style={{ fontSize: "12px", fontWeight: 600, color: row.color }}>{row.label}</span>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -600,20 +633,25 @@ export default function BusinessDashboard() {
           <p style={{ margin: "2px 0" }}><b>Category:</b> {listing.category || "N/A"}</p>
           <p style={{ margin: "2px 0" }}>
             <b>Quantity:</b>{" "}
-            {isMultiPortion && remaining != null
+            {isMultiPortion && remaining != null && !isTerminal
               ? <span style={{ color: remaining <= 3 ? "#ef4444" : "#16a34a", fontWeight: 700 }}>{remaining} of {listing.quantity_total} portions remaining</span>
-              : listing.quantity || "N/A"}
+              : isMultiPortion
+                ? <span style={{ color: "#6b7280" }}>{listing.quantity_total} portions total</span>
+                : listing.quantity || "N/A"}
             {weightLbs && weightLbs > 0 && <span style={{ color: "#9ca3af", fontWeight: 400 }}> · {weightLbs.toFixed(1)} lbs</span>}
           </p>
           <p style={{ margin: "2px 0" }}><b>Address:</b> {listing.address || "N/A"}</p>
           {listing.estimated_value && listing.estimated_value > 0 && <p style={{ margin: "2px 0" }}><b>Est. Value:</b> ${Number(listing.estimated_value).toFixed(2)}</p>}
           {listing.allergy_note && <p style={{ margin: "2px 0" }}><b>Allergy:</b> {listing.allergy_note}</p>}
           {listing.note && <p style={{ margin: "2px 0" }}><b>Note:</b> {listing.note}</p>}
-          <p style={{ margin: "2px 0" }}><b>Expires:</b> {listing.expires_at ? new Date(listing.expires_at).toLocaleString() : "N/A"}</p>
           <p style={{ margin: "2px 0" }}><b>Posted:</b> {new Date(listing.created_at).toLocaleString()}</p>
         </div>
 
-        {renderClaimRows(listing)}
+        {/* Active listings: per-claim rows with pickup buttons */}
+        {!isTerminal && renderClaimRows(listing)}
+
+        {/* Terminal listings: compact outcome summary */}
+        {isTerminal && renderOutcomeSummary(listing)}
 
         {(listing.status === "NOSHOW" || noshowClaim) && (
           <div style={{ background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: "12px", padding: "14px 20px", marginTop: "16px" }}>
@@ -644,7 +682,6 @@ export default function BusinessDashboard() {
           </div>
         )}
 
-        {/* Action buttons — available on any non-terminal listing */}
         {!isTerminal && !isEditingThis && (
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "20px" }}>
             {isEditable && (
@@ -670,7 +707,6 @@ export default function BusinessDashboard() {
           </div>
         )}
 
-        {/* Re-list button for cancelled listings */}
         {isCancelled && !relistId && (
           <div style={{ marginTop: "16px" }}>
             <button onClick={() => { setRelistId(listing.id); setRelistExpiry(""); }}
@@ -681,10 +717,10 @@ export default function BusinessDashboard() {
         )}
 
         {isTerminal && !isCancelled && (
-          <p style={{ marginTop: "14px", fontSize: "13px", color: "#6b7280", fontStyle: "italic" }}>
-            {listing.status === "PICKED_UP" && "Successfully picked up."}
-            {listing.status === "EXPIRED"   && "This listing expired without being claimed."}
-            {(listing.status === "NOSHOW" || noshowClaim) && "Customer did not show up."}
+          <p style={{ marginTop: "12px", fontSize: "13px", color: "#6b7280", fontStyle: "italic" }}>
+            {listing.status === "PICKED_UP" && "Listing closed — all active claims resolved."}
+            {listing.status === "EXPIRED"   && "This listing expired."}
+            {(listing.status === "NOSHOW" || (noshowClaim && listing.status !== "PICKED_UP")) && "Customer did not show up."}
           </p>
         )}
       </div>
