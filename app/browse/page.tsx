@@ -22,7 +22,8 @@ const FILTER_T: Record<string, Record<string, string>> = {
 
 type Listing = {
   id: string; business_name: string; food_name: string; category: string;
-  quantity: string; allergy_note: string; estimated_value: number; note: string;
+  quantity: string; quantity_total: number; quantity_remaining: number;
+  allergy_note: string; estimated_value: number; note: string;
   status: string; expires_at: string; created_at: string; claim_hold_minutes: number;
   address: string; maps_url: string; image_url: string; weight_kg: number;
   business_logo_url: string;
@@ -38,18 +39,19 @@ export default function BrowsePage() {
   const [sortBy, setSortBy]             = useState("Newest");
   const [loading, setLoading]           = useState(true);
   const [user, setUser]                 = useState<any>(null);
-  const [authReady, setAuthReady]       = useState(false);
   const [isBusiness, setIsBusiness]     = useState(false);
   const [isNgo, setIsNgo]               = useState(false);
   const [ngoName, setNgoName]           = useState<string | null>(null);
   const [isAdmin, setIsAdmin]           = useState(false);
   const [bizInfoMap, setBizInfoMap]     = useState<Record<string, BizInfo>>({});
   const [selectedId, setSelectedId]     = useState<string | null>(null);
-  const [claimForm, setClaimForm]       = useState({ first_name: "", email: "", phone: "", eta_minutes: 15 });
+  const [claimForm, setClaimForm]       = useState({ first_name: "", email: "", phone: "", eta_minutes: 15, quantity_claimed: 1 });
+  const [showBulkWarning, setShowBulkWarning] = useState(false);
   const [claimLoading, setClaimLoading] = useState(false);
   const [claimMsg, setClaimMsg]         = useState("");
   const [claimSuccess, setClaimSuccess] = useState(false);
   const [lastCode, setLastCode]         = useState("");
+  const [lastQty, setLastQty]           = useState(1);
   const [signinModal, setSigninModal]   = useState(false);
   const [signinEmail, setSigninEmail]   = useState("");
   const [signinPassword, setSigninPassword] = useState("");
@@ -68,7 +70,12 @@ export default function BrowsePage() {
   useEffect(() => { catRef.current = activeCategory; }, [activeCategory]);
   useEffect(() => { sortRef.current = sortBy; },        [sortBy]);
 
-  // FIX: load session on mount first, then subscribe to changes
+  // Bulk warning trigger
+  useEffect(() => {
+    setShowBulkWarning((claimForm.quantity_claimed || 1) >= 5);
+  }, [claimForm.quantity_claimed]);
+
+  // Load session on mount first, then subscribe
   useEffect(() => {
     let mounted = true;
 
@@ -110,15 +117,10 @@ export default function BrowsePage() {
         setIsBusiness(false); setIsNgo(false); setIsAdmin(false); setNgoName(null);
         setClaimForm(f => ({ ...f, email: "" }));
       }
-      if (mounted) setAuthReady(true);
     }
 
-    // Get initial session immediately
-    supabase.auth.getSession().then(({ data }) => {
-      resolveUser(data.session?.user ?? null);
-    });
+    supabase.auth.getSession().then(({ data }) => resolveUser(data.session?.user ?? null));
 
-    // Then subscribe to changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       resolveUser(session?.user ?? null);
     });
@@ -192,12 +194,14 @@ export default function BrowsePage() {
 
   function openClaim(id: string) {
     setSelectedId(id); setClaimMsg(""); setClaimSuccess(false);
+    setShowBulkWarning(false);
+    setClaimForm(f => ({ ...f, quantity_claimed: 1 }));
     const listing = listings.find(l => l.id === id);
     if (listing) {
       const maxEta = Math.min(Math.floor((new Date(listing.expires_at).getTime() - Date.now()) / 60000), 600);
       if (claimForm.eta_minutes > maxEta) {
         const opts = [10,15,20,30,45,60,90,120,180,240,300,360,420,480,540,600];
-        setClaimForm(f => ({ ...f, eta_minutes: opts.find(o => o <= maxEta) || 10 }));
+        setClaimForm(f => ({ ...f, eta_minutes: opts.find(o => o <= maxEta) || 10, quantity_claimed: 1 }));
       }
     }
   }
@@ -226,6 +230,8 @@ export default function BrowsePage() {
     if (!selectedId || (isBusiness && !isNgo)) return;
     if (!claimForm.phone.trim()) { setClaimMsg("Phone number is required."); return; }
     if (!claimForm.phone.startsWith("+")) { setClaimMsg("Please include your country code (e.g. +1 718 555 0123)."); return; }
+    const qty = claimForm.quantity_claimed || 1;
+    if (qty >= 5 && showBulkWarning) { setClaimMsg("Please confirm the large quantity warning above before reserving."); return; }
     setClaimLoading(true); setClaimMsg("");
     const res = await fetch("/api/claim-submit", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -233,14 +239,25 @@ export default function BrowsePage() {
         listingId: selectedId, first_name: claimForm.first_name.trim(),
         email: claimForm.email.trim().toLowerCase(), phone: claimForm.phone.trim(),
         eta_minutes: claimForm.eta_minutes, customer_user_id: user?.id || null,
+        quantity_claimed: qty,
       }),
     });
     const data = await res.json();
     if (data.success) {
       setClaimSuccess(true);
-      setLastCode(data.confirmation_code || data.code || data.claim?.confirmation_code || "");
-      setListings(prev => prev.filter(l => l.id !== selectedId));
-      setFiltered(prev => prev.filter(l => l.id !== selectedId));
+      setLastCode(data.confirmation_code || data.claim?.confirmation_code || "");
+      setLastQty(qty);
+      // Only remove from list if fully claimed
+      const listing = listings.find(l => l.id === selectedId);
+      const remaining = (listing?.quantity_remaining ?? 1) - qty;
+      if (remaining <= 0) {
+        setListings(prev => prev.filter(l => l.id !== selectedId));
+        setFiltered(prev => prev.filter(l => l.id !== selectedId));
+      } else {
+        // Update remaining count in state
+        setListings(prev => prev.map(l => l.id === selectedId ? { ...l, quantity_remaining: remaining } : l));
+        setFiltered(prev => prev.map(l => l.id === selectedId ? { ...l, quantity_remaining: remaining } : l));
+      }
     } else {
       setClaimMsg(data.error || "Failed to reserve. Please try again.");
     }
@@ -264,13 +281,13 @@ export default function BrowsePage() {
 
   function getEtaOptions(listingId: string | null) {
     const ALL = [
-      { value: 10, label: (l: string) => `10 ${l === "ar" ? "دقائق" : "minutes"}` },
-      { value: 15, label: (l: string) => `15 ${l === "ar" ? "دقائق" : "minutes"}` },
-      { value: 20, label: (l: string) => `20 ${l === "ar" ? "دقائق" : "minutes"}` },
-      { value: 30, label: (l: string) => `30 ${l === "ar" ? "دقائق" : "minutes"}` },
-      { value: 45, label: (l: string) => `45 ${l === "ar" ? "دقائق" : "minutes"}` },
-      { value: 60, label: (l: string) => `1 ${l === "fr" ? "heure" : l === "es" ? "hora" : l === "pt" ? "hora" : l === "ar" ? "ساعة" : "hour"}` },
-      { value: 90, label: (l: string) => `1.5 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
+      { value: 10,  label: (l: string) => `10 ${l === "ar" ? "دقائق" : "minutes"}` },
+      { value: 15,  label: (l: string) => `15 ${l === "ar" ? "دقائق" : "minutes"}` },
+      { value: 20,  label: (l: string) => `20 ${l === "ar" ? "دقائق" : "minutes"}` },
+      { value: 30,  label: (l: string) => `30 ${l === "ar" ? "دقائق" : "minutes"}` },
+      { value: 45,  label: (l: string) => `45 ${l === "ar" ? "دقائق" : "minutes"}` },
+      { value: 60,  label: (l: string) => `1 ${l === "fr" ? "heure" : l === "es" ? "hora" : l === "pt" ? "hora" : l === "ar" ? "ساعة" : "hour"}` },
+      { value: 90,  label: (l: string) => `1.5 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
       { value: 120, label: (l: string) => `2 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
       { value: 180, label: (l: string) => `3 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
       { value: 240, label: (l: string) => `4 ${l === "fr" ? "heures" : l === "es" ? "horas" : l === "pt" ? "horas" : l === "ar" ? "ساعات" : "hours"}` },
@@ -321,7 +338,7 @@ export default function BrowsePage() {
       <div style={{ maxWidth: "760px", margin: "0 auto", padding: "32px 16px" }}>
         <h1 style={{ fontSize: "28px", fontWeight: 900, color: "#0a2e1a", margin: "0 0 4px" }}>{T.browse}</h1>
         <p style={{ color: "#6b7280", fontSize: "14px", margin: "0 0 20px" }}>
-          {filtered.length} {filtered.length === 1 ? "item" : "items"} available now · refreshes every 30s
+          {filtered.length} {filtered.length === 1 ? "item" : "items"} available now
         </p>
 
         <div style={{ position: "relative", marginBottom: "14px" }}>
@@ -335,7 +352,7 @@ export default function BrowsePage() {
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "12px" }}>
             {liveCats.map(cat => (
               <button key={cat} onClick={() => handleCategory(cat)}
-                style={{ padding: "7px 16px", borderRadius: "20px", cursor: "pointer", fontSize: "13px", fontWeight: 700, transition: "all 0.15s",
+                style={{ padding: "7px 16px", borderRadius: "20px", cursor: "pointer", fontSize: "13px", fontWeight: 700,
                   background: activeCategory === cat ? "#0a2e1a" : "#fff",
                   color: activeCategory === cat ? "#4ade80" : "#374151",
                   border: activeCategory === cat ? "none" : "1px solid #e5e7eb",
@@ -371,19 +388,18 @@ export default function BrowsePage() {
         ) : filtered.length === 0 ? (
           <div style={{ background: "#fff", borderRadius: "20px", border: "1px solid #e5e7eb", padding: "60px 24px", textAlign: "center" }}>
             <p style={{ fontSize: "48px", margin: "0 0 16px" }}>🍽️</p>
-            <p style={{ fontSize: "18px", fontWeight: 800, color: "#0a2e1a", margin: "0 0 8px" }}>
-              {T.no_listings || "No food available right now"}
-            </p>
-            <p style={{ fontSize: "14px", color: "#6b7280", margin: 0 }}>
-              {T.no_listings_sub || "Listings refresh automatically every 30 seconds."}
-            </p>
+            <p style={{ fontSize: "18px", fontWeight: 800, color: "#0a2e1a", margin: "0 0 8px" }}>{T.no_listings}</p>
+            <p style={{ fontSize: "14px", color: "#6b7280", margin: 0 }}>{T.no_listings_sub}</p>
           </div>
         ) : filtered.map(listing => {
-          const bizInfo      = bizInfoMap[listing.business_name];
-          const timeLeft     = minsLeft(listing.expires_at);
-          const isUrgent     = timeLeft !== null && timeLeft.includes("m left") && parseInt(timeLeft) <= 30;
-          const isOwnNgo     = isNgo && !!ngoName && listing.business_name === ngoName;
-          const weightLbs    = listing.weight_kg && listing.weight_kg > 0 ? (listing.weight_kg * 2.205).toFixed(1) : null;
+          const bizInfo   = bizInfoMap[listing.business_name];
+          const timeLeft  = minsLeft(listing.expires_at);
+          const isUrgent  = timeLeft !== null && timeLeft.includes("m left") && parseInt(timeLeft) <= 30;
+          const isOwnNgo  = isNgo && !!ngoName && listing.business_name === ngoName;
+          const weightLbs = listing.weight_kg && listing.weight_kg > 0 ? (listing.weight_kg * 2.205).toFixed(1) : null;
+          const isMultiPortion = listing.quantity_total != null && listing.quantity_total > 1;
+          const remaining = listing.quantity_remaining ?? listing.quantity_total ?? 1;
+          const isLowStock = isMultiPortion && remaining <= 3;
 
           return (
             <div key={listing.id} style={{ background: "#fff", borderRadius: "20px", border: `1px solid ${isUrgent ? "#fde68a" : "#e5e7eb"}`, overflow: "hidden", marginBottom: "20px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
@@ -412,9 +428,22 @@ export default function BrowsePage() {
                   </div>
                 </div>
 
-                <p style={{ margin: "0 0 6px", fontSize: "14px", color: "#6b7280" }}>
-                  {listing.quantity}{weightLbs ? ` · ⚖️ ${weightLbs} lbs` : ""}
-                </p>
+                {/* Quantity display */}
+                {isMultiPortion ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
+                    <div style={{ background: isLowStock ? "#fef2f2" : "#f0fdf4", border: `1px solid ${isLowStock ? "#fecaca" : "#bbf7d0"}`, borderRadius: "8px", padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ fontSize: "16px" }}>{isLowStock ? "🔴" : "🟢"}</span>
+                      <span style={{ fontSize: "14px", fontWeight: 800, color: isLowStock ? "#dc2626" : "#16a34a" }}>
+                        {remaining} of {listing.quantity_total} portions left
+                      </span>
+                    </div>
+                    {weightLbs && <span style={{ fontSize: "13px", color: "#9ca3af" }}>· {weightLbs} lbs</span>}
+                  </div>
+                ) : (
+                  <p style={{ margin: "0 0 8px", fontSize: "14px", color: "#6b7280" }}>
+                    {listing.quantity}{weightLbs ? ` · ${weightLbs} lbs` : ""}
+                  </p>
+                )}
 
                 {listing.allergy_note && (
                   <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "6px", padding: "4px 10px", display: "inline-block" }}>
@@ -448,13 +477,9 @@ export default function BrowsePage() {
                     {bizInfo && (
                       <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "10px", display: "flex", flexDirection: "column", gap: "4px" }}>
                         {bizInfo.phone && (
-                          <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>
-                            📞 <a href={`tel:${bizInfo.phone}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>{bizInfo.phone}</a>
-                          </p>
+                          <p style={{ margin: 0, fontSize: "13px" }}>📞 <a href={`tel:${bizInfo.phone}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>{bizInfo.phone}</a></p>
                         )}
-                        <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>
-                          ✉️ <a href={`mailto:${bizInfo.email}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>{bizInfo.email}</a>
-                        </p>
+                        <p style={{ margin: 0, fontSize: "13px" }}>✉️ <a href={`mailto:${bizInfo.email}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>{bizInfo.email}</a></p>
                       </div>
                     )}
                   </div>
@@ -482,13 +507,11 @@ export default function BrowsePage() {
                     <p style={{ margin: 0, fontSize: "13px", color: "#166534", fontWeight: 600 }}>🏛 This is your listing</p>
                   </div>
                 )}
-
                 {isAdmin && isSignedIn && (
                   <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
                     <p style={{ margin: 0, fontSize: "13px", color: "#166534", fontWeight: 600 }}>👁️ Admin view — claims disabled</p>
                   </div>
                 )}
-
                 {isSignedIn && isBusiness && !isNgo && !isAdmin && (
                   <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
                     <p style={{ margin: 0, fontSize: "13px", color: "#6b7280" }}>
@@ -503,11 +526,12 @@ export default function BrowsePage() {
 
         {!loading && filtered.length > 0 && (
           <p style={{ textAlign: "center", fontSize: "13px", color: "#9ca3af", marginTop: "8px", marginBottom: "24px" }}>
-            {T.browse_footer || "Listings refresh every 30 seconds — All food is free"}
+            {T.browse_footer}
           </p>
         )}
       </div>
 
+      {/* Sign in modal */}
       {signinModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "20px", padding: "32px", width: "100%", maxWidth: "420px", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}>
@@ -523,7 +547,6 @@ export default function BrowsePage() {
                   <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#374151" }}>2. Click the confirmation link</p>
                   <p style={{ margin: 0, fontSize: "13px", color: "#374151" }}>3. You will be signed in automatically</p>
                 </div>
-                <p style={{ margin: "0 0 16px", fontSize: "12px", color: "#9ca3af" }}>Do not see it? Check your spam folder.</p>
                 <button onClick={() => { setSigninModal(false); setSigninDone(false); }}
                   style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "10px 24px", borderRadius: "8px", cursor: "pointer", fontSize: "14px", fontWeight: 600 }}>
                   OK, got it
@@ -549,13 +572,13 @@ export default function BrowsePage() {
                       onChange={e => setSigninEmail(e.target.value)} placeholder="you@email.com"/>
                   </div>
                   <div style={{ marginBottom: signinMode === "signup" ? "16px" : "8px" }}>
-                    <label style={lbl}>{locale === "fr" ? "Mot de passe *" : locale === "es" ? "Contraseña *" : locale === "pt" ? "Senha *" : locale === "ar" ? "كلمة المرور *" : "Password *"}</label>
+                    <label style={lbl}>{T.forgot_password ? "Password *" : "Password *"}</label>
                     <input style={inp} type="password" required value={signinPassword}
                       onChange={e => setSigninPassword(e.target.value)} placeholder="Min. 6 characters" minLength={6}/>
                   </div>
                   {signinMode === "signin" && (
                     <div style={{ textAlign: "right", marginBottom: "16px" }}>
-                      <a href="/customer/reset-password" style={{ fontSize: "13px", color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>
+                      <a href="/customer/login" style={{ fontSize: "13px", color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>
                         {T.forgot_password || "Forgot password?"}
                       </a>
                     </div>
@@ -584,8 +607,7 @@ export default function BrowsePage() {
                   </p>
                 </form>
                 <p style={{ textAlign: "center", marginTop: "14px", fontSize: "12px", color: "#9ca3af" }}>
-                  Business?{" "}
-                  <a href="/business/login" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>Business login →</a>
+                  Business? <a href="/business/login" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>Business login →</a>
                 </p>
               </>
             )}
@@ -593,6 +615,7 @@ export default function BrowsePage() {
         </div>
       )}
 
+      {/* Claim modal */}
       {selectedId && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "20px", padding: "32px", width: "100%", maxWidth: "480px", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}>
@@ -600,68 +623,159 @@ export default function BrowsePage() {
               <div style={{ textAlign: "center" }}>
                 <div style={{ fontSize: "56px", marginBottom: "12px" }}>🎉</div>
                 <h2 style={{ margin: "0 0 8px", fontSize: "22px", fontWeight: 800, color: "#0a2e1a" }}>
-                  {locale === "fr" ? "Réservation confirmée !" : locale === "es" ? "¡Reserva confirmada!" : locale === "pt" ? "Reserva confirmada!" : locale === "ar" ? "تم تأكيد الحجز!" : "Reservation Confirmed!"}
+                  {lastQty > 1 ? `${lastQty} Portions Reserved!` : "Reservation Confirmed!"}
                 </h2>
                 <p style={{ margin: "0 0 16px", color: "#6b7280", fontSize: "14px" }}>Your pickup code:</p>
                 <div style={{ background: "#f0fdf4", border: "2px solid #16a34a", borderRadius: "12px", padding: "20px", marginBottom: "16px" }}>
                   <p style={{ margin: 0, fontSize: "48px", fontWeight: 900, letterSpacing: "8px", color: "#0a2e1a", fontFamily: "monospace" }}>{lastCode}</p>
                 </div>
-                <p style={{ color: "#6b7280", fontSize: "13px", marginBottom: "20px" }}>Check your email for details. Show this code when you arrive.</p>
+                <p style={{ color: "#6b7280", fontSize: "13px", marginBottom: "20px" }}>
+                  {lastQty > 1 ? `You reserved ${lastQty} portions. ` : ""}Check your email for details. Show this code when you arrive.
+                </p>
                 <button onClick={() => { setSelectedId(null); setClaimSuccess(false); }}
                   style={{ background: "#16a34a", color: "#fff", border: "none", padding: "12px 28px", borderRadius: "10px", cursor: "pointer", fontWeight: 700, fontSize: "15px" }}>
                   Done
                 </button>
               </div>
-            ) : (
-              <>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
-                  <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>
-                    {locale === "fr" ? "Réserver" : locale === "es" ? "Reservar" : locale === "pt" ? "Reservar" : locale === "ar" ? "احجز" : "Reserve This Food"}
-                  </h2>
-                  <button onClick={() => setSelectedId(null)} style={{ background: "none", border: "none", fontSize: "22px", cursor: "pointer", color: "#9ca3af" }}>✕</button>
-                </div>
-                <form onSubmit={handleClaim}>
-                  {claimMsg && (
-                    <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px", padding: "10px 14px", marginBottom: "16px" }}>
-                      <p style={{ margin: 0, color: "#991b1b", fontSize: "13px" }}>{claimMsg}</p>
+            ) : (() => {
+              const listing = listings.find(l => l.id === selectedId);
+              const remaining = listing?.quantity_remaining ?? listing?.quantity_total ?? 1;
+              const isMulti = remaining > 1;
+              const qty = claimForm.quantity_claimed || 1;
+              const bulkConfirmed = !showBulkWarning;
+
+              return (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+                    <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0a2e1a" }}>
+                      {locale === "fr" ? "Réserver" : locale === "es" ? "Reservar" : locale === "pt" ? "Reservar" : locale === "ar" ? "احجز" : "Reserve This Food"}
+                    </h2>
+                    <button onClick={() => setSelectedId(null)} style={{ background: "none", border: "none", fontSize: "22px", cursor: "pointer", color: "#9ca3af" }}>✕</button>
+                  </div>
+
+                  {isMulti && (
+                    <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "12px", padding: "14px 18px", marginBottom: "16px" }}>
+                      <p style={{ margin: "0 0 2px", fontSize: "13px", fontWeight: 700, color: "#1d4ed8" }}>
+                        {remaining} portion{remaining === 1 ? "" : "s"} available
+                      </p>
+                      <p style={{ margin: 0, fontSize: "12px", color: "#3b82f6" }}>
+                        Claim 1 for yourself or up to all {remaining} portions
+                      </p>
                     </div>
                   )}
-                  <div style={{ marginBottom: "14px" }}>
-                    <label style={lbl}>{T.claim_name || "Your First Name"} *</label>
-                    <input style={inp} required value={claimForm.first_name}
-                      onChange={e => setClaimForm(f => ({ ...f, first_name: e.target.value }))} placeholder="Your first name"/>
-                  </div>
-                  <div style={{ marginBottom: "14px" }}>
-                    <label style={lbl}>Email *</label>
-                    <input style={inp} type="email" required value={claimForm.email}
-                      onChange={e => setClaimForm(f => ({ ...f, email: e.target.value }))}/>
-                  </div>
-                  <div style={{ marginBottom: "14px" }}>
-                    <label style={lbl}>{T.claim_phone || "Phone Number"} * <span style={{ fontWeight: 400, color: "#9ca3af" }}>(with country code)</span></label>
-                    <input style={{ ...inp, borderColor: claimForm.phone && !claimForm.phone.startsWith("+") ? "#f87171" : "#d1d5db" }}
-                      type="tel" required value={claimForm.phone}
-                      onChange={e => setClaimForm(f => ({ ...f, phone: e.target.value }))}
-                      placeholder={T.phone_placeholder || "e.g. +1 718 555 0123"}/>
-                    {claimForm.phone && !claimForm.phone.startsWith("+") && (
-                      <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#ef4444" }}>Must start with + and country code</p>
+
+                  <form onSubmit={handleClaim}>
+                    {claimMsg && (
+                      <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px", padding: "10px 14px", marginBottom: "16px" }}>
+                        <p style={{ margin: 0, color: "#991b1b", fontSize: "13px" }}>{claimMsg}</p>
+                      </div>
                     )}
-                  </div>
-                  <div style={{ marginBottom: "20px" }}>
-                    <label style={lbl}>{T.claim_eta || "Your Arrival Time"}</label>
-                    <select style={{ ...inp, cursor: "pointer" }} value={claimForm.eta_minutes}
-                      onChange={e => setClaimForm(f => ({ ...f, eta_minutes: Number(e.target.value) }))}>
-                      {getEtaOptions(selectedId).map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label(locale)}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <button type="submit" disabled={claimLoading}
-                    style={{ width: "100%", background: claimLoading ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "14px", borderRadius: "10px", cursor: claimLoading ? "not-allowed" : "pointer", fontSize: "15px", fontWeight: 800 }}>
-                    {claimLoading ? "..." : (T.claim_btn || "Reserve Now — It's Free")}
-                  </button>
-                </form>
-              </>
-            )}
+
+                    <div style={{ marginBottom: "14px" }}>
+                      <label style={lbl}>{T.claim_name || "Your First Name"} *</label>
+                      <input style={inp} required value={claimForm.first_name}
+                        onChange={e => setClaimForm(f => ({ ...f, first_name: e.target.value }))} placeholder="Your first name"/>
+                    </div>
+                    <div style={{ marginBottom: "14px" }}>
+                      <label style={lbl}>Email *</label>
+                      <input style={inp} type="email" required value={claimForm.email}
+                        onChange={e => setClaimForm(f => ({ ...f, email: e.target.value }))}/>
+                    </div>
+                    <div style={{ marginBottom: "14px" }}>
+                      <label style={lbl}>{T.claim_phone || "Phone Number"} * <span style={{ fontWeight: 400, color: "#9ca3af" }}>(with country code)</span></label>
+                      <input style={{ ...inp, borderColor: claimForm.phone && !claimForm.phone.startsWith("+") ? "#f87171" : "#d1d5db" }}
+                        type="tel" required value={claimForm.phone}
+                        onChange={e => setClaimForm(f => ({ ...f, phone: e.target.value }))}
+                        placeholder={T.phone_placeholder || "e.g. +1 718 555 0123"}/>
+                      {claimForm.phone && !claimForm.phone.startsWith("+") && (
+                        <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#ef4444" }}>Must start with + and country code</p>
+                      )}
+                    </div>
+
+                    {/* Quantity selector — only shown for multi-portion listings */}
+                    {isMulti && (
+                      <div style={{ marginBottom: "16px" }}>
+                        <label style={lbl}>How many portions do you need? *</label>
+                        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "10px" }}>
+                          <button type="button"
+                            onClick={() => setClaimForm(f => ({ ...f, quantity_claimed: Math.max(1, (f.quantity_claimed || 1) - 1) }))}
+                            style={{ width: "44px", height: "44px", borderRadius: "10px", border: "1px solid #d1d5db", background: "#f9fafb", fontSize: "22px", cursor: "pointer", fontWeight: 700, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            −
+                          </button>
+                          <div style={{ flex: 1, textAlign: "center", background: "#f9fafb", borderRadius: "10px", padding: "10px", border: "1px solid #e5e7eb" }}>
+                            <span style={{ fontSize: "32px", fontWeight: 900, color: "#0a2e1a" }}>{qty}</span>
+                            <span style={{ fontSize: "13px", color: "#6b7280", marginLeft: "8px" }}>of {remaining}</span>
+                          </div>
+                          <button type="button"
+                            onClick={() => setClaimForm(f => ({ ...f, quantity_claimed: Math.min(remaining, (f.quantity_claimed || 1) + 1) }))}
+                            style={{ width: "44px", height: "44px", borderRadius: "10px", border: "1px solid #d1d5db", background: "#f9fafb", fontSize: "22px", cursor: "pointer", fontWeight: 700, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            +
+                          </button>
+                        </div>
+                        {/* Quick pick buttons */}
+                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                          {[1, Math.ceil(remaining / 2), remaining]
+                            .filter((v, i, arr) => v > 0 && arr.indexOf(v) === i)
+                            .map(v => (
+                              <button key={v} type="button"
+                                onClick={() => setClaimForm(f => ({ ...f, quantity_claimed: v }))}
+                                style={{ padding: "6px 16px", borderRadius: "20px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 700,
+                                  background: qty === v ? "#0a2e1a" : "#f3f4f6",
+                                  color: qty === v ? "#4ade80" : "#374151" }}>
+                                {v === 1 ? "Just 1" : v === remaining ? `All ${v}` : `${v}`}
+                              </button>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Bulk warning — shown when 5+ selected and not yet confirmed */}
+                    {qty >= 5 && showBulkWarning && (
+                      <div style={{ background: "#fffbeb", border: "2px solid #f59e0b", borderRadius: "12px", padding: "16px 18px", marginBottom: "16px" }}>
+                        <p style={{ margin: "0 0 6px", fontSize: "14px", fontWeight: 800, color: "#92400e" }}>
+                          ⚠️ Large Quantity — Please Confirm
+                        </p>
+                        <p style={{ margin: "0 0 14px", fontSize: "13px", color: "#78350f", lineHeight: 1.5 }}>
+                          You are about to claim <b>{qty} portions</b>. Only take what you can genuinely pick up — no-shows affect the whole community and may result in account suspension.
+                        </p>
+                        <div style={{ display: "flex", gap: "8px" }}>
+                          <button type="button" onClick={() => setShowBulkWarning(false)}
+                            style={{ flex: 1, background: "#f59e0b", color: "#fff", border: "none", padding: "10px", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: 700 }}>
+                            Yes, I can pick all {qty} up
+                          </button>
+                          <button type="button" onClick={() => setClaimForm(f => ({ ...f, quantity_claimed: 1 }))}
+                            style={{ flex: 1, background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "10px", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: 600 }}>
+                            Take just 1
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={{ marginBottom: "20px" }}>
+                      <label style={lbl}>{T.claim_eta || "Your Arrival Time"}</label>
+                      <select style={{ ...inp, cursor: "pointer" }} value={claimForm.eta_minutes}
+                        onChange={e => setClaimForm(f => ({ ...f, eta_minutes: Number(e.target.value) }))}>
+                        {getEtaOptions(selectedId).map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label(locale)}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <button type="submit"
+                      disabled={claimLoading || (qty >= 5 && showBulkWarning)}
+                      style={{
+                        width: "100%",
+                        background: (claimLoading || (qty >= 5 && showBulkWarning)) ? "#9ca3af" : "#16a34a",
+                        color: "#fff", border: "none", padding: "14px", borderRadius: "10px",
+                        cursor: (claimLoading || (qty >= 5 && showBulkWarning)) ? "not-allowed" : "pointer",
+                        fontSize: "15px", fontWeight: 800
+                      }}>
+                      {claimLoading ? "..." : qty > 1 ? `Reserve ${qty} Portions — It's Free` : "Reserve Now — It's Free"}
+                    </button>
+                  </form>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}
