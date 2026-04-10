@@ -488,6 +488,66 @@ export default function BusinessDashboard() {
     );
   }
 
+  function renderClaimRows(listing: ListingRow) {
+    const allClaims = listing.claims || [];
+    if (allClaims.length === 0) return null;
+
+    return (
+      <div style={{ marginTop: "16px" }}>
+        {allClaims.map(claim => {
+          const isActive    = claim.status === "active";
+          const isPickedUp  = claim.status === "picked_up";
+          const isCancelled = claim.status === "cancelled";
+          const isNoshow    = claim.status === "noshow";
+          const claimerAvatar = claimerAvatars[claim.id];
+          const sc = CLAIM_STATUS_COLOR[claim.status] || { bg: "#6b7280", text: "#fff" };
+
+          if (isActive) {
+            // Full info — active reservation
+            return (
+              <div key={claim.id} style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: "12px", padding: "16px 20px", marginBottom: "10px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                  <p style={{ margin: 0, fontWeight: 700, color: "#1d4ed8", fontSize: "14px" }}>🔵 Active Reservation</p>
+                  {(claim.quantity_claimed || 1) > 1 && (
+                    <span style={{ background: "#2563eb", color: "#fff", fontSize: "11px", fontWeight: 700, padding: "3px 10px", borderRadius: "20px" }}>
+                      {claim.quantity_claimed} portions
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                  {claimerAvatar
+                    ? <img src={claimerAvatar} alt="Customer" style={{ width: "48px", height: "48px", borderRadius: "50%", objectFit: "cover", border: "2px solid #bfdbfe", flexShrink: 0 }}/>
+                    : <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "#dbeafe", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", flexShrink: 0 }}>🙋</div>
+                  }
+                  <div style={{ fontSize: "13px", color: "#1e3a5f", lineHeight: 1.9 }}>
+                    <p style={{ margin: 0 }}><b>Name:</b> {claim.first_name}</p>
+                    <p style={{ margin: 0 }}><b>Email:</b> {claim.email}</p>
+                    <p style={{ margin: 0 }}><b>Phone:</b> {claim.phone || "Not provided"}</p>
+                    <p style={{ margin: 0 }}><b>ETA:</b> {claim.eta_minutes} min</p>
+                    <p style={{ margin: 0 }}><b>Code:</b> <span style={{ fontWeight: 900, fontSize: "16px", color: "#2563eb", letterSpacing: "3px", fontFamily: "monospace" }}>{claim.confirmation_code}</span></p>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          // Non-active — name only, status badge
+          return (
+            <div key={claim.id} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px 16px", marginBottom: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <p style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#374151" }}>
+                {claim.first_name}
+                {(claim.quantity_claimed || 1) > 1 && <span style={{ marginLeft: "8px", fontSize: "12px", color: "#9ca3af", fontWeight: 400 }}>({claim.quantity_claimed} portions)</span>}
+              </p>
+              <span style={{ background: sc.bg, color: sc.text, fontSize: "11px", fontWeight: 700, padding: "3px 10px", borderRadius: "20px" }}>
+                {isPickedUp ? "Picked Up" : isCancelled ? "Cancelled" : isNoshow ? "No-show" : claim.status}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   function renderListingCard(listing: ListingRow) {
     const isTerminal  = TERMINAL.includes(listing.status);
     const isReserved  = listing.status === "RESERVED";
@@ -495,10 +555,8 @@ export default function BusinessDashboard() {
     const isPickedUp  = listing.status === "PICKED_UP";
     const isCancelled = listing.status === "CANCELLED";
     const sc          = STATUS_COLOR[listing.status] || { bg: "#6b7280", text: "#fff" };
-    const activeClaim = listing.claims?.find(c => c.status === "active");
     const noshowClaim = listing.claims?.find(c => c.noshow === true);
     const weightLbs   = listing.weight_kg ? listing.weight_kg * 2.205 : null;
-    const claimerAvatar = activeClaim ? claimerAvatars[activeClaim.id] : undefined;
     const isMultiPortion = listing.quantity_total != null && listing.quantity_total > 1;
     const remaining = listing.quantity_remaining ?? listing.quantity_total ?? null;
     const activeClaims = (listing.claims || []).filter(c => c.status === "active");
@@ -525,14 +583,6 @@ export default function BusinessDashboard() {
               : listing.quantity || "N/A"}
             {weightLbs && weightLbs > 0 && <span style={{ color: "#9ca3af", fontWeight: 400 }}> · {weightLbs.toFixed(1)} lbs</span>}
           </p>
-          {activeClaims.length > 0 && (
-            <p style={{ margin: "2px 0" }}>
-              <b>Active claimers:</b>{" "}
-              <span style={{ color: "#2563eb", fontWeight: 700 }}>
-                {activeClaims.map(c => `${c.first_name} (${c.quantity_claimed || 1})`).join(", ")}
-              </span>
-            </p>
-          )}
           <p style={{ margin: "2px 0" }}><b>Address:</b> {listing.address || "N/A"}</p>
           {listing.estimated_value && listing.estimated_value > 0 && <p style={{ margin: "2px 0" }}><b>Est. Value:</b> ${Number(listing.estimated_value).toFixed(2)}</p>}
           {listing.allergy_note && <p style={{ margin: "2px 0" }}><b>Allergy:</b> {listing.allergy_note}</p>}
@@ -541,28 +591,8 @@ export default function BusinessDashboard() {
           <p style={{ margin: "2px 0" }}><b>Posted:</b> {new Date(listing.created_at).toLocaleString()}</p>
         </div>
 
-        {isReserved && activeClaim && (
-          <div style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: "12px", padding: "16px 20px", marginTop: "16px" }}>
-            <p style={{ margin: "0 0 12px", fontWeight: 700, color: "#1d4ed8", fontSize: "14px" }}>Reserved by Customer</p>
-            <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-              {claimerAvatar ? <img src={claimerAvatar} alt="Customer" style={{ width: "52px", height: "52px", borderRadius: "50%", objectFit: "cover", border: "2px solid #bfdbfe", flexShrink: 0 }}/> : <div style={{ width: "52px", height: "52px", borderRadius: "50%", background: "#dbeafe", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "24px", flexShrink: 0 }}>🙋</div>}
-              <div style={{ fontSize: "14px", color: "#1e3a5f", lineHeight: 2 }}>
-                <p style={{ margin: "2px 0" }}><b>Name:</b> {activeClaim.first_name}</p>
-                <p style={{ margin: "2px 0" }}><b>Email:</b> {activeClaim.email}</p>
-                <p style={{ margin: "2px 0" }}><b>Phone:</b> {activeClaim.phone || "Not provided"}</p>
-                <p style={{ margin: "2px 0" }}><b>ETA:</b> {activeClaim.eta_minutes} min · <b>Code:</b> <span style={{ fontWeight: 900, fontSize: "17px", color: "#2563eb", letterSpacing: "2px" }}>{activeClaim.confirmation_code}</span></p>
-                {(activeClaim.quantity_claimed || 1) > 1 && <p style={{ margin: "2px 0" }}><b>Portions:</b> <span style={{ color: "#2563eb", fontWeight: 800 }}>{activeClaim.quantity_claimed}</span></p>}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {isPickedUp && (
-          <div style={{ background: "#f5f3ff", border: "1.5px solid #ddd6fe", borderRadius: "12px", padding: "16px 20px", marginTop: "16px" }}>
-            <p style={{ margin: "0 0 4px", fontWeight: 700, color: "#6d28d9", fontSize: "14px" }}>✅ Successfully picked up</p>
-            <p style={{ margin: 0, fontSize: "12px", color: "#9ca3af", fontStyle: "italic" }}>Contact details hidden after pickup.</p>
-          </div>
-        )}
+        {/* Claim rows — full info when active, name only when done */}
+        {renderClaimRows(listing)}
 
         {(listing.status === "NOSHOW" || noshowClaim) && (
           <div style={{ background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: "12px", padding: "14px 20px", marginTop: "16px" }}>
@@ -663,8 +693,8 @@ export default function BusinessDashboard() {
 
   function renderReceivedCard(claim: ReceivedClaim) {
     const sc = CLAIM_STATUS_COLOR[claim.status] || { bg: "#6b7280", text: "#fff" };
-    const isActive = claim.status === "active";
-    const isPickedUp = claim.status === "picked_up";
+    const isActive    = claim.status === "active";
+    const isPickedUp  = claim.status === "picked_up";
     const isCancelled = claim.status === "cancelled";
     return (
       <div key={claim.id} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "20px 24px", marginBottom: "14px", display: "flex", gap: "16px", alignItems: "flex-start", opacity: isCancelled ? 0.75 : 1 }}>
@@ -677,7 +707,7 @@ export default function BusinessDashboard() {
               {claim.address && <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#9ca3af" }}>📍 {claim.address}</p>}
             </div>
             <span style={{ background: sc.bg, color: sc.text, fontSize: "12px", fontWeight: 700, padding: "4px 12px", borderRadius: "20px", flexShrink: 0, textTransform: "uppercase" }}>
-              {claim.status === "picked_up" ? "Picked Up" : claim.status === "active" ? "Active" : claim.status === "cancelled" ? "Cancelled" : claim.status}
+              {isPickedUp ? "Picked Up" : isActive ? "Active" : isCancelled ? "Cancelled" : claim.status}
             </span>
           </div>
           <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", fontSize: "13px", color: "#374151" }}>
