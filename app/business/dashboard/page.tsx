@@ -295,13 +295,11 @@ export default function BusinessDashboard() {
       if (data.verified) {
         setVerifyMsgs(prev => ({ ...prev, [id]: `✅ Verified! ${data.claimerName} picked up ${data.quantityClaimed > 1 ? data.quantityClaimed + " portions" : "the food"}.` }));
         setTimeout(() => {
-          setListings(prev => prev.map(l => l.id === id ? { ...l, status: "PICKED_UP" } : l));
           setCodeInputs(prev => { const n = { ...prev }; delete n[id]; return n; });
           setVerifyMsgs(prev => { const n = { ...prev }; delete n[id]; return n; });
           loadDashboard(adminView);
         }, 2000);
       } else {
-        setListings(prev => prev.map(l => l.id === id ? { ...l, status: "PICKED_UP" } : l));
         loadDashboard(adminView);
       }
     }
@@ -315,7 +313,7 @@ export default function BusinessDashboard() {
     } else {
       await supabase.from("listings").update({ status: "AVAILABLE", reserved_until: null, claim_code: null }).eq("id", id);
     }
-    setListings(prev => prev.map(l => l.id === id ? { ...l, status: "AVAILABLE", reserved_until: null as any, claim_code: null as any } : l));
+    loadDashboard(adminView);
   }
 
   async function handleCancelListing(id: string) {
@@ -323,7 +321,7 @@ export default function BusinessDashboard() {
     const res = await fetch("/api/cancel-listing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ listingId: id }) });
     const data = await res.json();
     if (data.success) {
-      setListings(prev => prev.map(l => l.id === id ? { ...l, status: "CANCELLED" } : l));
+      loadDashboard(adminView);
       if (data.notified > 0) alert(`${data.notified} customer(s) notified.`);
     }
   }
@@ -417,7 +415,7 @@ export default function BusinessDashboard() {
             {activeClaims.length > 0 && (
               <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "10px", padding: "12px 16px", marginBottom: "14px" }}>
                 <p style={{ margin: 0, fontSize: "13px", color: "#92400e" }}>
-                  ⚠️ <b>{activeClaims.length} active claimer(s)</b> have reserved {totalClaimed} portion(s). If you reduce below {totalClaimed}, their claims will be automatically reduced or cancelled and they will be notified.
+                  ⚠️ <b>{activeClaims.length} active claimer(s)</b> have reserved {totalClaimed} portion(s). If you reduce below {totalClaimed}, their claims will be automatically reduced or cancelled.
                 </p>
               </div>
             )}
@@ -561,8 +559,8 @@ export default function BusinessDashboard() {
 
         {isPickedUp && (
           <div style={{ background: "#f5f3ff", border: "1.5px solid #ddd6fe", borderRadius: "12px", padding: "16px 20px", marginTop: "16px" }}>
-            <p style={{ margin: "0 0 6px", fontWeight: 700, color: "#6d28d9", fontSize: "14px" }}>✅ Successfully picked up</p>
-            <p style={{ margin: 0, fontSize: "12px", color: "#9ca3af", fontStyle: "italic" }}>Contact details hidden after pickup to protect customer privacy.</p>
+            <p style={{ margin: "0 0 4px", fontWeight: 700, color: "#6d28d9", fontSize: "14px" }}>✅ Successfully picked up</p>
+            <p style={{ margin: 0, fontSize: "12px", color: "#9ca3af", fontStyle: "italic" }}>Contact details hidden after pickup.</p>
           </div>
         )}
 
@@ -665,7 +663,9 @@ export default function BusinessDashboard() {
 
   function renderReceivedCard(claim: ReceivedClaim) {
     const sc = CLAIM_STATUS_COLOR[claim.status] || { bg: "#6b7280", text: "#fff" };
-    const isActive = claim.status === "active"; const isPickedUp = claim.status === "picked_up"; const isCancelled = claim.status === "cancelled";
+    const isActive = claim.status === "active";
+    const isPickedUp = claim.status === "picked_up";
+    const isCancelled = claim.status === "cancelled";
     return (
       <div key={claim.id} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "20px 24px", marginBottom: "14px", display: "flex", gap: "16px", alignItems: "flex-start", opacity: isCancelled ? 0.75 : 1 }}>
         {claim.image_url ? <img src={claim.image_url} alt={claim.food_name} style={{ width: "72px", height: "72px", borderRadius: "12px", objectFit: "cover", flexShrink: 0 }}/> : <div style={{ width: "72px", height: "72px", borderRadius: "12px", background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "32px", flexShrink: 0 }}>🍽️</div>}
