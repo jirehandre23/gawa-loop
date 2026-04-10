@@ -13,6 +13,7 @@ type Order = {
   created_at: string;
   confirmation_code: string;
   quantity_claimed: number;
+  eta_minutes: number;
   noshow: boolean;
   listings: {
     food_name: string;
@@ -24,6 +25,7 @@ type Order = {
     quantity_total?: number;
     quantity_remaining?: number;
   } | null;
+  business_phone?: string | null;
 };
 
 const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
@@ -32,6 +34,22 @@ const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }>
   cancelled: { bg: "#f9fafb", color: "#9ca3af", label: "Cancelled" },
   noshow:    { bg: "#fef2f2", color: "#ef4444",  label: "No-show" },
 };
+
+const ETA_OPTIONS = [
+  { value: 10,  label: "10 minutes" },
+  { value: 15,  label: "15 minutes" },
+  { value: 20,  label: "20 minutes" },
+  { value: 30,  label: "30 minutes" },
+  { value: 45,  label: "45 minutes" },
+  { value: 60,  label: "1 hour" },
+  { value: 90,  label: "1h 30m" },
+  { value: 120, label: "2 hours" },
+  { value: 180, label: "3 hours" },
+  { value: 240, label: "4 hours" },
+  { value: 300, label: "5 hours" },
+  { value: 360, label: "6 hours" },
+  { value: 600, label: "10 hours" },
+];
 
 export default function CustomerProfile() {
   const [profile, setProfile]       = useState<Record<string, string> | null>(null);
@@ -44,8 +62,61 @@ export default function CustomerProfile() {
   const [orders, setOrders]         = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [activeTab, setActiveTab]   = useState<"profile" | "orders">("profile");
+
+  // New state for cancel + ETA update
+  const [etaEditId, setEtaEditId]         = useState<string | null>(null);
+  const [etaEditValue, setEtaEditValue]   = useState<number>(30);
+  const [etaLoading, setEtaLoading]       = useState(false);
+  const [etaMsg, setEtaMsg]               = useState<Record<string, string>>({});
+  const [cancelLoading, setCancelLoading] = useState<string | null>(null);
+  const [cancelConfirm, setCancelConfirm] = useState<string | null>(null);
+
   const cameraRef = useRef<HTMLInputElement>(null);
   const fileRef   = useRef<HTMLInputElement>(null);
+
+  function minsLeft(expires_at: string) {
+    const diff = new Date(expires_at).getTime() - Date.now();
+    if (diff <= 0) return null;
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return `${mins}m left`;
+    return `${Math.floor(mins / 60)}h ${mins % 60}m left`;
+  }
+
+  async function handleCancelClaim(claimId: string) {
+    setCancelLoading(claimId);
+    const res = await fetch("/api/cancel-claim", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ claimId, userId }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setOrders(prev => prev.filter(o => o.id !== claimId));
+    } else {
+      setEtaMsg(prev => ({ ...prev, [claimId]: data.error || "Failed to cancel." }));
+    }
+    setCancelLoading(null);
+    setCancelConfirm(null);
+  }
+
+  async function handleUpdateEta(claimId: string, listingExpiresAt: string) {
+    setEtaLoading(true);
+    const res = await fetch("/api/update-eta", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ claimId, userId, eta_minutes: etaEditValue }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setOrders(prev => prev.map(o => o.id === claimId ? { ...o, eta_minutes: etaEditValue } : o));
+      setEtaEditId(null);
+      setEtaMsg(prev => ({ ...prev, [claimId]: "Arrival time updated!" }));
+      setTimeout(() => setEtaMsg(prev => { const n = { ...prev }; delete n[claimId]; return n; }), 3000);
+    } else {
+      setEtaMsg(prev => ({ ...prev, [claimId]: data.error || "Failed to update." }));
+    }
+    setEtaLoading(false);
+  }
 
   useEffect(() => {
     async function load() {
@@ -78,11 +149,10 @@ export default function CustomerProfile() {
   async function loadOrders(uid: string, email: string | null) {
     setOrdersLoading(true);
 
-    // Query by user_id first
     const { data: byId } = await supabase
       .from("claims")
       .select(`
-        id, status, created_at, confirmation_code, quantity_claimed, noshow,
+        id, status, created_at, confirmation_code, quantity_claimed, eta_minutes, noshow,
         listings (
           food_name, category, business_name, address, image_url,
           expires_at, quantity_total, quantity_remaining
@@ -92,13 +162,12 @@ export default function CustomerProfile() {
       .order("created_at", { ascending: false })
       .limit(50);
 
-    // Also query by email to catch old claims before user_id was tracked
     let byEmail: any[] = [];
     if (email) {
       const { data: emailData } = await supabase
         .from("claims")
         .select(`
-          id, status, created_at, confirmation_code, quantity_claimed, noshow,
+          id, status, created_at, confirmation_code, quantity_claimed, eta_minutes, noshow,
           listings (
             food_name, category, business_name, address, image_url,
             expires_at, quantity_total, quantity_remaining
@@ -111,14 +180,32 @@ export default function CustomerProfile() {
       byEmail = emailData || [];
     }
 
-    // Merge, deduplicate by id, sort by date
     const all = [...(byId || []), ...byEmail];
     const seen = new Set<string>();
     const merged = all
       .filter(o => { if (seen.has(o.id)) return false; seen.add(o.id); return true; })
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-    setOrders(merged as Order[]);
+    // Fetch business phone numbers for active orders
+    const activeOnes = merged.filter(o => o.status === "active");
+    const bizNames = [...new Set(activeOnes.map((o: any) => o.listings?.business_name).filter(Boolean))];
+    let phoneMap: Record<string, string> = {};
+    if (bizNames.length > 0) {
+      const { data: bizData } = await supabase
+        .from("businesses")
+        .select("name, phone")
+        .in("name", bizNames);
+      if (bizData) {
+        for (const b of bizData) if (b.phone) phoneMap[b.name] = b.phone;
+      }
+    }
+
+    const withPhones = merged.map((o: any) => ({
+      ...o,
+      business_phone: o.listings?.business_name ? (phoneMap[o.listings.business_name] || null) : null,
+    }));
+
+    setOrders(withPhones as Order[]);
     setOrdersLoading(false);
   }
 
@@ -312,13 +399,22 @@ export default function CustomerProfile() {
               </div>
             )}
 
-            {/* Active reservations first */}
+            {/* Active reservations */}
             {!ordersLoading && activeOrders.length > 0 && (
               <div style={{ marginBottom: "20px" }}>
                 <h3 style={{ margin: "0 0 12px", fontSize: "14px", fontWeight: 800, color: "#2563eb" }}>🔵 Active Reservations</h3>
                 {activeOrders.map(order => {
-                  const listing = order.listings;
-                  const qty = order.quantity_claimed || 1;
+                  const listing    = order.listings;
+                  const qty        = order.quantity_claimed || 1;
+                  const timeLeft   = listing?.expires_at ? minsLeft(listing.expires_at) : null;
+                  const isExpired  = !timeLeft;
+                  const isUrgent   = !!timeLeft && timeLeft.includes("m left") && parseInt(timeLeft) <= 30;
+                  const bizPhone   = order.business_phone || null;
+                  const maxEta     = listing?.expires_at
+                    ? Math.min(Math.floor((new Date(listing.expires_at).getTime() - Date.now()) / 60000), 600)
+                    : 600;
+                  const etaOpts    = ETA_OPTIONS.filter(o => o.value <= maxEta);
+
                   return (
                     <div key={order.id} style={{ background: "#eff6ff", border: "2px solid #bfdbfe", borderRadius: "14px", padding: "18px 20px", marginBottom: "12px" }}>
                       <div style={{ display: "flex", gap: "14px", alignItems: "flex-start" }}>
@@ -337,6 +433,119 @@ export default function CustomerProfile() {
                             <p style={{ margin: 0, fontSize: "24px", fontWeight: 900, color: "#1d4ed8", letterSpacing: "4px", fontFamily: "monospace" }}>{order.confirmation_code}</p>
                           </div>
                         </div>
+                      </div>
+
+                      {/* Time left badge */}
+                      <div style={{ marginTop: "14px" }}>
+                        {timeLeft && (
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: isUrgent ? "#fef3c7" : "#f0fdf4", border: `1px solid ${isUrgent ? "#fde68a" : "#bbf7d0"}`, borderRadius: "20px", padding: "5px 12px", marginBottom: "12px" }}>
+                            <span style={{ fontSize: "13px" }}>⏰</span>
+                            <span style={{ fontSize: "13px", fontWeight: 700, color: isUrgent ? "#92400e" : "#166534" }}>
+                              {timeLeft} to pick up
+                            </span>
+                          </div>
+                        )}
+                        {isExpired && (
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "20px", padding: "5px 12px", marginBottom: "12px" }}>
+                            <span style={{ fontSize: "13px", color: "#9ca3af" }}>⏱️ Listing expired</span>
+                          </div>
+                        )}
+
+                        {/* Urgent — running late banner */}
+                        {isUrgent && bizPhone && (
+                          <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "10px", padding: "10px 14px", marginBottom: "12px" }}>
+                            <p style={{ margin: "0 0 4px", fontSize: "13px", fontWeight: 700, color: "#92400e" }}>Running late?</p>
+                            <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#78350f", lineHeight: 1.5 }}>
+                              Call the restaurant to let them know — they may hold your order so you are not marked as a no-show.
+                            </p>
+                            <a href={`tel:${bizPhone}`}
+                              style={{ display: "inline-block", background: "#f59e0b", color: "#fff", padding: "7px 16px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 700 }}>
+                              📞 Call {listing?.business_name}
+                            </a>
+                          </div>
+                        )}
+
+                        {/* ETA update */}
+                        {!isExpired && (
+                          <div style={{ marginBottom: "10px" }}>
+                            {etaEditId === order.id ? (
+                              <div style={{ background: "#f0f9ff", border: "1px solid #bfdbfe", borderRadius: "10px", padding: "12px 14px" }}>
+                                <p style={{ margin: "0 0 8px", fontSize: "13px", fontWeight: 600, color: "#1d4ed8" }}>Update your arrival time:</p>
+                                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                                  <select value={etaEditValue} onChange={e => setEtaEditValue(Number(e.target.value))}
+                                    style={{ flex: 1, padding: "8px 10px", borderRadius: "8px", border: "1px solid #bfdbfe", fontSize: "14px", color: "#111827", background: "#fff" }}>
+                                    {etaOpts.map(opt => (
+                                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                    ))}
+                                  </select>
+                                  <button onClick={() => handleUpdateEta(order.id, listing?.expires_at || "")} disabled={etaLoading}
+                                    style={{ background: "#2563eb", color: "#fff", border: "none", padding: "8px 16px", borderRadius: "8px", cursor: etaLoading ? "not-allowed" : "pointer", fontSize: "13px", fontWeight: 700, whiteSpace: "nowrap" }}>
+                                    {etaLoading ? "..." : "Save"}
+                                  </button>
+                                  <button onClick={() => setEtaEditId(null)}
+                                    style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "8px 12px", borderRadius: "8px", cursor: "pointer", fontSize: "13px" }}>
+                                    ✕
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                <span style={{ fontSize: "13px", color: "#374151" }}>
+                                  ETA: <b>{(order.eta_minutes || 0) < 60 ? `${order.eta_minutes} min` : `${Math.floor((order.eta_minutes||0)/60)}h${(order.eta_minutes||0)%60>0?" "+(order.eta_minutes||0)%60+"m":""}`}</b>
+                                </span>
+                                <button onClick={() => { setEtaEditId(order.id); setEtaEditValue(order.eta_minutes || 30); }}
+                                  style={{ background: "none", border: "1px solid #bfdbfe", color: "#2563eb", padding: "4px 10px", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: 600 }}>
+                                  ✏️ Update ETA
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Feedback message */}
+                        {etaMsg[order.id] && (
+                          <p style={{ margin: "0 0 10px", fontSize: "12px", color: etaMsg[order.id].includes("updated") ? "#16a34a" : "#dc2626", fontWeight: 600 }}>
+                            {etaMsg[order.id]}
+                          </p>
+                        )}
+
+                        {/* Soft nudge — call if running late (non-urgent) */}
+                        {!isUrgent && !isExpired && bizPhone && (
+                          <div style={{ background: "#f0f9ff", border: "1px solid #bfdbfe", borderRadius: "10px", padding: "10px 14px", marginBottom: "10px" }}>
+                            <p style={{ margin: "0 0 4px", fontSize: "12px", color: "#1d4ed8", lineHeight: 1.5 }}>
+                              Need more time? Call the restaurant — they can hold your order so you are not penalized for a late pickup.
+                            </p>
+                            <a href={`tel:${bizPhone}`}
+                              style={{ display: "inline-block", color: "#2563eb", fontSize: "12px", fontWeight: 700, textDecoration: "none" }}>
+                              📞 {bizPhone}
+                            </a>
+                          </div>
+                        )}
+
+                        {/* Cancel */}
+                        {cancelConfirm === order.id ? (
+                          <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "10px", padding: "12px 14px" }}>
+                            <p style={{ margin: "0 0 6px", fontSize: "13px", fontWeight: 700, color: "#991b1b" }}>Cancel this reservation?</p>
+                            <p style={{ margin: "0 0 12px", fontSize: "12px", color: "#7f1d1d", lineHeight: 1.5 }}>
+                              The food will go back to the community. Please only cancel if you genuinely cannot make it.
+                            </p>
+                            <div style={{ display: "flex", gap: "8px" }}>
+                              <button onClick={() => handleCancelClaim(order.id)} disabled={cancelLoading === order.id}
+                                style={{ flex: 1, background: "#dc2626", color: "#fff", border: "none", padding: "9px", borderRadius: "8px", cursor: cancelLoading === order.id ? "not-allowed" : "pointer", fontSize: "13px", fontWeight: 700 }}>
+                                {cancelLoading === order.id ? "Cancelling..." : "Yes, cancel"}
+                              </button>
+                              <button onClick={() => setCancelConfirm(null)}
+                                style={{ flex: 1, background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "9px", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: 600 }}>
+                                Keep it
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button onClick={() => setCancelConfirm(order.id)}
+                            style={{ width: "100%", background: "none", border: "1px solid #fca5a5", color: "#dc2626", padding: "7px 16px", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: 600, marginTop: "4px" }}>
+                            Cancel Reservation
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
