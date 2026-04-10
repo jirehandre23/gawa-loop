@@ -10,7 +10,13 @@ const supabase = createClient(
 );
 
 const ADMIN_EMAIL = "admin@gawaloop.com";
-const TERMINAL    = ["PICKED_UP", "EXPIRED", "CANCELLED", "NOSHOW", "CLAIMED"];
+
+// Only fully done statuses move to history
+// CLAIMED stays in Active — food is claimed but not yet picked up
+const TERMINAL = ["PICKED_UP", "EXPIRED", "CANCELLED", "NOSHOW"];
+
+// Statuses where the business can still act (edit, cancel, mark picked up)
+const EDITABLE  = ["AVAILABLE", "RESERVED", "CLAIMED"];
 
 const STATUS_COLOR: Record<string, { bg: string; text: string }> = {
   AVAILABLE: { bg: "#16a34a", text: "#fff" },
@@ -279,7 +285,6 @@ export default function BusinessDashboard() {
     setPosting(false);
   }
 
-  // Mark a single claim as picked up — no code required from business
   async function handleClaimPickedUp(listingId: string, claimId: string) {
     setPickupMsgs(prev => ({ ...prev, [claimId]: "..." }));
     const res = await fetch("/api/mark-picked-up", {
@@ -477,13 +482,9 @@ export default function BusinessDashboard() {
     );
   }
 
-  // Renders all claims on a listing card
-  // Active: full info + Mark Picked Up + Cancel buttons (no code input)
-  // Done: name + status badge only
   function renderClaimRows(listing: ListingRow) {
     const allClaims = listing.claims || [];
     if (allClaims.length === 0) return null;
-
     return (
       <div style={{ marginTop: "16px" }}>
         {allClaims.map(claim => {
@@ -494,21 +495,16 @@ export default function BusinessDashboard() {
           const sc          = CLAIM_STATUS_COLOR[claim.status] || { bg: "#6b7280", text: "#fff" };
           const claimerAvatar = claimerAvatars[claim.id];
           const pickupMsg   = pickupMsgs[claim.id];
-
-          // ETA badge
           const etaDeadline  = new Date(claim.created_at).getTime() + claim.eta_minutes * 60000;
           const minsUntilEta = Math.floor((etaDeadline - Date.now()) / 60000);
           const isOverdue    = minsUntilEta < 0;
           const etaBadge     = isActive
-            ? isOverdue
-              ? `⚠️ ${Math.abs(minsUntilEta)}m overdue`
-              : `ETA in ${minsUntilEta}m`
+            ? isOverdue ? `⚠️ ${Math.abs(minsUntilEta)}m overdue` : `ETA in ${minsUntilEta}m`
             : null;
 
           if (isActive) {
             return (
               <div key={claim.id} style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: "12px", padding: "16px 20px", marginBottom: "10px" }}>
-                {/* Header row */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px", gap: "8px" }}>
                   <p style={{ margin: 0, fontWeight: 700, color: "#1d4ed8", fontSize: "14px" }}>🔵 Active Reservation</p>
                   <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -524,8 +520,6 @@ export default function BusinessDashboard() {
                     )}
                   </div>
                 </div>
-
-                {/* Customer info */}
                 <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "14px" }}>
                   {claimerAvatar
                     ? <img src={claimerAvatar} alt={claim.first_name} style={{ width: "48px", height: "48px", borderRadius: "50%", objectFit: "cover", border: "2px solid #bfdbfe", flexShrink: 0 }}/>
@@ -543,19 +537,15 @@ export default function BusinessDashboard() {
                     </p>
                   </div>
                 </div>
-
-                {/* Action buttons */}
                 {pickupMsg ? (
                   <p style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "#16a34a" }}>{pickupMsg}</p>
                 ) : (
                   <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                    <button
-                      onClick={() => handleClaimPickedUp(listing.id, claim.id)}
+                    <button onClick={() => handleClaimPickedUp(listing.id, claim.id)}
                       style={{ background: "#16a34a", color: "#fff", border: "none", padding: "9px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>
                       ✅ Mark as Picked Up
                     </button>
-                    <button
-                      onClick={() => handleCancelReservation(listing.id, claim.id)}
+                    <button onClick={() => handleCancelReservation(listing.id, claim.id)}
                       style={{ background: "#f59e0b", color: "#fff", border: "none", padding: "9px 16px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>
                       Cancel
                     </button>
@@ -565,7 +555,6 @@ export default function BusinessDashboard() {
             );
           }
 
-          // Completed claim — name + status badge only, no contact details
           return (
             <div key={claim.id} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px 16px", marginBottom: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <p style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#374151" }}>
@@ -586,19 +575,17 @@ export default function BusinessDashboard() {
 
   function renderListingCard(listing: ListingRow) {
     const isTerminal  = TERMINAL.includes(listing.status);
-    const isAvailable = listing.status === "AVAILABLE";
-    const isReserved  = listing.status === "RESERVED";
+    const isEditable  = EDITABLE.includes(listing.status);
     const isCancelled = listing.status === "CANCELLED";
     const sc          = STATUS_COLOR[listing.status] || { bg: "#6b7280", text: "#fff" };
     const noshowClaim = listing.claims?.find(c => c.noshow === true);
     const weightLbs   = listing.weight_kg ? listing.weight_kg * 2.205 : null;
     const isMultiPortion = listing.quantity_total != null && listing.quantity_total > 1;
     const remaining   = listing.quantity_remaining ?? listing.quantity_total ?? null;
-    const isEditing   = editingId === listing.id;
+    const isEditingThis = editingId === listing.id;
 
     return (
       <div key={listing.id} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "24px", marginBottom: "16px", opacity: isTerminal ? 0.88 : 1 }}>
-        {/* Title row */}
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "14px", gap: "12px" }}>
           <div style={{ display: "flex", gap: "12px", alignItems: "flex-start", flex: 1 }}>
             {listing.image_url && <img src={listing.image_url} alt={listing.food_name} style={{ width: "64px", height: "64px", borderRadius: "10px", objectFit: "cover", flexShrink: 0 }}/>}
@@ -609,7 +596,6 @@ export default function BusinessDashboard() {
           </span>
         </div>
 
-        {/* Listing details */}
         <div style={{ fontSize: "14px", color: "#1f2937", lineHeight: 1.9 }}>
           <p style={{ margin: "2px 0" }}><b>Category:</b> {listing.category || "N/A"}</p>
           <p style={{ margin: "2px 0" }}>
@@ -627,7 +613,6 @@ export default function BusinessDashboard() {
           <p style={{ margin: "2px 0" }}><b>Posted:</b> {new Date(listing.created_at).toLocaleString()}</p>
         </div>
 
-        {/* All claim rows */}
         {renderClaimRows(listing)}
 
         {(listing.status === "NOSHOW" || noshowClaim) && (
@@ -637,10 +622,8 @@ export default function BusinessDashboard() {
           </div>
         )}
 
-        {/* Edit panel */}
-        {isEditing && editMode && renderEditPanel(listing)}
+        {isEditingThis && editMode && renderEditPanel(listing)}
 
-        {/* Re-list panel */}
         {relistId === listing.id && (
           <div style={{ background: "#f0fdf4", border: "1.5px solid #16a34a", borderRadius: "12px", padding: "16px", marginTop: "14px" }}>
             <p style={{ margin: "0 0 10px", fontSize: "14px", fontWeight: 700, color: "#0a2e1a" }}>Re-list this food</p>
@@ -661,37 +644,47 @@ export default function BusinessDashboard() {
           </div>
         )}
 
-        {/* Listing-level action buttons */}
-        {!isTerminal && !isEditing && (
+        {/* Action buttons — available on any non-terminal listing */}
+        {!isTerminal && !isEditingThis && (
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "20px" }}>
-            {(isAvailable || isReserved) && (
-              <button onClick={() => { setEditingId(isEditing ? null : listing.id); setEditMode("details"); setEditForm({}); setEditMsg(""); setClaimEditQtys({}); }}
+            {isEditable && (
+              <button onClick={() => { setEditingId(listing.id); setEditMode("details"); setEditForm({}); setEditMsg(""); setClaimEditQtys({}); }}
                 style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>
                 ✏️ Edit
               </button>
             )}
-            {(isAvailable || isReserved) && (
+            {isEditable && (
               <button onClick={() => handleCancelListing(listing.id)}
                 style={{ background: "#ef4444", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>
                 Cancel Listing
               </button>
             )}
-            {isCancelled && (
-              <button onClick={() => { setRelistId(listing.id); setRelistExpiry(""); }}
-                style={{ background: "#16a34a", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>
-                🔄 Re-list Food
-              </button>
-            )}
+          </div>
+        )}
+        {isEditingThis && (
+          <div style={{ marginTop: "12px" }}>
+            <button onClick={() => { setEditingId(null); setEditMode(null); setEditMsg(""); }}
+              style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "9px 16px", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: 600 }}>
+              Close Edit
+            </button>
           </div>
         )}
 
-        {isTerminal && (
+        {/* Re-list button for cancelled listings */}
+        {isCancelled && !relistId && (
+          <div style={{ marginTop: "16px" }}>
+            <button onClick={() => { setRelistId(listing.id); setRelistExpiry(""); }}
+              style={{ background: "#16a34a", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>
+              🔄 Re-list Food
+            </button>
+          </div>
+        )}
+
+        {isTerminal && !isCancelled && (
           <p style={{ marginTop: "14px", fontSize: "13px", color: "#6b7280", fontStyle: "italic" }}>
             {listing.status === "PICKED_UP" && "Successfully picked up."}
             {listing.status === "EXPIRED"   && "This listing expired without being claimed."}
-            {listing.status === "CANCELLED" && "This listing was cancelled."}
             {(listing.status === "NOSHOW" || noshowClaim) && "Customer did not show up."}
-            {listing.status === "CLAIMED"   && "All portions have been claimed."}
           </p>
         )}
       </div>
