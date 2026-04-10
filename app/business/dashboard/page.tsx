@@ -26,7 +26,7 @@ type ClaimRow = {
   id: string; first_name: string; email: string; phone: string;
   eta_minutes: number; confirmation_code: string; reserved_until: string;
   status: string; noshow: boolean; customer_user_id?: string;
-  quantity_claimed: number;
+  quantity_claimed: number; created_at: string;
 };
 type ListingRow = {
   id: string; food_name: string; category: string; quantity: string;
@@ -187,9 +187,8 @@ export default function BusinessDashboard() {
       const { data } = await supabase.from("listings").select("*, claims(*)")
         .eq("business_name", bName).order("created_at", { ascending: false });
       setListings(data || []);
-      const reservedClaims = (data || []).filter((l: ListingRow) => l.status === "RESERVED")
-        .flatMap((l: ListingRow) => l.claims?.filter(c => c.status === "active") || []);
-      for (const claim of reservedClaims) {
+      const activeClaims = (data || []).flatMap((l: ListingRow) => l.claims?.filter(c => c.status === "active") || []);
+      for (const claim of activeClaims) {
         if (claim.email) fetchClaimerAvatar(claim.id, claim.email);
       }
     }
@@ -281,26 +280,26 @@ export default function BusinessDashboard() {
     setPosting(false);
   }
 
-  async function handlePickedUp(id: string, code?: string) {
+  // Mark a specific claim as picked up (per-claim)
+  async function handleClaimPickedUp(listingId: string, claimId: string, code?: string) {
     const res = await fetch("/api/mark-picked-up", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ listingId: id, confirmationCode: code || "" }),
+      body: JSON.stringify({ listingId, claimId, confirmationCode: code || "" }),
     });
     const data = await res.json();
     if (data.codeInvalid) {
-      setVerifyMsgs(prev => ({ ...prev, [id]: "Invalid code. Please check and try again." }));
+      setVerifyMsgs(prev => ({ ...prev, [claimId]: "Invalid code. Please check and try again." }));
       return;
     }
     if (data.success) {
-      if (data.verified) {
-        setVerifyMsgs(prev => ({ ...prev, [id]: `✅ Verified! ${data.claimerName} picked up ${data.quantityClaimed > 1 ? data.quantityClaimed + " portions" : "the food"}.` }));
+      if (data.verified || !code) {
+        const msg = `✅ ${data.claimerName} picked up ${data.quantityClaimed > 1 ? data.quantityClaimed + " portions" : "the food"}.`;
+        setVerifyMsgs(prev => ({ ...prev, [claimId]: msg }));
         setTimeout(() => {
-          setCodeInputs(prev => { const n = { ...prev }; delete n[id]; return n; });
-          setVerifyMsgs(prev => { const n = { ...prev }; delete n[id]; return n; });
+          setCodeInputs(prev => { const n = { ...prev }; delete n[claimId]; return n; });
+          setVerifyMsgs(prev => { const n = { ...prev }; delete n[claimId]; return n; });
           loadDashboard(adminView);
-        }, 2000);
-      } else {
-        loadDashboard(adminView);
+        }, 1500);
       }
     }
   }
@@ -488,6 +487,9 @@ export default function BusinessDashboard() {
     );
   }
 
+  // Renders all claims on a listing:
+  // - active: full info + per-claim pickup button
+  // - picked_up/cancelled/noshow: name + status badge only
   function renderClaimRows(listing: ListingRow) {
     const allClaims = listing.claims || [];
     if (allClaims.length === 0) return null;
@@ -499,22 +501,37 @@ export default function BusinessDashboard() {
           const isPickedUp  = claim.status === "picked_up";
           const isCancelled = claim.status === "cancelled";
           const isNoshow    = claim.status === "noshow";
-          const claimerAvatar = claimerAvatars[claim.id];
           const sc = CLAIM_STATUS_COLOR[claim.status] || { bg: "#6b7280", text: "#fff" };
+          const claimerAvatar = claimerAvatars[claim.id];
+
+          // ETA countdown helper
+          const etaDeadline = new Date(claim.created_at).getTime() + claim.eta_minutes * 60000;
+          const minsOverdue = Math.floor((Date.now() - etaDeadline) / 60000);
+          const etaLabel = isActive
+            ? minsOverdue > 0
+              ? `⚠️ ${minsOverdue}m overdue`
+              : `ETA in ${Math.max(0, -minsOverdue)}m`
+            : null;
 
           if (isActive) {
-            // Full info — active reservation
             return (
               <div key={claim.id} style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: "12px", padding: "16px 20px", marginBottom: "10px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px", gap: "8px" }}>
                   <p style={{ margin: 0, fontWeight: 700, color: "#1d4ed8", fontSize: "14px" }}>🔵 Active Reservation</p>
-                  {(claim.quantity_claimed || 1) > 1 && (
-                    <span style={{ background: "#2563eb", color: "#fff", fontSize: "11px", fontWeight: 700, padding: "3px 10px", borderRadius: "20px" }}>
-                      {claim.quantity_claimed} portions
-                    </span>
-                  )}
+                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    {(claim.quantity_claimed || 1) > 1 && (
+                      <span style={{ background: "#2563eb", color: "#fff", fontSize: "11px", fontWeight: 700, padding: "3px 10px", borderRadius: "20px" }}>
+                        {claim.quantity_claimed} portions
+                      </span>
+                    )}
+                    {etaLabel && (
+                      <span style={{ background: minsOverdue > 0 ? "#fef3c7" : "#f0fdf4", color: minsOverdue > 0 ? "#92400e" : "#166534", fontSize: "11px", fontWeight: 700, padding: "3px 10px", borderRadius: "20px" }}>
+                        {etaLabel}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "12px" }}>
                   {claimerAvatar
                     ? <img src={claimerAvatar} alt="Customer" style={{ width: "48px", height: "48px", borderRadius: "50%", objectFit: "cover", border: "2px solid #bfdbfe", flexShrink: 0 }}/>
                     : <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "#dbeafe", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", flexShrink: 0 }}>🙋</div>
@@ -523,15 +540,41 @@ export default function BusinessDashboard() {
                     <p style={{ margin: 0 }}><b>Name:</b> {claim.first_name}</p>
                     <p style={{ margin: 0 }}><b>Email:</b> {claim.email}</p>
                     <p style={{ margin: 0 }}><b>Phone:</b> {claim.phone || "Not provided"}</p>
-                    <p style={{ margin: 0 }}><b>ETA:</b> {claim.eta_minutes} min</p>
                     <p style={{ margin: 0 }}><b>Code:</b> <span style={{ fontWeight: 900, fontSize: "16px", color: "#2563eb", letterSpacing: "3px", fontFamily: "monospace" }}>{claim.confirmation_code}</span></p>
                   </div>
+                </div>
+                {/* Per-claim pickup confirmation */}
+                <div style={{ borderTop: "1px solid #bfdbfe", paddingTop: "12px" }}>
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                    <input
+                      value={codeInputs[claim.id] || ""}
+                      onChange={e => setCodeInputs(prev => ({ ...prev, [claim.id]: e.target.value.toUpperCase() }))}
+                      placeholder="Enter code to confirm"
+                      maxLength={8}
+                      style={{ flex: 1, padding: "9px 12px", borderRadius: "8px", border: "1.5px solid #2563eb", fontSize: "14px", fontWeight: 700, letterSpacing: "2px", color: "#0a2e1a", outline: "none", background: "#fff" }}
+                    />
+                    <button
+                      onClick={() => handleClaimPickedUp(listing.id, claim.id, codeInputs[claim.id])}
+                      disabled={!codeInputs[claim.id]?.trim()}
+                      style={{ background: !codeInputs[claim.id]?.trim() ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "9px 16px", borderRadius: "8px", cursor: !codeInputs[claim.id]?.trim() ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "13px", whiteSpace: "nowrap" }}>
+                      Confirm
+                    </button>
+                  </div>
+                  {verifyMsgs[claim.id] && (
+                    <p style={{ margin: "6px 0 0", fontSize: "13px", fontWeight: 700, color: verifyMsgs[claim.id].includes("✅") ? "#16a34a" : "#ef4444" }}>
+                      {verifyMsgs[claim.id]}
+                    </p>
+                  )}
+                  <button type="button" onClick={() => handleClaimPickedUp(listing.id, claim.id)}
+                    style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", fontSize: "11px", fontWeight: 600, textDecoration: "underline", padding: "6px 0 0", display: "block" }}>
+                    No code — mark as picked up anyway
+                  </button>
                 </div>
               </div>
             );
           }
 
-          // Non-active — name only, status badge
+          // Non-active — name + status only, no contact info
           return (
             <div key={claim.id} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px 16px", marginBottom: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <p style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#374151" }}>
@@ -552,14 +595,12 @@ export default function BusinessDashboard() {
     const isTerminal  = TERMINAL.includes(listing.status);
     const isReserved  = listing.status === "RESERVED";
     const isAvailable = listing.status === "AVAILABLE";
-    const isPickedUp  = listing.status === "PICKED_UP";
     const isCancelled = listing.status === "CANCELLED";
     const sc          = STATUS_COLOR[listing.status] || { bg: "#6b7280", text: "#fff" };
     const noshowClaim = listing.claims?.find(c => c.noshow === true);
     const weightLbs   = listing.weight_kg ? listing.weight_kg * 2.205 : null;
     const isMultiPortion = listing.quantity_total != null && listing.quantity_total > 1;
     const remaining = listing.quantity_remaining ?? listing.quantity_total ?? null;
-    const activeClaims = (listing.claims || []).filter(c => c.status === "active");
     const isEditing = editingId === listing.id;
 
     return (
@@ -591,7 +632,7 @@ export default function BusinessDashboard() {
           <p style={{ margin: "2px 0" }}><b>Posted:</b> {new Date(listing.created_at).toLocaleString()}</p>
         </div>
 
-        {/* Claim rows — full info when active, name only when done */}
+        {/* All claim rows with per-claim pickup */}
         {renderClaimRows(listing)}
 
         {(listing.status === "NOSHOW" || noshowClaim) && (
@@ -625,40 +666,6 @@ export default function BusinessDashboard() {
 
         {!isTerminal && !isEditing && (
           <div style={{ marginTop: "20px" }}>
-            {isReserved && (
-              <div style={{ background: "#f0fdf4", border: "1.5px solid #16a34a", borderRadius: "12px", padding: "16px 18px", marginBottom: "12px" }}>
-                <p style={{ margin: "0 0 10px", fontSize: "13px", fontWeight: 700, color: "#0a2e1a" }}>
-                  🔑 Enter customer code to confirm pickup
-                </p>
-                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                  <input
-                    value={codeInputs[listing.id] || ""}
-                    onChange={e => setCodeInputs(prev => ({ ...prev, [listing.id]: e.target.value.toUpperCase() }))}
-                    placeholder="Customer's code"
-                    maxLength={8}
-                    style={{ flex: 1, padding: "10px 14px", borderRadius: "8px", border: "1.5px solid #16a34a", fontSize: "15px", fontWeight: 700, letterSpacing: "2px", color: "#0a2e1a", outline: "none", background: "#fff" }}
-                  />
-                  <button
-                    onClick={() => handlePickedUp(listing.id, codeInputs[listing.id])}
-                    disabled={!codeInputs[listing.id]?.trim()}
-                    style={{ background: !codeInputs[listing.id]?.trim() ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: !codeInputs[listing.id]?.trim() ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "13px", whiteSpace: "nowrap" }}>
-                    Confirm Pickup
-                  </button>
-                </div>
-                {verifyMsgs[listing.id] && (
-                  <p style={{ margin: "8px 0 0", fontSize: "13px", fontWeight: 700, color: verifyMsgs[listing.id].includes("✅") ? "#16a34a" : "#ef4444" }}>
-                    {verifyMsgs[listing.id]}
-                  </p>
-                )}
-                <p style={{ margin: "8px 0 0", fontSize: "11px", color: "#6b7280" }}>
-                  No code?{" "}
-                  <button type="button" onClick={() => handlePickedUp(listing.id)}
-                    style={{ background: "none", border: "none", color: "#16a34a", cursor: "pointer", fontSize: "11px", fontWeight: 600, textDecoration: "underline", padding: 0 }}>
-                    Mark as picked up anyway
-                  </button>
-                </p>
-              </div>
-            )}
             <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
               {isReserved && <button onClick={() => handleCancelReservation(listing.id)} style={{ background: "#f59e0b", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>Cancel Reservation</button>}
               {(isAvailable || isReserved) && (
