@@ -103,8 +103,7 @@ export default function BusinessDashboard() {
   const [logoMsg, setLogoMsg]               = useState("");
   const [activeTab, setActiveTab]           = useState<"active" | "history" | "received">("active");
   const [claimerAvatars, setClaimerAvatars] = useState<Record<string, string | null>>({});
-  const [codeInputs, setCodeInputs]         = useState<Record<string, string>>({});
-  const [verifyMsgs, setVerifyMsgs]         = useState<Record<string, string>>({});
+  const [pickupMsgs, setPickupMsgs]         = useState<Record<string, string>>({});
   const [expiryMode, setExpiryMode]         = useState<ExpiryMode>("hours");
   const [expiryHours, setExpiryHours]       = useState<string>("1");
   const [expiryDays, setExpiryDays]         = useState<string>("1");
@@ -280,37 +279,28 @@ export default function BusinessDashboard() {
     setPosting(false);
   }
 
-  // Mark a specific claim as picked up (per-claim)
-  async function handleClaimPickedUp(listingId: string, claimId: string, code?: string) {
+  // Mark a single claim as picked up — no code required from business
+  async function handleClaimPickedUp(listingId: string, claimId: string) {
+    setPickupMsgs(prev => ({ ...prev, [claimId]: "..." }));
     const res = await fetch("/api/mark-picked-up", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ listingId, claimId, confirmationCode: code || "" }),
+      body: JSON.stringify({ listingId, claimId }),
     });
     const data = await res.json();
-    if (data.codeInvalid) {
-      setVerifyMsgs(prev => ({ ...prev, [claimId]: "Invalid code. Please check and try again." }));
-      return;
-    }
     if (data.success) {
-      if (data.verified || !code) {
-        const msg = `✅ ${data.claimerName} picked up ${data.quantityClaimed > 1 ? data.quantityClaimed + " portions" : "the food"}.`;
-        setVerifyMsgs(prev => ({ ...prev, [claimId]: msg }));
-        setTimeout(() => {
-          setCodeInputs(prev => { const n = { ...prev }; delete n[claimId]; return n; });
-          setVerifyMsgs(prev => { const n = { ...prev }; delete n[claimId]; return n; });
-          loadDashboard(adminView);
-        }, 1500);
-      }
+      setPickupMsgs(prev => ({ ...prev, [claimId]: "✅ Picked up!" }));
+      setTimeout(() => {
+        setPickupMsgs(prev => { const n = { ...prev }; delete n[claimId]; return n; });
+        loadDashboard(adminView);
+      }, 1200);
     }
   }
 
-  async function handleCancelReservation(id: string) {
-    const listing = listings.find(l => l.id === id);
-    const activeClaim = listing?.claims?.find(c => c.status === "active");
-    if (activeClaim) {
-      await fetch("/api/claim-submit", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ claimId: activeClaim.id, isNoshow: false }) });
+  async function handleCancelReservation(listingId: string, claimId?: string) {
+    if (claimId) {
+      await fetch("/api/claim-submit", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ claimId, isNoshow: false }) });
     } else {
-      await supabase.from("listings").update({ status: "AVAILABLE", reserved_until: null, claim_code: null }).eq("id", id);
+      await supabase.from("listings").update({ status: "AVAILABLE", reserved_until: null, claim_code: null }).eq("id", listingId);
     }
     loadDashboard(adminView);
   }
@@ -462,7 +452,7 @@ export default function BusinessDashboard() {
                   <div style={{ marginBottom: "10px" }}>
                     <p style={{ margin: "0 0 2px", fontSize: "14px", fontWeight: 700, color: "#0a2e1a" }}>{claim.first_name}</p>
                     <p style={{ margin: "0 0 2px", fontSize: "12px", color: "#6b7280" }}>{claim.email}</p>
-                    <p style={{ margin: 0, fontSize: "12px", color: "#9ca3af" }}>Code: <b>{claim.confirmation_code}</b> · Originally: <b>{claim.quantity_claimed || 1}</b></p>
+                    <p style={{ margin: 0, fontSize: "12px", color: "#9ca3af" }}>Originally: <b>{claim.quantity_claimed || 1} portion(s)</b></p>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                     <label style={{ ...lbl, margin: 0, whiteSpace: "nowrap" }}>New qty:</label>
@@ -487,9 +477,9 @@ export default function BusinessDashboard() {
     );
   }
 
-  // Renders all claims on a listing:
-  // - active: full info + per-claim pickup button
-  // - picked_up/cancelled/noshow: name + status badge only
+  // Renders all claims on a listing card
+  // Active: full info + Mark Picked Up + Cancel buttons (no code input)
+  // Done: name + status badge only
   function renderClaimRows(listing: ListingRow) {
     const allClaims = listing.claims || [];
     if (allClaims.length === 0) return null;
@@ -501,22 +491,25 @@ export default function BusinessDashboard() {
           const isPickedUp  = claim.status === "picked_up";
           const isCancelled = claim.status === "cancelled";
           const isNoshow    = claim.status === "noshow";
-          const sc = CLAIM_STATUS_COLOR[claim.status] || { bg: "#6b7280", text: "#fff" };
+          const sc          = CLAIM_STATUS_COLOR[claim.status] || { bg: "#6b7280", text: "#fff" };
           const claimerAvatar = claimerAvatars[claim.id];
+          const pickupMsg   = pickupMsgs[claim.id];
 
-          // ETA countdown helper
-          const etaDeadline = new Date(claim.created_at).getTime() + claim.eta_minutes * 60000;
-          const minsOverdue = Math.floor((Date.now() - etaDeadline) / 60000);
-          const etaLabel = isActive
-            ? minsOverdue > 0
-              ? `⚠️ ${minsOverdue}m overdue`
-              : `ETA in ${Math.max(0, -minsOverdue)}m`
+          // ETA badge
+          const etaDeadline  = new Date(claim.created_at).getTime() + claim.eta_minutes * 60000;
+          const minsUntilEta = Math.floor((etaDeadline - Date.now()) / 60000);
+          const isOverdue    = minsUntilEta < 0;
+          const etaBadge     = isActive
+            ? isOverdue
+              ? `⚠️ ${Math.abs(minsUntilEta)}m overdue`
+              : `ETA in ${minsUntilEta}m`
             : null;
 
           if (isActive) {
             return (
               <div key={claim.id} style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: "12px", padding: "16px 20px", marginBottom: "10px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px", gap: "8px" }}>
+                {/* Header row */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px", gap: "8px" }}>
                   <p style={{ margin: 0, fontWeight: 700, color: "#1d4ed8", fontSize: "14px" }}>🔵 Active Reservation</p>
                   <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "flex-end" }}>
                     {(claim.quantity_claimed || 1) > 1 && (
@@ -524,62 +517,62 @@ export default function BusinessDashboard() {
                         {claim.quantity_claimed} portions
                       </span>
                     )}
-                    {etaLabel && (
-                      <span style={{ background: minsOverdue > 0 ? "#fef3c7" : "#f0fdf4", color: minsOverdue > 0 ? "#92400e" : "#166534", fontSize: "11px", fontWeight: 700, padding: "3px 10px", borderRadius: "20px" }}>
-                        {etaLabel}
+                    {etaBadge && (
+                      <span style={{ background: isOverdue ? "#fef3c7" : "#dbeafe", color: isOverdue ? "#92400e" : "#1d4ed8", fontSize: "11px", fontWeight: 700, padding: "3px 10px", borderRadius: "20px" }}>
+                        {etaBadge}
                       </span>
                     )}
                   </div>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "12px" }}>
+
+                {/* Customer info */}
+                <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "14px" }}>
                   {claimerAvatar
-                    ? <img src={claimerAvatar} alt="Customer" style={{ width: "48px", height: "48px", borderRadius: "50%", objectFit: "cover", border: "2px solid #bfdbfe", flexShrink: 0 }}/>
+                    ? <img src={claimerAvatar} alt={claim.first_name} style={{ width: "48px", height: "48px", borderRadius: "50%", objectFit: "cover", border: "2px solid #bfdbfe", flexShrink: 0 }}/>
                     : <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "#dbeafe", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", flexShrink: 0 }}>🙋</div>
                   }
-                  <div style={{ fontSize: "13px", color: "#1e3a5f", lineHeight: 1.9 }}>
+                  <div style={{ fontSize: "13px", color: "#1e3a5f", lineHeight: 2 }}>
                     <p style={{ margin: 0 }}><b>Name:</b> {claim.first_name}</p>
                     <p style={{ margin: 0 }}><b>Email:</b> {claim.email}</p>
                     <p style={{ margin: 0 }}><b>Phone:</b> {claim.phone || "Not provided"}</p>
-                    <p style={{ margin: 0 }}><b>Code:</b> <span style={{ fontWeight: 900, fontSize: "16px", color: "#2563eb", letterSpacing: "3px", fontFamily: "monospace" }}>{claim.confirmation_code}</span></p>
+                    <p style={{ margin: 0 }}>
+                      <b>Code:</b>{" "}
+                      <span style={{ fontWeight: 900, fontSize: "17px", color: "#2563eb", letterSpacing: "4px", fontFamily: "monospace", background: "#fff", padding: "2px 8px", borderRadius: "6px", border: "1px solid #bfdbfe" }}>
+                        {claim.confirmation_code}
+                      </span>
+                    </p>
                   </div>
                 </div>
-                {/* Per-claim pickup confirmation */}
-                <div style={{ borderTop: "1px solid #bfdbfe", paddingTop: "12px" }}>
-                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                    <input
-                      value={codeInputs[claim.id] || ""}
-                      onChange={e => setCodeInputs(prev => ({ ...prev, [claim.id]: e.target.value.toUpperCase() }))}
-                      placeholder="Enter code to confirm"
-                      maxLength={8}
-                      style={{ flex: 1, padding: "9px 12px", borderRadius: "8px", border: "1.5px solid #2563eb", fontSize: "14px", fontWeight: 700, letterSpacing: "2px", color: "#0a2e1a", outline: "none", background: "#fff" }}
-                    />
+
+                {/* Action buttons */}
+                {pickupMsg ? (
+                  <p style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "#16a34a" }}>{pickupMsg}</p>
+                ) : (
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                     <button
-                      onClick={() => handleClaimPickedUp(listing.id, claim.id, codeInputs[claim.id])}
-                      disabled={!codeInputs[claim.id]?.trim()}
-                      style={{ background: !codeInputs[claim.id]?.trim() ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "9px 16px", borderRadius: "8px", cursor: !codeInputs[claim.id]?.trim() ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "13px", whiteSpace: "nowrap" }}>
-                      Confirm
+                      onClick={() => handleClaimPickedUp(listing.id, claim.id)}
+                      style={{ background: "#16a34a", color: "#fff", border: "none", padding: "9px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>
+                      ✅ Mark as Picked Up
+                    </button>
+                    <button
+                      onClick={() => handleCancelReservation(listing.id, claim.id)}
+                      style={{ background: "#f59e0b", color: "#fff", border: "none", padding: "9px 16px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>
+                      Cancel
                     </button>
                   </div>
-                  {verifyMsgs[claim.id] && (
-                    <p style={{ margin: "6px 0 0", fontSize: "13px", fontWeight: 700, color: verifyMsgs[claim.id].includes("✅") ? "#16a34a" : "#ef4444" }}>
-                      {verifyMsgs[claim.id]}
-                    </p>
-                  )}
-                  <button type="button" onClick={() => handleClaimPickedUp(listing.id, claim.id)}
-                    style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", fontSize: "11px", fontWeight: 600, textDecoration: "underline", padding: "6px 0 0", display: "block" }}>
-                    No code — mark as picked up anyway
-                  </button>
-                </div>
+                )}
               </div>
             );
           }
 
-          // Non-active — name + status only, no contact info
+          // Completed claim — name + status badge only, no contact details
           return (
             <div key={claim.id} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px 16px", marginBottom: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <p style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#374151" }}>
                 {claim.first_name}
-                {(claim.quantity_claimed || 1) > 1 && <span style={{ marginLeft: "8px", fontSize: "12px", color: "#9ca3af", fontWeight: 400 }}>({claim.quantity_claimed} portions)</span>}
+                {(claim.quantity_claimed || 1) > 1 && (
+                  <span style={{ marginLeft: "8px", fontSize: "12px", color: "#9ca3af", fontWeight: 400 }}>({claim.quantity_claimed} portions)</span>
+                )}
               </p>
               <span style={{ background: sc.bg, color: sc.text, fontSize: "11px", fontWeight: 700, padding: "3px 10px", borderRadius: "20px" }}>
                 {isPickedUp ? "Picked Up" : isCancelled ? "Cancelled" : isNoshow ? "No-show" : claim.status}
@@ -593,18 +586,19 @@ export default function BusinessDashboard() {
 
   function renderListingCard(listing: ListingRow) {
     const isTerminal  = TERMINAL.includes(listing.status);
-    const isReserved  = listing.status === "RESERVED";
     const isAvailable = listing.status === "AVAILABLE";
+    const isReserved  = listing.status === "RESERVED";
     const isCancelled = listing.status === "CANCELLED";
     const sc          = STATUS_COLOR[listing.status] || { bg: "#6b7280", text: "#fff" };
     const noshowClaim = listing.claims?.find(c => c.noshow === true);
     const weightLbs   = listing.weight_kg ? listing.weight_kg * 2.205 : null;
     const isMultiPortion = listing.quantity_total != null && listing.quantity_total > 1;
-    const remaining = listing.quantity_remaining ?? listing.quantity_total ?? null;
-    const isEditing = editingId === listing.id;
+    const remaining   = listing.quantity_remaining ?? listing.quantity_total ?? null;
+    const isEditing   = editingId === listing.id;
 
     return (
       <div key={listing.id} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "24px", marginBottom: "16px", opacity: isTerminal ? 0.88 : 1 }}>
+        {/* Title row */}
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "14px", gap: "12px" }}>
           <div style={{ display: "flex", gap: "12px", alignItems: "flex-start", flex: 1 }}>
             {listing.image_url && <img src={listing.image_url} alt={listing.food_name} style={{ width: "64px", height: "64px", borderRadius: "10px", objectFit: "cover", flexShrink: 0 }}/>}
@@ -615,6 +609,7 @@ export default function BusinessDashboard() {
           </span>
         </div>
 
+        {/* Listing details */}
         <div style={{ fontSize: "14px", color: "#1f2937", lineHeight: 1.9 }}>
           <p style={{ margin: "2px 0" }}><b>Category:</b> {listing.category || "N/A"}</p>
           <p style={{ margin: "2px 0" }}>
@@ -632,7 +627,7 @@ export default function BusinessDashboard() {
           <p style={{ margin: "2px 0" }}><b>Posted:</b> {new Date(listing.created_at).toLocaleString()}</p>
         </div>
 
-        {/* All claim rows with per-claim pickup */}
+        {/* All claim rows */}
         {renderClaimRows(listing)}
 
         {(listing.status === "NOSHOW" || noshowClaim) && (
@@ -642,8 +637,10 @@ export default function BusinessDashboard() {
           </div>
         )}
 
+        {/* Edit panel */}
         {isEditing && editMode && renderEditPanel(listing)}
 
+        {/* Re-list panel */}
         {relistId === listing.id && (
           <div style={{ background: "#f0fdf4", border: "1.5px solid #16a34a", borderRadius: "12px", padding: "16px", marginTop: "14px" }}>
             <p style={{ margin: "0 0 10px", fontSize: "14px", fontWeight: 700, color: "#0a2e1a" }}>Re-list this food</p>
@@ -664,24 +661,27 @@ export default function BusinessDashboard() {
           </div>
         )}
 
+        {/* Listing-level action buttons */}
         {!isTerminal && !isEditing && (
-          <div style={{ marginTop: "20px" }}>
-            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-              {isReserved && <button onClick={() => handleCancelReservation(listing.id)} style={{ background: "#f59e0b", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>Cancel Reservation</button>}
-              {(isAvailable || isReserved) && (
-                <button onClick={() => { setEditingId(isEditing ? null : listing.id); setEditMode("details"); setEditForm({}); setEditMsg(""); setClaimEditQtys({}); }}
-                  style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>
-                  ✏️ Edit
-                </button>
-              )}
-              {(isAvailable || isReserved) && <button onClick={() => handleCancelListing(listing.id)} style={{ background: "#ef4444", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>Cancel Listing</button>}
-              {isCancelled && (
-                <button onClick={() => { setRelistId(listing.id); setRelistExpiry(""); }}
-                  style={{ background: "#16a34a", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>
-                  🔄 Re-list Food
-                </button>
-              )}
-            </div>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "20px" }}>
+            {(isAvailable || isReserved) && (
+              <button onClick={() => { setEditingId(isEditing ? null : listing.id); setEditMode("details"); setEditForm({}); setEditMsg(""); setClaimEditQtys({}); }}
+                style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>
+                ✏️ Edit
+              </button>
+            )}
+            {(isAvailable || isReserved) && (
+              <button onClick={() => handleCancelListing(listing.id)}
+                style={{ background: "#ef4444", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>
+                Cancel Listing
+              </button>
+            )}
+            {isCancelled && (
+              <button onClick={() => { setRelistId(listing.id); setRelistExpiry(""); }}
+                style={{ background: "#16a34a", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>
+                🔄 Re-list Food
+              </button>
+            )}
           </div>
         )}
 
@@ -824,7 +824,7 @@ export default function BusinessDashboard() {
                 </div>
                 <div style={{ gridColumn: "1/-1" }}>
                   <label style={lbl}>Claim Hold Time</label>
-                  <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#6b7280" }}>How long the food stays reserved. If the customer does not arrive, the portions return to the listing.</p>
+                  <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#6b7280" }}>How long the food stays reserved. If the customer does not arrive, the portions return to the listing automatically.</p>
                   <select style={{ ...inp, cursor: "pointer" }} value={form.claim_hold} onChange={e => setForm(f => ({ ...f, claim_hold: e.target.value }))}>
                     <option value="10">10 minutes</option><option value="15">15 minutes</option><option value="20">20 minutes</option>
                     <option value="30">30 minutes</option><option value="45">45 minutes</option><option value="60">1 hour</option>
