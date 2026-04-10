@@ -28,6 +28,7 @@ type ClaimRow = {
 };
 type ListingRow = {
   id: string; food_name: string; category: string; quantity: string;
+  quantity_total: number; quantity_remaining: number;
   address: string; allergy_note: string; estimated_value: number; note: string;
   status: string; expires_at: string; created_at: string; reserved_until: string;
   claim_code: string; image_url?: string; weight_kg?: number;
@@ -295,6 +296,8 @@ export default function BusinessDashboard() {
       food_name:          form.food_name,
       category:           form.category,
       quantity:           form.quantity,
+      quantity_total:     Number(form.quantity) || 1,
+      quantity_remaining: Number(form.quantity) || 1,
       allergy_note:       form.allergy_note || null,
       estimated_value:    form.estimated_value ? Number(form.estimated_value) : null,
       weight_kg:          weightKg,
@@ -327,8 +330,15 @@ export default function BusinessDashboard() {
   async function handleCancelReservation(id: string) {
     const listing = listings.find(l => l.id === id);
     const activeClaim = listing?.claims?.find(c => c.status === "active");
-    if (activeClaim) await supabase.from("claims").update({ status: "cancelled" }).eq("id", activeClaim.id);
-    await supabase.from("listings").update({ status: "AVAILABLE", reserved_until: null, claim_code: null }).eq("id", id);
+    if (activeClaim) {
+      // Restore quantity via API so the DB function runs
+      await fetch("/api/claim-submit", {
+        method: "DELETE", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ claimId: activeClaim.id, isNoshow: false }),
+      });
+    } else {
+      await supabase.from("listings").update({ status: "AVAILABLE", reserved_until: null, claim_code: null }).eq("id", id);
+    }
     setListings(prev => prev.map(l => l.id === id ? { ...l, status: "AVAILABLE", reserved_until: null as any, claim_code: null as any } : l));
   }
 
@@ -370,6 +380,9 @@ export default function BusinessDashboard() {
     const isEditing   = editingId === listing.id;
     const weightLbs   = listing.weight_kg ? (listing.weight_kg * 2.205) : null;
     const claimerAvatar = activeClaim ? claimerAvatars[activeClaim.id] : undefined;
+    const isMultiPortion = listing.quantity_total != null && listing.quantity_total > 1;
+    const remaining = listing.quantity_remaining ?? listing.quantity_total ?? null;
+
     return (
       <div key={listing.id} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "24px", marginBottom: "16px", opacity: isTerminal ? 0.88 : 1 }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "14px", gap: "12px" }}>
@@ -399,9 +412,15 @@ export default function BusinessDashboard() {
         ) : (
           <div style={{ fontSize: "14px", color: "#1f2937", lineHeight: 1.9 }}>
             <p style={{ margin: "2px 0" }}><b>Category:</b> {listing.category || "N/A"}</p>
-            <p style={{ margin: "2px 0" }}><b>Quantity:</b> {listing.quantity || "N/A"}</p>
+            {/* CHANGE 3: Show remaining quantity for multi-portion listings */}
+            <p style={{ margin: "2px 0" }}>
+              <b>Quantity:</b>{" "}
+              {isMultiPortion && remaining != null
+                ? <span style={{ color: remaining <= 3 ? "#ef4444" : "#16a34a", fontWeight: 700 }}>{remaining} of {listing.quantity_total} portions remaining</span>
+                : listing.quantity || "N/A"}
+              {weightLbs && weightLbs > 0 && <span style={{ color: "#9ca3af", fontWeight: 400 }}> · {weightLbs.toFixed(1)} lbs</span>}
+            </p>
             <p style={{ margin: "2px 0" }}><b>Address:</b> {listing.address || "N/A"}</p>
-            {weightLbs && weightLbs > 0 && <p style={{ margin: "2px 0" }}><b>Weight:</b> {weightLbs.toFixed(1)} lbs</p>}
             {listing.estimated_value && listing.estimated_value > 0 && <p style={{ margin: "2px 0" }}><b>Est. Value:</b> ${Number(listing.estimated_value).toFixed(2)}</p>}
             {listing.allergy_note && <p style={{ margin: "2px 0" }}><b>Allergy:</b> {listing.allergy_note}</p>}
             {listing.note && <p style={{ margin: "2px 0" }}><b>Note:</b> {listing.note}</p>}
@@ -569,12 +588,29 @@ export default function BusinessDashboard() {
                     <option>Food</option><option>Bakery</option><option>Beverages</option><option>Prepared Meals</option><option>Produce</option><option>Other</option>
                   </select>
                 </div>
-                <div><label style={lbl}>Quantity *</label><input style={inp} required value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} placeholder="e.g. 10 portions"/></div>
+
+                {/* CHANGE 1: Number input for quantity */}
+                <div>
+                  <label style={lbl}>Number of Portions *</label>
+                  <input
+                    style={inp}
+                    type="number"
+                    min="1"
+                    max="500"
+                    required
+                    value={form.quantity}
+                    onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))}
+                    placeholder="e.g. 50"
+                  />
+                  <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#9ca3af" }}>
+                    Number of individual portions, meals, or items available
+                  </p>
+                </div>
+
                 <div><label style={lbl}>Weight (lbs)</label><input style={inp} type="number" min="0" step="0.1" value={form.weight_lbs} onChange={e => setForm(f => ({ ...f, weight_lbs: e.target.value }))} placeholder="e.g. 8"/></div>
                 <div><label style={lbl}>Est. Value ($)</label><input style={inp} type="number" min="0" step="0.01" value={form.estimated_value} onChange={e => setForm(f => ({ ...f, estimated_value: e.target.value }))} placeholder="e.g. 25"/></div>
                 <div style={{ gridColumn: "1/-1" }}><label style={lbl}>Allergy / Dietary Info</label><input style={inp} value={form.allergy_note} onChange={e => setForm(f => ({ ...f, allergy_note: e.target.value }))} placeholder="e.g. Contains nuts, halal"/></div>
 
-                {/* Photo — required */}
                 <div style={{ gridColumn: "1/-1" }}>
                   <label style={lbl}>
                     Food Photo <span style={{ color: "#ef4444" }}>*</span>
@@ -585,7 +621,6 @@ export default function BusinessDashboard() {
                   {uploadingImg && <p style={{ margin: "6px 0 0", fontSize: "13px", color: "#16a34a", fontWeight: 600 }}>Uploading photo...</p>}
                 </div>
 
-                {/* Active For */}
                 <div style={{ gridColumn: "1/-1" }}>
                   <label style={lbl}>Active For *</label>
                   <div style={{ display: "flex", gap: "8px", marginBottom: "10px", flexWrap: "wrap" }}>
@@ -601,11 +636,10 @@ export default function BusinessDashboard() {
                   {expiryMode === "datetime" && <input style={inp} type="datetime-local" value={expiryDatetime} min={new Date().toISOString().slice(0,16)} onChange={e => setExpiryDatetime(e.target.value)} required={expiryMode === "datetime"}/>}
                 </div>
 
-                {/* Claim Hold Time — expanded to 24h */}
                 <div style={{ gridColumn: "1/-1" }}>
                   <label style={lbl}>Claim Hold Time</label>
                   <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#6b7280" }}>
-                    How long the food stays reserved after a customer claims it. If they don't arrive within this window, the reservation is cancelled automatically.
+                    How long the food stays reserved after a customer claims it. If they do not arrive within this window, the reservation is cancelled and portions return to the listing.
                   </p>
                   <select style={{ ...inp, cursor: "pointer" }} value={form.claim_hold} onChange={e => setForm(f => ({ ...f, claim_hold: e.target.value }))}>
                     <option value="10">10 minutes</option>
@@ -690,7 +724,6 @@ export default function BusinessDashboard() {
           ))}
         </div>
 
-        {/* ACTIVE LISTINGS TAB */}
         {activeTab === "active" && (
           <>
             {activeListings.length === 0 ? (
@@ -702,7 +735,6 @@ export default function BusinessDashboard() {
           </>
         )}
 
-        {/* HISTORY TAB */}
         {activeTab === "history" && (
           <>
             {historyListings.length === 0 ? (
@@ -729,7 +761,6 @@ export default function BusinessDashboard() {
           </>
         )}
 
-        {/* FOOD RECEIVED TAB — NGO only */}
         {activeTab === "received" && isNgo && (
           <>
             <div style={{ display: "flex", gap: "10px", marginBottom: "20px", flexWrap: "wrap" }}>
