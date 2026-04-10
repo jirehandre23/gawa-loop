@@ -61,6 +61,7 @@ function treeMetric(lbs: number) {
   if (lbs < 1102) return { emoji: "🌲🌲🌲", label: "Small forest" };
   return { emoji: "🌲🌲🌲🌲🌲", label: "Forest preserved!" };
 }
+
 function groupByYearMonth(listings: ListingRow[]) {
   const groups: Record<string, Record<string, ListingRow[]>> = {};
   for (const l of listings) {
@@ -73,6 +74,7 @@ function groupByYearMonth(listings: ListingRow[]) {
   }
   return groups;
 }
+
 const CLAIM_STATUS_COLOR: Record<string, { bg: string; text: string }> = {
   active:    { bg: "#2563eb", text: "#fff" },
   picked_up: { bg: "#7c3aed", text: "#fff" },
@@ -101,14 +103,14 @@ export default function BusinessDashboard() {
   const [logoMsg, setLogoMsg]               = useState("");
   const [activeTab, setActiveTab]           = useState<"active" | "history" | "received">("active");
   const [claimerAvatars, setClaimerAvatars] = useState<Record<string, string | null>>({});
+  const [codeInputs, setCodeInputs]         = useState<Record<string, string>>({});
+  const [verifyMsgs, setVerifyMsgs]         = useState<Record<string, string>>({});
   const [expiryMode, setExpiryMode]         = useState<ExpiryMode>("hours");
   const [expiryHours, setExpiryHours]       = useState<string>("1");
   const [expiryDays, setExpiryDays]         = useState<string>("1");
   const [expiryDatetime, setExpiryDatetime] = useState<string>("");
   const [imageSelected, setImageSelected]   = useState(false);
   const [receivedClaims, setReceivedClaims] = useState<ReceivedClaim[]>([]);
-
-  // Edit state
   const [editingId, setEditingId]           = useState<string | null>(null);
   const [editMode, setEditMode]             = useState<"details" | "quantity" | "expiry" | "claims" | null>(null);
   const [editForm, setEditForm]             = useState<Record<string, string>>({});
@@ -117,7 +119,6 @@ export default function BusinessDashboard() {
   const [claimEditQtys, setClaimEditQtys]   = useState<Record<string, number>>({});
   const [relistId, setRelistId]             = useState<string | null>(null);
   const [relistExpiry, setRelistExpiry]     = useState("");
-
   const listingFileRef = useRef<HTMLInputElement>(null);
   const logoRef        = useRef<HTMLInputElement>(null);
 
@@ -208,16 +209,16 @@ export default function BusinessDashboard() {
   const now = new Date(); const thisMonth = now.getMonth(); const thisYear = now.getFullYear();
   const monthlyL = listings.filter(l => { const d = new Date(l.created_at); return d.getMonth() === thisMonth && d.getFullYear() === thisYear; });
   const yearlyL  = listings.filter(l => new Date(l.created_at).getFullYear() === thisYear);
-  const mPickups = monthlyL.filter(l => l.status === "PICKED_UP").length;
-  const yPickups = yearlyL.filter(l => l.status === "PICKED_UP").length;
+  const mPickups   = monthlyL.filter(l => l.status === "PICKED_UP").length;
+  const yPickups   = yearlyL.filter(l => l.status === "PICKED_UP").length;
   const mCancelled = monthlyL.filter(l => l.status === "CANCELLED").length;
   const yCancelled = yearlyL.filter(l => l.status === "CANCELLED").length;
-  const mExpired = monthlyL.filter(l => l.status === "EXPIRED").length;
-  const yExpired = yearlyL.filter(l => l.status === "EXPIRED").length;
-  const mNoshow  = monthlyL.filter(l => l.claims?.some(c => c.noshow)).length;
-  const yNoshow  = yearlyL.filter(l => l.claims?.some(c => c.noshow)).length;
-  const mMoneySaved = monthlyL.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.estimated_value || 0), 0);
-  const yMoneySaved = yearlyL.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.estimated_value || 0), 0);
+  const mExpired   = monthlyL.filter(l => l.status === "EXPIRED").length;
+  const yExpired   = yearlyL.filter(l => l.status === "EXPIRED").length;
+  const mNoshow    = monthlyL.filter(l => l.claims?.some(c => c.noshow)).length;
+  const yNoshow    = yearlyL.filter(l => l.claims?.some(c => c.noshow)).length;
+  const mMoneySaved    = monthlyL.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.estimated_value || 0), 0);
+  const yMoneySaved    = yearlyL.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.estimated_value || 0), 0);
   const totalWeightLbs = listings.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.weight_kg || 0) * 2.205, 0);
   const tree = treeMetric(totalWeightLbs);
   const T = t[locale];
@@ -280,10 +281,30 @@ export default function BusinessDashboard() {
     setPosting(false);
   }
 
-  async function handlePickedUp(id: string) {
-    const res = await fetch("/api/mark-picked-up", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ listingId: id }) });
+  async function handlePickedUp(id: string, code?: string) {
+    const res = await fetch("/api/mark-picked-up", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ listingId: id, confirmationCode: code || "" }),
+    });
     const data = await res.json();
-    if (data.success) setListings(prev => prev.map(l => l.id === id ? { ...l, status: "PICKED_UP" } : l));
+    if (data.codeInvalid) {
+      setVerifyMsgs(prev => ({ ...prev, [id]: "Invalid code. Please check and try again." }));
+      return;
+    }
+    if (data.success) {
+      if (data.verified) {
+        setVerifyMsgs(prev => ({ ...prev, [id]: `✅ Verified! ${data.claimerName} picked up ${data.quantityClaimed > 1 ? data.quantityClaimed + " portions" : "the food"}.` }));
+        setTimeout(() => {
+          setListings(prev => prev.map(l => l.id === id ? { ...l, status: "PICKED_UP" } : l));
+          setCodeInputs(prev => { const n = { ...prev }; delete n[id]; return n; });
+          setVerifyMsgs(prev => { const n = { ...prev }; delete n[id]; return n; });
+          loadDashboard(adminView);
+        }, 2000);
+      } else {
+        setListings(prev => prev.map(l => l.id === id ? { ...l, status: "PICKED_UP" } : l));
+        loadDashboard(adminView);
+      }
+    }
   }
 
   async function handleCancelReservation(id: string) {
@@ -322,10 +343,8 @@ export default function BusinessDashboard() {
   function renderEditPanel(listing: ListingRow) {
     const activeClaims = (listing.claims || []).filter(c => c.status === "active");
     const totalClaimed = activeClaims.reduce((s, c) => s + (c.quantity_claimed || 1), 0);
-
     return (
       <div style={{ background: "#f8fafc", border: "1.5px solid #0a2e1a", borderRadius: "12px", padding: "20px", marginTop: "16px" }}>
-        {/* Edit mode tabs */}
         <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "16px" }}>
           {[
             { key: "details",  label: "✏️ Details" },
@@ -343,12 +362,8 @@ export default function BusinessDashboard() {
           <button type="button" onClick={() => { setEditingId(null); setEditMode(null); setEditMsg(""); }}
             style={{ marginLeft: "auto", background: "none", border: "none", color: "#9ca3af", cursor: "pointer", fontSize: "20px" }}>✕</button>
         </div>
+        {editMsg && <p style={{ margin: "0 0 12px", fontSize: "13px", fontWeight: 700, color: editMsg.includes("✅") ? "#16a34a" : "#ef4444" }}>{editMsg}</p>}
 
-        {editMsg && (
-          <p style={{ margin: "0 0 12px", fontSize: "13px", fontWeight: 700, color: editMsg.includes("✅") ? "#16a34a" : "#ef4444" }}>{editMsg}</p>
-        )}
-
-        {/* DETAILS */}
         {editMode === "details" && (
           <div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "14px" }}>
@@ -391,7 +406,6 @@ export default function BusinessDashboard() {
           </div>
         )}
 
-        {/* QUANTITY */}
         {editMode === "quantity" && (
           <div>
             <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "10px", padding: "12px 16px", marginBottom: "14px" }}>
@@ -403,7 +417,7 @@ export default function BusinessDashboard() {
             {activeClaims.length > 0 && (
               <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "10px", padding: "12px 16px", marginBottom: "14px" }}>
                 <p style={{ margin: 0, fontSize: "13px", color: "#92400e" }}>
-                  ⚠️ <b>{activeClaims.length} active claimer(s)</b> have reserved {totalClaimed} portion(s). If you reduce below {totalClaimed}, their claims will be automatically reduced or cancelled and they will be notified by email.
+                  ⚠️ <b>{activeClaims.length} active claimer(s)</b> have reserved {totalClaimed} portion(s). If you reduce below {totalClaimed}, their claims will be automatically reduced or cancelled and they will be notified.
                 </p>
               </div>
             )}
@@ -411,8 +425,7 @@ export default function BusinessDashboard() {
               <label style={lbl}>New Total Quantity</label>
               <input style={inp} type="number" min="1" max="500"
                 value={editForm.new_total ?? String(listing.quantity_total)}
-                onChange={e => setEditForm(f => ({ ...f, new_total: e.target.value }))}
-                placeholder="e.g. 30"/>
+                onChange={e => setEditForm(f => ({ ...f, new_total: e.target.value }))}/>
             </div>
             <button disabled={editSaving} onClick={() => callEditAPI({ action: "edit_quantity", listingId: listing.id, new_total: Number(editForm.new_total || listing.quantity_total) })}
               style={{ background: editSaving ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "10px 24px", borderRadius: "8px", cursor: editSaving ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "14px" }}>
@@ -421,21 +434,18 @@ export default function BusinessDashboard() {
           </div>
         )}
 
-        {/* EXPIRY */}
         {editMode === "expiry" && (
           <div>
             <p style={{ margin: "0 0 12px", fontSize: "13px", color: "#374151" }}>
               Current expiry: <b>{new Date(listing.expires_at).toLocaleString()}</b>
             </p>
             <div style={{ marginBottom: "14px" }}>
-              <label style={lbl}>New Expiry Date & Time</label>
+              <label style={lbl}>New Expiry Date and Time</label>
               <input style={inp} type="datetime-local"
                 min={new Date().toISOString().slice(0, 16)}
                 value={editForm.new_expires_at ?? ""}
                 onChange={e => setEditForm(f => ({ ...f, new_expires_at: e.target.value }))}/>
-              <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#9ca3af" }}>
-                Active claimers will be notified of the change by email.
-              </p>
+              <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#9ca3af" }}>Active claimers will be notified of the change by email.</p>
             </div>
             <button disabled={editSaving || !editForm.new_expires_at}
               onClick={() => callEditAPI({ action: "edit_expiry", listingId: listing.id, new_expires_at: new Date(editForm.new_expires_at!).toISOString() })}
@@ -445,36 +455,29 @@ export default function BusinessDashboard() {
           </div>
         )}
 
-        {/* CLAIMERS */}
         {editMode === "claims" && (
           <div>
-            <p style={{ margin: "0 0 12px", fontSize: "13px", color: "#374151" }}>
-              Adjust or cancel individual reservations. Customers are notified by email.
-            </p>
+            <p style={{ margin: "0 0 12px", fontSize: "13px", color: "#374151" }}>Adjust or cancel individual reservations. Customers are notified by email.</p>
             {activeClaims.map(claim => {
               const currentQty = claimEditQtys[claim.id] ?? (claim.quantity_claimed || 1);
               return (
                 <div key={claim.id} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "14px 16px", marginBottom: "10px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px" }}>
-                    <div>
-                      <p style={{ margin: "0 0 2px", fontSize: "14px", fontWeight: 700, color: "#0a2e1a" }}>{claim.first_name}</p>
-                      <p style={{ margin: "0 0 2px", fontSize: "12px", color: "#6b7280" }}>{claim.email}</p>
-                      <p style={{ margin: 0, fontSize: "12px", color: "#9ca3af" }}>Code: <b>{claim.confirmation_code}</b> · Originally claimed: <b>{claim.quantity_claimed || 1}</b></p>
-                    </div>
+                  <div style={{ marginBottom: "10px" }}>
+                    <p style={{ margin: "0 0 2px", fontSize: "14px", fontWeight: 700, color: "#0a2e1a" }}>{claim.first_name}</p>
+                    <p style={{ margin: "0 0 2px", fontSize: "12px", color: "#6b7280" }}>{claim.email}</p>
+                    <p style={{ margin: 0, fontSize: "12px", color: "#9ca3af" }}>Code: <b>{claim.confirmation_code}</b> · Originally: <b>{claim.quantity_claimed || 1}</b></p>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                     <label style={{ ...lbl, margin: 0, whiteSpace: "nowrap" }}>New qty:</label>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1 }}>
-                      <button type="button" onClick={() => setClaimEditQtys(q => ({ ...q, [claim.id]: Math.max(0, currentQty - 1) }))}
-                        style={{ width: "32px", height: "32px", borderRadius: "6px", border: "1px solid #d1d5db", background: "#f9fafb", fontSize: "18px", cursor: "pointer", fontWeight: 700 }}>−</button>
-                      <span style={{ fontSize: "20px", fontWeight: 900, color: currentQty === 0 ? "#ef4444" : "#0a2e1a", minWidth: "32px", textAlign: "center" }}>{currentQty}</span>
-                      <button type="button" onClick={() => setClaimEditQtys(q => ({ ...q, [claim.id]: Math.min(claim.quantity_claimed || 1, currentQty + 1) }))}
-                        style={{ width: "32px", height: "32px", borderRadius: "6px", border: "1px solid #d1d5db", background: "#f9fafb", fontSize: "18px", cursor: "pointer", fontWeight: 700 }}>+</button>
-                      {currentQty === 0 && <span style={{ fontSize: "12px", color: "#ef4444", fontWeight: 700 }}>Will cancel reservation</span>}
-                    </div>
+                    <button type="button" onClick={() => setClaimEditQtys(q => ({ ...q, [claim.id]: Math.max(0, currentQty - 1) }))}
+                      style={{ width: "32px", height: "32px", borderRadius: "6px", border: "1px solid #d1d5db", background: "#f9fafb", fontSize: "18px", cursor: "pointer", fontWeight: 700 }}>−</button>
+                    <span style={{ fontSize: "20px", fontWeight: 900, color: currentQty === 0 ? "#ef4444" : "#0a2e1a", minWidth: "32px", textAlign: "center" }}>{currentQty}</span>
+                    <button type="button" onClick={() => setClaimEditQtys(q => ({ ...q, [claim.id]: Math.min(claim.quantity_claimed || 1, currentQty + 1) }))}
+                      style={{ width: "32px", height: "32px", borderRadius: "6px", border: "1px solid #d1d5db", background: "#f9fafb", fontSize: "18px", cursor: "pointer", fontWeight: 700 }}>+</button>
+                    {currentQty === 0 && <span style={{ fontSize: "12px", color: "#ef4444", fontWeight: 700 }}>Will cancel</span>}
                     <button disabled={editSaving || currentQty === (claim.quantity_claimed || 1)}
                       onClick={() => callEditAPI({ action: "reduce_claim_portions", listingId: listing.id, claimId: claim.id, new_quantity: currentQty })}
-                      style={{ background: editSaving || currentQty === (claim.quantity_claimed || 1) ? "#e5e7eb" : currentQty === 0 ? "#ef4444" : "#f59e0b", color: currentQty === 0 ? "#fff" : "#fff", border: "none", padding: "8px 14px", borderRadius: "8px", cursor: editSaving || currentQty === (claim.quantity_claimed || 1) ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "13px", whiteSpace: "nowrap" }}>
+                      style={{ background: editSaving || currentQty === (claim.quantity_claimed || 1) ? "#e5e7eb" : currentQty === 0 ? "#ef4444" : "#f59e0b", color: "#fff", border: "none", padding: "8px 14px", borderRadius: "8px", cursor: editSaving || currentQty === (claim.quantity_claimed || 1) ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "13px", whiteSpace: "nowrap" }}>
                       {currentQty === 0 ? "Cancel" : "Update"}
                     </button>
                   </div>
@@ -550,16 +553,15 @@ export default function BusinessDashboard() {
                 <p style={{ margin: "2px 0" }}><b>Email:</b> {activeClaim.email}</p>
                 <p style={{ margin: "2px 0" }}><b>Phone:</b> {activeClaim.phone || "Not provided"}</p>
                 <p style={{ margin: "2px 0" }}><b>ETA:</b> {activeClaim.eta_minutes} min · <b>Code:</b> <span style={{ fontWeight: 900, fontSize: "17px", color: "#2563eb", letterSpacing: "2px" }}>{activeClaim.confirmation_code}</span></p>
-                {(activeClaim.quantity_claimed || 1) > 1 && <p style={{ margin: "2px 0" }}><b>Portions claimed:</b> <span style={{ color: "#2563eb", fontWeight: 800 }}>{activeClaim.quantity_claimed}</span></p>}
+                {(activeClaim.quantity_claimed || 1) > 1 && <p style={{ margin: "2px 0" }}><b>Portions:</b> <span style={{ color: "#2563eb", fontWeight: 800 }}>{activeClaim.quantity_claimed}</span></p>}
               </div>
             </div>
           </div>
         )}
 
-        {isPickedUp && activeClaim && (
+        {isPickedUp && (
           <div style={{ background: "#f5f3ff", border: "1.5px solid #ddd6fe", borderRadius: "12px", padding: "16px 20px", marginTop: "16px" }}>
-            <p style={{ margin: "0 0 6px", fontWeight: 700, color: "#6d28d9", fontSize: "14px" }}>✅ Picked Up By</p>
-            <p style={{ margin: "0 0 4px", fontSize: "16px", color: "#2e1065", fontWeight: 700 }}>{activeClaim.first_name}</p>
+            <p style={{ margin: "0 0 6px", fontWeight: 700, color: "#6d28d9", fontSize: "14px" }}>✅ Successfully picked up</p>
             <p style={{ margin: 0, fontSize: "12px", color: "#9ca3af", fontStyle: "italic" }}>Contact details hidden after pickup to protect customer privacy.</p>
           </div>
         )}
@@ -571,14 +573,12 @@ export default function BusinessDashboard() {
           </div>
         )}
 
-        {/* Edit panel */}
         {isEditing && editMode && renderEditPanel(listing)}
 
-        {/* Re-list panel */}
         {relistId === listing.id && (
           <div style={{ background: "#f0fdf4", border: "1.5px solid #16a34a", borderRadius: "12px", padding: "16px", marginTop: "14px" }}>
             <p style={{ margin: "0 0 10px", fontSize: "14px", fontWeight: 700, color: "#0a2e1a" }}>Re-list this food</p>
-            <label style={lbl}>New expiry date & time *</label>
+            <label style={lbl}>New expiry date and time *</label>
             <input style={{ ...inp, marginBottom: "12px" }} type="datetime-local"
               min={new Date().toISOString().slice(0, 16)}
               value={relistExpiry} onChange={e => setRelistExpiry(e.target.value)}/>
@@ -595,29 +595,66 @@ export default function BusinessDashboard() {
           </div>
         )}
 
-        {/* Action buttons */}
-        <div style={{ display: "flex", gap: "8px", marginTop: "20px", flexWrap: "wrap" }}>
-          {isReserved && <button onClick={() => handlePickedUp(listing.id)} style={{ background: "#16a34a", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>✅ Mark Picked Up</button>}
-          {isReserved && <button onClick={() => handleCancelReservation(listing.id)} style={{ background: "#f59e0b", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>Cancel Reservation</button>}
-          {(isAvailable || isReserved) && (
-            <button onClick={() => { setEditingId(isEditing ? null : listing.id); setEditMode("details"); setEditForm({}); setEditMsg(""); setClaimEditQtys({}); }}
-              style={{ background: isEditing ? "#0a2e1a" : "#f3f4f6", color: isEditing ? "#4ade80" : "#374151", border: "1px solid #e5e7eb", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>
-              {isEditing ? "Close Edit" : "✏️ Edit"}
-            </button>
-          )}
-          {(isAvailable || isReserved) && <button onClick={() => handleCancelListing(listing.id)} style={{ background: "#ef4444", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>Cancel Listing</button>}
-          {isCancelled && (
-            <button onClick={() => { setRelistId(listing.id); setRelistExpiry(""); }}
-              style={{ background: "#16a34a", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>
-              🔄 Re-list Food
-            </button>
-          )}
-        </div>
+        {!isTerminal && !isEditing && (
+          <div style={{ marginTop: "20px" }}>
+            {isReserved && (
+              <div style={{ background: "#f0fdf4", border: "1.5px solid #16a34a", borderRadius: "12px", padding: "16px 18px", marginBottom: "12px" }}>
+                <p style={{ margin: "0 0 10px", fontSize: "13px", fontWeight: 700, color: "#0a2e1a" }}>
+                  🔑 Enter customer code to confirm pickup
+                </p>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  <input
+                    value={codeInputs[listing.id] || ""}
+                    onChange={e => setCodeInputs(prev => ({ ...prev, [listing.id]: e.target.value.toUpperCase() }))}
+                    placeholder="Customer's code"
+                    maxLength={8}
+                    style={{ flex: 1, padding: "10px 14px", borderRadius: "8px", border: "1.5px solid #16a34a", fontSize: "15px", fontWeight: 700, letterSpacing: "2px", color: "#0a2e1a", outline: "none", background: "#fff" }}
+                  />
+                  <button
+                    onClick={() => handlePickedUp(listing.id, codeInputs[listing.id])}
+                    disabled={!codeInputs[listing.id]?.trim()}
+                    style={{ background: !codeInputs[listing.id]?.trim() ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: !codeInputs[listing.id]?.trim() ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "13px", whiteSpace: "nowrap" }}>
+                    Confirm Pickup
+                  </button>
+                </div>
+                {verifyMsgs[listing.id] && (
+                  <p style={{ margin: "8px 0 0", fontSize: "13px", fontWeight: 700, color: verifyMsgs[listing.id].includes("✅") ? "#16a34a" : "#ef4444" }}>
+                    {verifyMsgs[listing.id]}
+                  </p>
+                )}
+                <p style={{ margin: "8px 0 0", fontSize: "11px", color: "#6b7280" }}>
+                  No code?{" "}
+                  <button type="button" onClick={() => handlePickedUp(listing.id)}
+                    style={{ background: "none", border: "none", color: "#16a34a", cursor: "pointer", fontSize: "11px", fontWeight: 600, textDecoration: "underline", padding: 0 }}>
+                    Mark as picked up anyway
+                  </button>
+                </p>
+              </div>
+            )}
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              {isReserved && <button onClick={() => handleCancelReservation(listing.id)} style={{ background: "#f59e0b", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>Cancel Reservation</button>}
+              {(isAvailable || isReserved) && (
+                <button onClick={() => { setEditingId(isEditing ? null : listing.id); setEditMode("details"); setEditForm({}); setEditMsg(""); setClaimEditQtys({}); }}
+                  style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>
+                  ✏️ Edit
+                </button>
+              )}
+              {(isAvailable || isReserved) && <button onClick={() => handleCancelListing(listing.id)} style={{ background: "#ef4444", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>Cancel Listing</button>}
+              {isCancelled && (
+                <button onClick={() => { setRelistId(listing.id); setRelistExpiry(""); }}
+                  style={{ background: "#16a34a", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>
+                  🔄 Re-list Food
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
-        {isTerminal && !isCancelled && (
+        {isTerminal && (
           <p style={{ marginTop: "14px", fontSize: "13px", color: "#6b7280", fontStyle: "italic" }}>
             {listing.status === "PICKED_UP" && "Successfully picked up."}
             {listing.status === "EXPIRED"   && "This listing expired without being claimed."}
+            {listing.status === "CANCELLED" && "This listing was cancelled."}
             {(listing.status === "NOSHOW" || noshowClaim) && "Customer did not show up."}
             {listing.status === "CLAIMED"   && "All portions have been claimed."}
           </p>
@@ -685,7 +722,7 @@ export default function BusinessDashboard() {
             {isAdmin && <a href="/admin/business-lookup" style={{ background: "#0a2e1a", color: "#4ade80", border: "1px solid #166534", padding: "8px 14px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 700 }}>🔑 Admin Panel</a>}
             {isAdmin && allBizNames.length > 0 && (
               <select value={adminView || ""} onChange={e => setAdminView(e.target.value || null)} style={{ padding: "8px 12px", borderRadius: "8px", border: "2px solid #0a2e1a", fontSize: "14px", background: "#f0fdf4", cursor: "pointer", fontWeight: 600, color: "#0a2e1a" }}>
-                <option value="">— Select Business —</option>
+                <option value="">Select Business</option>
                 {allBizNames.map(b => <option key={b} value={b}>{b}</option>)}
               </select>
             )}
@@ -731,7 +768,7 @@ export default function BusinessDashboard() {
                 <div><label style={lbl}>Est. Value ($)</label><input style={inp} type="number" min="0" step="0.01" value={form.estimated_value} onChange={e => setForm(f => ({ ...f, estimated_value: e.target.value }))} placeholder="e.g. 25"/></div>
                 <div style={{ gridColumn: "1/-1" }}><label style={lbl}>Allergy / Dietary Info</label><input style={inp} value={form.allergy_note} onChange={e => setForm(f => ({ ...f, allergy_note: e.target.value }))} placeholder="e.g. Contains nuts, halal"/></div>
                 <div style={{ gridColumn: "1/-1" }}>
-                  <label style={lbl}>Food Photo <span style={{ color: "#ef4444" }}>*</span>{!imageSelected && <span style={{ marginLeft: "8px", fontSize: "12px", color: "#ef4444", fontWeight: 600 }}>Required</span>}{imageSelected && <span style={{ marginLeft: "8px", fontSize: "12px", color: "#16a34a", fontWeight: 600 }}>✓ Photo selected</span>}</label>
+                  <label style={lbl}>Food Photo <span style={{ color: "#ef4444" }}>*</span>{!imageSelected && <span style={{ marginLeft: "8px", fontSize: "12px", color: "#ef4444", fontWeight: 600 }}>Required</span>}{imageSelected && <span style={{ marginLeft: "8px", fontSize: "12px", color: "#16a34a", fontWeight: 600 }}>Photo selected</span>}</label>
                   <input ref={listingFileRef} type="file" accept="image/*" capture="environment" style={{ fontSize: "13px", color: "#374151", width: "100%" }} onChange={e => setImageSelected(!!(e.target.files?.[0]))}/>
                   {uploadingImg && <p style={{ margin: "6px 0 0", fontSize: "13px", color: "#16a34a", fontWeight: 600 }}>Uploading photo...</p>}
                 </div>
@@ -740,7 +777,7 @@ export default function BusinessDashboard() {
                   <div style={{ display: "flex", gap: "8px", marginBottom: "10px", flexWrap: "wrap" }}>
                     {(["hours", "days", "datetime"] as ExpiryMode[]).map(mode => (
                       <button key={mode} type="button" onClick={() => setExpiryMode(mode)} style={{ padding: "6px 16px", borderRadius: "20px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 700, background: expiryMode === mode ? "#0a2e1a" : "#f3f4f6", color: expiryMode === mode ? "#4ade80" : "#374151" }}>
-                        {mode === "hours" ? "Hours" : mode === "days" ? "Days" : "Pick date & time"}
+                        {mode === "hours" ? "Hours" : mode === "days" ? "Days" : "Pick date and time"}
                       </button>
                     ))}
                   </div>
@@ -772,18 +809,18 @@ export default function BusinessDashboard() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
             {[
               { label: `This Month (${now.toLocaleString("default", { month: "long" })})`, items: [
-                { k: "Listings Posted", v: monthlyL.length }, { k: "✅ Picked Up", v: mPickups },
-                { k: "❌ Cancelled", v: mCancelled }, { k: "⏰ Expired", v: mExpired }, { k: "👻 No-Shows", v: mNoshow },
+                { k: "Listings Posted", v: monthlyL.length }, { k: "Picked Up", v: mPickups },
+                { k: "Cancelled", v: mCancelled }, { k: "Expired", v: mExpired }, { k: "No-Shows", v: mNoshow },
                 { k: "Food Saved", v: `${monthlyL.filter(l => l.status === "PICKED_UP").reduce((s, l) => s + Number(l.weight_kg || 0) * 2.205, 0).toFixed(1)} lbs` },
-                { k: "💰 Value Saved", v: `$${mMoneySaved.toFixed(2)}` },
-                ...(isNgo ? [{ k: "📥 Food Received", v: receivedClaims.filter(c => { const d = new Date(c.created_at); return d.getMonth() === thisMonth && d.getFullYear() === thisYear && c.status === "picked_up"; }).length }] : []),
+                { k: "Value Saved", v: `$${mMoneySaved.toFixed(2)}` },
+                ...(isNgo ? [{ k: "Food Received", v: receivedClaims.filter(c => { const d = new Date(c.created_at); return d.getMonth() === thisMonth && d.getFullYear() === thisYear && c.status === "picked_up"; }).length }] : []),
               ]},
               { label: `This Year (${thisYear})`, items: [
-                { k: "Listings Posted", v: yearlyL.length }, { k: "✅ Picked Up", v: yPickups },
-                { k: "❌ Cancelled", v: yCancelled }, { k: "⏰ Expired", v: yExpired }, { k: "👻 No-Shows", v: yNoshow },
+                { k: "Listings Posted", v: yearlyL.length }, { k: "Picked Up", v: yPickups },
+                { k: "Cancelled", v: yCancelled }, { k: "Expired", v: yExpired }, { k: "No-Shows", v: yNoshow },
                 { k: "Total Donated", v: `${totalWeightLbs.toFixed(1)} lbs` },
-                { k: "💰 Total Value", v: `$${yMoneySaved.toFixed(2)}` },
-                ...(isNgo ? [{ k: "📥 Total Received", v: receivedPickedUp.length }] : []),
+                { k: "Total Value", v: `$${yMoneySaved.toFixed(2)}` },
+                ...(isNgo ? [{ k: "Total Received", v: receivedPickedUp.length }] : []),
               ]},
             ].map(section => (
               <div key={section.label} style={{ background: "#f9fafb", borderRadius: "12px", padding: "16px 20px", border: "1px solid #e5e7eb" }}>
@@ -791,7 +828,7 @@ export default function BusinessDashboard() {
                 {section.items.map(item => (
                   <div key={item.k} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid #f0f0f0" }}>
                     <span style={{ fontSize: "13px", color: "#374151" }}>{item.k}</span>
-                    <span style={{ fontSize: "14px", fontWeight: 700, color: item.k.includes("💰") ? "#16a34a" : item.k.includes("📥") ? "#2563eb" : "#0a2e1a" }}>{item.v}</span>
+                    <span style={{ fontSize: "14px", fontWeight: 700, color: "#0a2e1a" }}>{item.v}</span>
                   </div>
                 ))}
               </div>
@@ -801,9 +838,9 @@ export default function BusinessDashboard() {
 
         <div style={{ display: "flex", gap: "4px", background: "#fff", borderRadius: "12px", padding: "4px", border: "1px solid #e5e7eb", marginBottom: "20px" }}>
           {[
-            { key: "active",   label: `📋 Active (${activeListings.length})` },
-            { key: "history",  label: `📁 History (${historyListings.length})` },
-            ...(isNgo ? [{ key: "received", label: `📥 Received (${receivedClaims.length})` }] : []),
+            { key: "active",   label: `Active (${activeListings.length})` },
+            { key: "history",  label: `History (${historyListings.length})` },
+            ...(isNgo ? [{ key: "received", label: `Received (${receivedClaims.length})` }] : []),
           ].map(tab => (
             <button key={tab.key} onClick={() => setActiveTab(tab.key as any)}
               style={{ flex: 1, padding: "10px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 700, background: activeTab === tab.key ? "#0a2e1a" : "transparent", color: activeTab === tab.key ? "#fff" : "#374151" }}>
@@ -858,17 +895,18 @@ export default function BusinessDashboard() {
               <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "12px", padding: "48px", textAlign: "center" }}>
                 <p style={{ fontSize: "40px", margin: "0 0 12px" }}>📥</p>
                 <p style={{ fontSize: "16px", fontWeight: 700, color: "#0a2e1a", margin: "0 0 6px" }}>No food received yet</p>
-                <a href="/browse" style={{ background: "#16a34a", color: "#fff", padding: "10px 24px", borderRadius: "8px", textDecoration: "none", fontSize: "14px", fontWeight: 700 }}>Browse Available Food →</a>
+                <a href="/browse" style={{ background: "#16a34a", color: "#fff", padding: "10px 24px", borderRadius: "8px", textDecoration: "none", fontSize: "14px", fontWeight: 700 }}>Browse Available Food</a>
               </div>
             ) : (
               <>
-                {receivedActive.length > 0 && <div style={{ marginBottom: "24px" }}><h3 style={{ margin: "0 0 12px", fontSize: "15px", fontWeight: 800, color: "#2563eb" }}>🔵 Active</h3>{receivedActive.map(c => renderReceivedCard(c))}</div>}
-                {receivedPickedUp.length > 0 && <div style={{ marginBottom: "24px" }}><h3 style={{ margin: "0 0 12px", fontSize: "15px", fontWeight: 800, color: "#7c3aed" }}>✅ Received</h3>{receivedPickedUp.map(c => renderReceivedCard(c))}</div>}
-                {receivedCancelled.length > 0 && <div style={{ marginBottom: "24px" }}><h3 style={{ margin: "0 0 12px", fontSize: "15px", fontWeight: 800, color: "#9ca3af" }}>❌ Cancelled</h3>{receivedCancelled.map(c => renderReceivedCard(c))}</div>}
+                {receivedActive.length > 0 && <div style={{ marginBottom: "24px" }}><h3 style={{ margin: "0 0 12px", fontSize: "15px", fontWeight: 800, color: "#2563eb" }}>Active</h3>{receivedActive.map(c => renderReceivedCard(c))}</div>}
+                {receivedPickedUp.length > 0 && <div style={{ marginBottom: "24px" }}><h3 style={{ margin: "0 0 12px", fontSize: "15px", fontWeight: 800, color: "#7c3aed" }}>Received</h3>{receivedPickedUp.map(c => renderReceivedCard(c))}</div>}
+                {receivedCancelled.length > 0 && <div style={{ marginBottom: "24px" }}><h3 style={{ margin: "0 0 12px", fontSize: "15px", fontWeight: 800, color: "#9ca3af" }}>Cancelled</h3>{receivedCancelled.map(c => renderReceivedCard(c))}</div>}
               </>
             )}
           </>
         )}
+
       </div>
     </div>
   );
