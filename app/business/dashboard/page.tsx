@@ -550,7 +550,6 @@ export default function BusinessDashboard() {
             );
           }
 
-          // Completed — name + status badge only
           return (
             <div key={claim.id} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px 16px", marginBottom: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <p style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#374151" }}>
@@ -569,36 +568,67 @@ export default function BusinessDashboard() {
     );
   }
 
-  // Renders a compact outcome summary for terminal listings in history
+  // History outcome summary: names grouped by what happened to them
   function renderOutcomeSummary(listing: ListingRow) {
     const claims = listing.claims || [];
-    if (claims.length === 0) return null;
-
     const totalOriginal = listing.quantity_total || 1;
-    const pickedUpQty   = claims.filter(c => c.status === "picked_up").reduce((s, c) => s + (c.quantity_claimed || 1), 0);
-    const noshowQty     = claims.filter(c => c.status === "noshow"    ).reduce((s, c) => s + (c.quantity_claimed || 1), 0);
-    const cancelledQty  = claims.filter(c => c.status === "cancelled" ).reduce((s, c) => s + (c.quantity_claimed || 1), 0);
+
+    const pickedUp  = claims.filter(c => c.status === "picked_up");
+    const noshow    = claims.filter(c => c.status === "noshow");
+    const cancelled = claims.filter(c => c.status === "cancelled");
+
+    const pickedUpQty  = pickedUp.reduce((s, c) => s + (c.quantity_claimed || 1), 0);
+    const noshowQty    = noshow.reduce((s, c) => s + (c.quantity_claimed || 1), 0);
+    const cancelledQty = cancelled.reduce((s, c) => s + (c.quantity_claimed || 1), 0);
     const neverClaimedQty = Math.max(0, totalOriginal - pickedUpQty - noshowQty - cancelledQty);
 
-    const rows = [
-      pickedUpQty   > 0 && { label: "✅ Picked up",     qty: pickedUpQty,    color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0" },
-      noshowQty     > 0 && { label: "👻 No-show",        qty: noshowQty,      color: "#92400e", bg: "#fffbeb", border: "#fde68a" },
-      cancelledQty  > 0 && { label: "❌ Cancelled",      qty: cancelledQty,   color: "#b91c1c", bg: "#fef2f2", border: "#fecaca" },
-      neverClaimedQty > 0 && { label: "⬜ Never claimed", qty: neverClaimedQty, color: "#6b7280", bg: "#f9fafb", border: "#e5e7eb" },
-    ].filter(Boolean) as { label: string; qty: number; color: string; bg: string; border: string }[];
+    // Helper: "Alice (3)" or just "Alice" for single portions
+    function nameLabel(c: ClaimRow) {
+      return (c.quantity_claimed || 1) > 1 ? `${c.first_name} (${c.quantity_claimed})` : c.first_name;
+    }
 
-    if (rows.length === 0) return null;
+    const sections = [
+      pickedUp.length > 0 && {
+        emoji: "✅", label: "Picked up", qty: pickedUpQty,
+        names: pickedUp.map(nameLabel).join(", "),
+        color: "#166534", bg: "#f0fdf4", border: "#bbf7d0",
+      },
+      noshow.length > 0 && {
+        emoji: "👻", label: "No-show", qty: noshowQty,
+        names: noshow.map(nameLabel).join(", "),
+        color: "#92400e", bg: "#fffbeb", border: "#fde68a",
+      },
+      cancelled.length > 0 && {
+        emoji: "❌", label: "Cancelled", qty: cancelledQty,
+        names: cancelled.map(nameLabel).join(", "),
+        color: "#b91c1c", bg: "#fef2f2", border: "#fecaca",
+      },
+      neverClaimedQty > 0 && {
+        emoji: "⬜", label: "Never claimed", qty: neverClaimedQty,
+        names: null,
+        color: "#6b7280", bg: "#f9fafb", border: "#e5e7eb",
+      },
+    ].filter(Boolean) as { emoji: string; label: string; qty: number; names: string | null; color: string; bg: string; border: string }[];
+
+    if (sections.length === 0) return null;
 
     return (
-      <div style={{ marginTop: "14px", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px 16px" }}>
+      <div style={{ marginTop: "14px", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "14px 16px" }}>
         <p style={{ margin: "0 0 10px", fontSize: "12px", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.6px" }}>
           Outcome — {totalOriginal} portion{totalOriginal !== 1 ? "s" : ""} total
         </p>
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-          {rows.map(row => (
-            <div key={row.label} style={{ background: row.bg, border: `1px solid ${row.border}`, borderRadius: "8px", padding: "6px 14px", display: "flex", alignItems: "center", gap: "6px" }}>
-              <span style={{ fontSize: "16px", fontWeight: 900, color: row.color }}>{row.qty}</span>
-              <span style={{ fontSize: "12px", fontWeight: 600, color: row.color }}>{row.label}</span>
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          {sections.map(s => (
+            <div key={s.label} style={{ background: s.bg, border: `1px solid ${s.border}`, borderRadius: "8px", padding: "10px 14px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: s.names ? "4px" : 0 }}>
+                <span style={{ fontSize: "15px", fontWeight: 900, color: s.color }}>{s.qty}</span>
+                <span style={{ fontSize: "12px", fontWeight: 700, color: s.color }}>{s.emoji} {s.label}</span>
+              </div>
+              {s.names && (
+                <p style={{ margin: 0, fontSize: "12px", color: s.color, opacity: 0.85, paddingLeft: "2px" }}>
+                  {s.names}
+                </p>
+              )}
             </div>
           ))}
         </div>
@@ -647,10 +677,7 @@ export default function BusinessDashboard() {
           <p style={{ margin: "2px 0" }}><b>Posted:</b> {new Date(listing.created_at).toLocaleString()}</p>
         </div>
 
-        {/* Active listings: per-claim rows with pickup buttons */}
         {!isTerminal && renderClaimRows(listing)}
-
-        {/* Terminal listings: compact outcome summary */}
         {isTerminal && renderOutcomeSummary(listing)}
 
         {(listing.status === "NOSHOW" || noshowClaim) && (
