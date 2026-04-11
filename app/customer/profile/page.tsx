@@ -28,13 +28,6 @@ type Order = {
   business_phone?: string | null;
 };
 
-const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
-  active:    { bg: "#eff6ff", color: "#2563eb", label: "Reserved" },
-  picked_up: { bg: "#f0fdf4", color: "#16a34a", label: "Picked Up" },
-  cancelled: { bg: "#f9fafb", color: "#9ca3af", label: "Cancelled" },
-  noshow:    { bg: "#fef2f2", color: "#ef4444",  label: "No-show" },
-};
-
 const ETA_OPTIONS = [
   { value: 10,  label: "10 minutes" },
   { value: 15,  label: "15 minutes" },
@@ -52,7 +45,7 @@ const ETA_OPTIONS = [
 ];
 
 export default function CustomerProfile() {
-  const [profile, setProfile]       = useState<Record<string, string> | null>(null);
+  const [profile, setProfile]       = useState<Record<string, any> | null>(null);
   const [userId, setUserId]         = useState<string | null>(null);
   const [userEmail, setUserEmail]   = useState<string | null>(null);
   const [loading, setLoading]       = useState(true);
@@ -62,8 +55,9 @@ export default function CustomerProfile() {
   const [orders, setOrders]         = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [activeTab, setActiveTab]   = useState<"profile" | "orders">("profile");
+  const [now, setNow]               = useState(Date.now());
 
-  // New state for cancel + ETA update
+  // Cancel + ETA state
   const [etaEditId, setEtaEditId]         = useState<string | null>(null);
   const [etaEditValue, setEtaEditValue]   = useState<number>(30);
   const [etaLoading, setEtaLoading]       = useState(false);
@@ -74,12 +68,58 @@ export default function CustomerProfile() {
   const cameraRef = useRef<HTMLInputElement>(null);
   const fileRef   = useRef<HTMLInputElement>(null);
 
-  function minsLeft(expires_at: string) {
+  // Tick every 30s so ETA countdowns update live
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  // ETA time left — based on claim created_at + eta_minutes
+  function etaLeft(created_at: string, eta_minutes: number) {
+    const deadline = new Date(created_at).getTime() + eta_minutes * 60000;
+    const diff = deadline - Date.now();
+    if (diff <= 0) return null;
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return `${mins}m`;
+    return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+  }
+
+  // Listing expiry time left
+  function expiryLeft(expires_at: string) {
     const diff = new Date(expires_at).getTime() - Date.now();
     if (diff <= 0) return null;
     const mins = Math.floor(diff / 60000);
     if (mins < 60) return `${mins}m left`;
     return `${Math.floor(mins / 60)}h ${mins % 60}m left`;
+  }
+
+  // No-show warning — mirrors suspension logic in claim-submit DELETE
+  // noshow 2 → 3-day ban, noshow 4 → 7-day ban, noshow 5+ → permanent
+  function noshowWarning(count: number, permanently_banned: boolean, suspended_until: string | null): { text: string; color: string; bg: string; border: string } | null {
+    if (permanently_banned) return {
+      text: "Your account is permanently banned due to repeated no-shows. Contact admin@gawaloop.com.",
+      color: "#7f1d1d", bg: "#fef2f2", border: "#fecaca",
+    };
+    if (suspended_until && new Date(suspended_until) > new Date()) return {
+      text: `Account suspended until ${new Date(suspended_until).toLocaleDateString("en-US", { month: "long", day: "numeric" })} due to no-shows.`,
+      color: "#7f1d1d", bg: "#fef2f2", border: "#fecaca",
+    };
+    if (count === 0) return null;
+    // Next suspension threshold
+    const nextThreshold = count % 2 === 0 ? count + 2 : count + 1;
+    const remaining = nextThreshold - count;
+    if (count === 4) return {
+      text: `⚠️ Warning: You have ${count} no-shows. One more will result in a permanent ban.`,
+      color: "#7f1d1d", bg: "#fef2f2", border: "#fecaca",
+    };
+    if (count >= 3) return {
+      text: `⚠️ Warning: ${count} no-shows recorded. ${remaining} more will result in a longer suspension.`,
+      color: "#92400e", bg: "#fffbeb", border: "#fde68a",
+    };
+    return {
+      text: `Note: ${count} no-show${count > 1 ? "s" : ""} recorded. ${remaining} more will trigger a temporary suspension.`,
+      color: "#374151", bg: "#f9fafb", border: "#e5e7eb",
+    };
   }
 
   async function handleCancelClaim(claimId: string) {
@@ -186,18 +226,14 @@ export default function CustomerProfile() {
       .filter(o => { if (seen.has(o.id)) return false; seen.add(o.id); return true; })
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-    // Fetch business phone numbers for active orders
+    // Fetch business phones for active orders
     const activeOnes = merged.filter(o => o.status === "active");
     const bizNames = [...new Set(activeOnes.map((o: any) => o.listings?.business_name).filter(Boolean))];
     let phoneMap: Record<string, string> = {};
     if (bizNames.length > 0) {
       const { data: bizData } = await supabase
-        .from("businesses")
-        .select("name, phone")
-        .in("name", bizNames);
-      if (bizData) {
-        for (const b of bizData) if (b.phone) phoneMap[b.name] = b.phone;
-      }
+        .from("businesses").select("name, phone").in("name", bizNames);
+      if (bizData) for (const b of bizData) if (b.phone) phoneMap[b.name] = b.phone;
     }
 
     const withPhones = merged.map((o: any) => ({
@@ -217,7 +253,7 @@ export default function CustomerProfile() {
     if (!file || !userId) return;
     setUploading(true); setMsg("");
     const fd = new FormData();
-    fd.append("file",   file);
+    fd.append("file", file);
     fd.append("bucket", "customer-avatars");
     fd.append("folder", userId);
     const res  = await fetch("/api/upload-image", { method: "POST", body: fd });
@@ -266,9 +302,16 @@ export default function CustomerProfile() {
     </div>
   );
 
+  // Order buckets — sorted: Active → No-show → Cancelled → Expired → Picked Up
   const activeOrders    = orders.filter(o => o.status === "active");
-  const completedOrders = orders.filter(o => o.status === "picked_up");
-  const pastOrders      = orders.filter(o => o.status !== "active" && o.status !== "picked_up");
+  const noshowOrders    = orders.filter(o => o.noshow || o.status === "noshow");
+  const cancelledOrders = orders.filter(o => o.status === "cancelled" && !o.noshow);
+  const pickedUpOrders  = orders.filter(o => o.status === "picked_up");
+
+  const noshowCount      = profile?.noshow_count ?? 0;
+  const permBanned       = profile?.permanently_banned ?? false;
+  const suspendedUntil   = profile?.suspended_until ?? null;
+  const warning          = noshowWarning(noshowCount, permBanned, suspendedUntil);
 
   return (
     <div style={{ minHeight: "100vh", background: "#f9fafb", padding: "24px 16px", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
@@ -331,7 +374,7 @@ export default function CustomerProfile() {
         {/* Tabs */}
         <div style={{ display: "flex", gap: "4px", background: "#fff", borderRadius: "12px", padding: "4px", border: "1px solid #e5e7eb", marginBottom: "16px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
           {[
-            { key: "profile", label: `👤 Profile` },
+            { key: "profile", label: "👤 Profile" },
             { key: "orders",  label: `📦 Orders${activeOrders.length > 0 ? ` (${activeOrders.length} active)` : ""}` },
           ].map(tab => (
             <button key={tab.key} onClick={() => setActiveTab(tab.key as "profile" | "orders")}
@@ -390,6 +433,13 @@ export default function CustomerProfile() {
           <div>
             {ordersLoading && <p style={{ textAlign: "center", color: "#6b7280", padding: "40px 0" }}>Loading your orders...</p>}
 
+            {/* No-show warning banner */}
+            {!ordersLoading && warning && (
+              <div style={{ background: warning.bg, border: `1px solid ${warning.border}`, borderRadius: "12px", padding: "14px 18px", marginBottom: "16px" }}>
+                <p style={{ margin: 0, fontSize: "13px", color: warning.color, lineHeight: 1.5 }}>{warning.text}</p>
+              </div>
+            )}
+
             {!ordersLoading && orders.length === 0 && (
               <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "48px 24px", textAlign: "center" }}>
                 <p style={{ fontSize: "48px", margin: "0 0 12px" }}>🍽️</p>
@@ -399,21 +449,21 @@ export default function CustomerProfile() {
               </div>
             )}
 
-            {/* Active reservations */}
+            {/* ── 1. ACTIVE ─────────────────────────────────────────────── */}
             {!ordersLoading && activeOrders.length > 0 && (
               <div style={{ marginBottom: "20px" }}>
                 <h3 style={{ margin: "0 0 12px", fontSize: "14px", fontWeight: 800, color: "#2563eb" }}>🔵 Active Reservations</h3>
                 {activeOrders.map(order => {
-                  const listing    = order.listings;
-                  const qty        = order.quantity_claimed || 1;
-                  const timeLeft   = listing?.expires_at ? minsLeft(listing.expires_at) : null;
-                  const isExpired  = !timeLeft;
-                  const isUrgent   = !!timeLeft && timeLeft.includes("m left") && parseInt(timeLeft) <= 30;
-                  const bizPhone   = order.business_phone || null;
-                  const maxEta     = listing?.expires_at
+                  const listing   = order.listings;
+                  const qty       = order.quantity_claimed || 1;
+                  const eta       = etaLeft(order.created_at, order.eta_minutes || 30);
+                  const etaIsLow  = !!eta && parseInt(eta) <= 10 && eta.includes("m");
+                  const expiry    = listing?.expires_at ? expiryLeft(listing.expires_at) : null;
+                  const bizPhone  = order.business_phone || null;
+                  const maxEta    = listing?.expires_at
                     ? Math.min(Math.floor((new Date(listing.expires_at).getTime() - Date.now()) / 60000), 600)
                     : 600;
-                  const etaOpts    = ETA_OPTIONS.filter(o => o.value <= maxEta);
+                  const etaOpts   = ETA_OPTIONS.filter(o => o.value <= maxEta);
 
                   return (
                     <div key={order.id} style={{ background: "#eff6ff", border: "2px solid #bfdbfe", borderRadius: "14px", padding: "18px 20px", marginBottom: "12px" }}>
@@ -428,6 +478,26 @@ export default function CustomerProfile() {
                           <p style={{ margin: "0 0 2px", fontSize: "13px", fontWeight: 600, color: "#1e3a5f" }}>🏪 {listing?.business_name}</p>
                           <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#3b82f6" }}>📍 {listing?.address}</p>
                           {qty > 1 && <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#1d4ed8", fontWeight: 700 }}>{qty} portions reserved</p>}
+
+                          {/* ETA countdown + listing expiry */}
+                          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "8px" }}>
+                            {eta ? (
+                              <div style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: etaIsLow ? "#fef3c7" : "#dbeafe", border: `1px solid ${etaIsLow ? "#fde68a" : "#93c5fd"}`, borderRadius: "20px", padding: "4px 10px" }}>
+                                <span style={{ fontSize: "12px" }}>⏱️</span>
+                                <span style={{ fontSize: "12px", fontWeight: 700, color: etaIsLow ? "#92400e" : "#1d4ed8" }}>ETA: {eta}</span>
+                              </div>
+                            ) : (
+                              <div style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "20px", padding: "4px 10px" }}>
+                                <span style={{ fontSize: "12px", color: "#dc2626", fontWeight: 700 }}>⏱️ ETA passed</span>
+                              </div>
+                            )}
+                            {expiry && (
+                              <div style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "20px", padding: "4px 10px" }}>
+                                <span style={{ fontSize: "12px", fontWeight: 700, color: "#166534" }}>🕐 {expiry}</span>
+                              </div>
+                            )}
+                          </div>
+
                           <div style={{ background: "#fff", border: "1px solid #bfdbfe", borderRadius: "8px", padding: "8px 12px", display: "inline-block" }}>
                             <p style={{ margin: "0 0 2px", fontSize: "11px", color: "#6b7280", fontWeight: 600 }}>PICKUP CODE</p>
                             <p style={{ margin: 0, fontSize: "24px", fontWeight: 900, color: "#1d4ed8", letterSpacing: "4px", fontFamily: "monospace" }}>{order.confirmation_code}</p>
@@ -435,72 +505,56 @@ export default function CustomerProfile() {
                         </div>
                       </div>
 
-                      {/* Time left badge */}
+                      {/* Actions */}
                       <div style={{ marginTop: "14px" }}>
-                        {timeLeft && (
-                          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: isUrgent ? "#fef3c7" : "#f0fdf4", border: `1px solid ${isUrgent ? "#fde68a" : "#bbf7d0"}`, borderRadius: "20px", padding: "5px 12px", marginBottom: "12px" }}>
-                            <span style={{ fontSize: "13px" }}>⏰</span>
-                            <span style={{ fontSize: "13px", fontWeight: 700, color: isUrgent ? "#92400e" : "#166534" }}>
-                              {timeLeft} to pick up
-                            </span>
-                          </div>
-                        )}
-                        {isExpired && (
-                          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "20px", padding: "5px 12px", marginBottom: "12px" }}>
-                            <span style={{ fontSize: "13px", color: "#9ca3af" }}>⏱️ Listing expired</span>
-                          </div>
-                        )}
 
-                        {/* Urgent — running late banner */}
-                        {isUrgent && bizPhone && (
+                        {/* Urgent — running late */}
+                        {etaIsLow && bizPhone && (
                           <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "10px", padding: "10px 14px", marginBottom: "12px" }}>
                             <p style={{ margin: "0 0 4px", fontSize: "13px", fontWeight: 700, color: "#92400e" }}>Running late?</p>
                             <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#78350f", lineHeight: 1.5 }}>
                               Call the restaurant to let them know — they may hold your order so you are not marked as a no-show.
                             </p>
-                            <a href={`tel:${bizPhone}`}
-                              style={{ display: "inline-block", background: "#f59e0b", color: "#fff", padding: "7px 16px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 700 }}>
+                            <a href={`tel:${bizPhone}`} style={{ display: "inline-block", background: "#f59e0b", color: "#fff", padding: "7px 16px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 700 }}>
                               📞 Call {listing?.business_name}
                             </a>
                           </div>
                         )}
 
-                        {/* ETA update */}
-                        {!isExpired && (
-                          <div style={{ marginBottom: "10px" }}>
-                            {etaEditId === order.id ? (
-                              <div style={{ background: "#f0f9ff", border: "1px solid #bfdbfe", borderRadius: "10px", padding: "12px 14px" }}>
-                                <p style={{ margin: "0 0 8px", fontSize: "13px", fontWeight: 600, color: "#1d4ed8" }}>Update your arrival time:</p>
-                                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                                  <select value={etaEditValue} onChange={e => setEtaEditValue(Number(e.target.value))}
-                                    style={{ flex: 1, padding: "8px 10px", borderRadius: "8px", border: "1px solid #bfdbfe", fontSize: "14px", color: "#111827", background: "#fff" }}>
-                                    {etaOpts.map(opt => (
-                                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                    ))}
-                                  </select>
-                                  <button onClick={() => handleUpdateEta(order.id, listing?.expires_at || "")} disabled={etaLoading}
-                                    style={{ background: "#2563eb", color: "#fff", border: "none", padding: "8px 16px", borderRadius: "8px", cursor: etaLoading ? "not-allowed" : "pointer", fontSize: "13px", fontWeight: 700, whiteSpace: "nowrap" }}>
-                                    {etaLoading ? "..." : "Save"}
-                                  </button>
-                                  <button onClick={() => setEtaEditId(null)}
-                                    style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "8px 12px", borderRadius: "8px", cursor: "pointer", fontSize: "13px" }}>
-                                    ✕
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                <span style={{ fontSize: "13px", color: "#374151" }}>
-                                  ETA: <b>{(order.eta_minutes || 0) < 60 ? `${order.eta_minutes} min` : `${Math.floor((order.eta_minutes||0)/60)}h${(order.eta_minutes||0)%60>0?" "+(order.eta_minutes||0)%60+"m":""}`}</b>
-                                </span>
-                                <button onClick={() => { setEtaEditId(order.id); setEtaEditValue(order.eta_minutes || 30); }}
-                                  style={{ background: "none", border: "1px solid #bfdbfe", color: "#2563eb", padding: "4px 10px", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: 600 }}>
-                                  ✏️ Update ETA
+                        {/* ETA editor */}
+                        <div style={{ marginBottom: "10px" }}>
+                          {etaEditId === order.id ? (
+                            <div style={{ background: "#f0f9ff", border: "1px solid #bfdbfe", borderRadius: "10px", padding: "12px 14px" }}>
+                              <p style={{ margin: "0 0 8px", fontSize: "13px", fontWeight: 600, color: "#1d4ed8" }}>Update your arrival time:</p>
+                              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                                <select value={etaEditValue} onChange={e => setEtaEditValue(Number(e.target.value))}
+                                  style={{ flex: 1, padding: "8px 10px", borderRadius: "8px", border: "1px solid #bfdbfe", fontSize: "14px", color: "#111827", background: "#fff" }}>
+                                  {etaOpts.map(opt => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                  ))}
+                                </select>
+                                <button onClick={() => handleUpdateEta(order.id, listing?.expires_at || "")} disabled={etaLoading}
+                                  style={{ background: "#2563eb", color: "#fff", border: "none", padding: "8px 16px", borderRadius: "8px", cursor: etaLoading ? "not-allowed" : "pointer", fontSize: "13px", fontWeight: 700, whiteSpace: "nowrap" }}>
+                                  {etaLoading ? "..." : "Save"}
+                                </button>
+                                <button onClick={() => setEtaEditId(null)}
+                                  style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "8px 12px", borderRadius: "8px", cursor: "pointer", fontSize: "13px" }}>
+                                  ✕
                                 </button>
                               </div>
-                            )}
-                          </div>
-                        )}
+                            </div>
+                          ) : (
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              <span style={{ fontSize: "13px", color: "#374151" }}>
+                                ETA set: <b>{(order.eta_minutes || 0) < 60 ? `${order.eta_minutes} min` : `${Math.floor((order.eta_minutes||0)/60)}h${(order.eta_minutes||0)%60>0?" "+(order.eta_minutes||0)%60+"m":""}`}</b>
+                              </span>
+                              <button onClick={() => { setEtaEditId(order.id); setEtaEditValue(order.eta_minutes || 30); }}
+                                style={{ background: "none", border: "1px solid #bfdbfe", color: "#2563eb", padding: "4px 10px", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: 600 }}>
+                                ✏️ Update ETA
+                              </button>
+                            </div>
+                          )}
+                        </div>
 
                         {/* Feedback message */}
                         {etaMsg[order.id] && (
@@ -509,14 +563,13 @@ export default function CustomerProfile() {
                           </p>
                         )}
 
-                        {/* Soft nudge — call if running late (non-urgent) */}
-                        {!isUrgent && !isExpired && bizPhone && (
+                        {/* Soft call nudge */}
+                        {!etaIsLow && bizPhone && (
                           <div style={{ background: "#f0f9ff", border: "1px solid #bfdbfe", borderRadius: "10px", padding: "10px 14px", marginBottom: "10px" }}>
                             <p style={{ margin: "0 0 4px", fontSize: "12px", color: "#1d4ed8", lineHeight: 1.5 }}>
-                              Need more time? Call the restaurant — they can hold your order so you are not penalized for a late pickup.
+                              Need more time? Call the restaurant — they can hold your order so you are not penalized.
                             </p>
-                            <a href={`tel:${bizPhone}`}
-                              style={{ display: "inline-block", color: "#2563eb", fontSize: "12px", fontWeight: 700, textDecoration: "none" }}>
+                            <a href={`tel:${bizPhone}`} style={{ display: "inline-block", color: "#2563eb", fontSize: "12px", fontWeight: 700, textDecoration: "none" }}>
                               📞 {bizPhone}
                             </a>
                           </div>
@@ -553,15 +606,88 @@ export default function CustomerProfile() {
               </div>
             )}
 
-            {/* Completed and past orders */}
-            {!ordersLoading && (completedOrders.length > 0 || pastOrders.length > 0) && (
-              <div>
-                {completedOrders.length > 0 && (
-                  <h3 style={{ margin: "0 0 12px", fontSize: "14px", fontWeight: 800, color: "#16a34a" }}>✅ Picked Up</h3>
-                )}
-                {[...completedOrders, ...pastOrders].map(order => {
+            {/* ── 2. NO-SHOWS ───────────────────────────────────────────── */}
+            {!ordersLoading && noshowOrders.length > 0 && (
+              <div style={{ marginBottom: "20px" }}>
+                <h3 style={{ margin: "0 0 12px", fontSize: "14px", fontWeight: 800, color: "#dc2626" }}>
+                  🔴 No-shows ({noshowOrders.length})
+                  {noshowCount > 0 && (
+                    <span style={{ marginLeft: "8px", fontSize: "12px", fontWeight: 600, color: "#9ca3af" }}>
+                      — {noshowCount} total on record
+                    </span>
+                  )}
+                </h3>
+                {noshowOrders.map(order => {
                   const listing = order.listings;
-                  const st = STATUS_STYLE[order.noshow ? "noshow" : order.status] || STATUS_STYLE.active;
+                  const qty = order.quantity_claimed || 1;
+                  return (
+                    <div key={order.id} style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "14px", padding: "16px 18px", marginBottom: "10px" }}>
+                      <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
+                        {listing?.image_url ? (
+                          <img src={listing.image_url} alt={listing.food_name} style={{ width: "48px", height: "48px", borderRadius: "8px", objectFit: "cover", flexShrink: 0 }}/>
+                        ) : (
+                          <div style={{ width: "48px", height: "48px", borderRadius: "8px", background: "#fee2e2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", flexShrink: 0 }}>🍽️</div>
+                        )}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginBottom: "2px" }}>
+                            <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 800, color: "#991b1b" }}>{listing?.food_name || "Food"}</h3>
+                            <span style={{ background: "#fef2f2", color: "#ef4444", fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "20px", border: "1px solid #fecaca", flexShrink: 0 }}>No-show</span>
+                          </div>
+                          <p style={{ margin: "0 0 2px", fontSize: "12px", fontWeight: 600, color: "#374151" }}>🏪 {listing?.business_name}</p>
+                          <p style={{ margin: "0 0 4px", fontSize: "11px", color: "#9ca3af" }}>
+                            {new Date(order.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                            {qty > 1 ? ` · ${qty} portions` : ""}
+                          </p>
+                          <p style={{ margin: 0, fontSize: "12px", color: "#dc2626", lineHeight: 1.5 }}>
+                            You did not arrive within your ETA. The food was released back to the community.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ── 3. CANCELLED ──────────────────────────────────────────── */}
+            {!ordersLoading && cancelledOrders.length > 0 && (
+              <div style={{ marginBottom: "20px" }}>
+                <h3 style={{ margin: "0 0 12px", fontSize: "14px", fontWeight: 800, color: "#6b7280" }}>⚫ Cancelled</h3>
+                {cancelledOrders.map(order => {
+                  const listing = order.listings;
+                  const qty = order.quantity_claimed || 1;
+                  return (
+                    <div key={order.id} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "14px", padding: "16px 18px", marginBottom: "10px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                      <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
+                        {listing?.image_url ? (
+                          <img src={listing.image_url} alt={listing.food_name} style={{ width: "48px", height: "48px", borderRadius: "8px", objectFit: "cover", flexShrink: 0 }}/>
+                        ) : (
+                          <div style={{ width: "48px", height: "48px", borderRadius: "8px", background: "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", flexShrink: 0 }}>🍽️</div>
+                        )}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginBottom: "2px" }}>
+                            <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 800, color: "#374151" }}>{listing?.food_name || "Food"}</h3>
+                            <span style={{ background: "#f9fafb", color: "#9ca3af", fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "20px", border: "1px solid #e5e7eb", flexShrink: 0 }}>Cancelled</span>
+                          </div>
+                          <p style={{ margin: "0 0 2px", fontSize: "12px", fontWeight: 600, color: "#374151" }}>🏪 {listing?.business_name}</p>
+                          <p style={{ margin: 0, fontSize: "11px", color: "#9ca3af" }}>
+                            {new Date(order.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                            {qty > 1 ? ` · ${qty} portions` : ""}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ── 4. PICKED UP ──────────────────────────────────────────── */}
+            {!ordersLoading && pickedUpOrders.length > 0 && (
+              <div>
+                <h3 style={{ margin: "0 0 12px", fontSize: "14px", fontWeight: 800, color: "#16a34a" }}>✅ Picked Up</h3>
+                {pickedUpOrders.map(order => {
+                  const listing = order.listings;
                   const qty = order.quantity_claimed || 1;
                   return (
                     <div key={order.id} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "14px", padding: "16px 18px", marginBottom: "10px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
@@ -574,10 +700,9 @@ export default function CustomerProfile() {
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginBottom: "2px" }}>
                             <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 800, color: "#0a2e1a" }}>{listing?.food_name || "Food"}</h3>
-                            <span style={{ background: st.bg, color: st.color, fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "20px", flexShrink: 0 }}>{st.label}</span>
+                            <span style={{ background: "#f0fdf4", color: "#16a34a", fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "20px", border: "1px solid #bbf7d0", flexShrink: 0 }}>Picked Up</span>
                           </div>
                           <p style={{ margin: "0 0 2px", fontSize: "12px", fontWeight: 600, color: "#374151" }}>🏪 {listing?.business_name}</p>
-                          <p style={{ margin: "0 0 2px", fontSize: "11px", color: "#9ca3af" }}>📍 {listing?.address}</p>
                           <p style={{ margin: 0, fontSize: "11px", color: "#9ca3af" }}>
                             {new Date(order.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                             {qty > 1 ? ` · ${qty} portions` : ""}
