@@ -26,6 +26,7 @@ type Order = {
     quantity_remaining?: number;
   } | null;
   business_phone?: string | null;
+  business_email?: string | null;
 };
 
 const ETA_OPTIONS = [
@@ -56,6 +57,11 @@ export default function CustomerProfile() {
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [activeTab, setActiveTab]   = useState<"profile" | "orders">("profile");
   const [now, setNow]               = useState(Date.now());
+
+  // Section collapse state — Active always open, others collapsed by default
+  const [showNoshow,    setShowNoshow]    = useState(false);
+  const [showCancelled, setShowCancelled] = useState(false);
+  const [showPickedUp,  setShowPickedUp]  = useState(false);
 
   // Cancel + ETA state
   const [etaEditId, setEtaEditId]         = useState<string | null>(null);
@@ -93,8 +99,7 @@ export default function CustomerProfile() {
     return `${Math.floor(mins / 60)}h ${mins % 60}m left`;
   }
 
-  // No-show warning — mirrors suspension logic in claim-submit DELETE
-  // noshow 2 → 3-day ban, noshow 4 → 7-day ban, noshow 5+ → permanent
+  // No-show warning banner
   function noshowWarning(count: number, permanently_banned: boolean, suspended_until: string | null): { text: string; color: string; bg: string; border: string } | null {
     if (permanently_banned) return {
       text: "Your account is permanently banned due to repeated no-shows. Contact admin@gawaloop.com.",
@@ -105,7 +110,6 @@ export default function CustomerProfile() {
       color: "#7f1d1d", bg: "#fef2f2", border: "#fecaca",
     };
     if (count === 0) return null;
-    // Next suspension threshold
     const nextThreshold = count % 2 === 0 ? count + 2 : count + 1;
     const remaining = nextThreshold - count;
     if (count === 4) return {
@@ -226,22 +230,26 @@ export default function CustomerProfile() {
       .filter(o => { if (seen.has(o.id)) return false; seen.add(o.id); return true; })
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-    // Fetch business phones for active orders
-    const activeOnes = merged.filter(o => o.status === "active");
-    const bizNames = [...new Set(activeOnes.map((o: any) => o.listings?.business_name).filter(Boolean))];
-    let phoneMap: Record<string, string> = {};
+    // Fetch business info (phone + email) for ALL orders
+    const bizNames = [...new Set(merged.map((o: any) => o.listings?.business_name).filter(Boolean))];
+    let bizMap: Record<string, { phone: string | null; email: string | null }> = {};
     if (bizNames.length > 0) {
       const { data: bizData } = await supabase
-        .from("businesses").select("name, phone").in("name", bizNames);
-      if (bizData) for (const b of bizData) if (b.phone) phoneMap[b.name] = b.phone;
+        .from("businesses")
+        .select("name, phone, email")
+        .in("name", bizNames);
+      if (bizData) {
+        for (const b of bizData) bizMap[b.name] = { phone: b.phone || null, email: b.email || null };
+      }
     }
 
-    const withPhones = merged.map((o: any) => ({
+    const withBiz = merged.map((o: any) => ({
       ...o,
-      business_phone: o.listings?.business_name ? (phoneMap[o.listings.business_name] || null) : null,
+      business_phone: o.listings?.business_name ? (bizMap[o.listings.business_name]?.phone || null) : null,
+      business_email: o.listings?.business_name ? (bizMap[o.listings.business_name]?.email || null) : null,
     }));
 
-    setOrders(withPhones as Order[]);
+    setOrders(withBiz as Order[]);
     setOrdersLoading(false);
   }
 
@@ -296,22 +304,73 @@ export default function CustomerProfile() {
     display: "block", fontSize: "13px", fontWeight: 600, color: "#374151", marginBottom: "6px",
   };
 
+  // Reusable section header with dropdown toggle
+  function SectionHeader({ label, count, color, open, onToggle }: {
+    label: string; count: number; color: string; open: boolean; onToggle: () => void;
+  }) {
+    return (
+      <button onClick={onToggle}
+        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", cursor: "pointer", padding: "0", marginBottom: open ? "12px" : "8px" }}>
+        <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 800, color }}>
+          {label} <span style={{ fontWeight: 600, color: "#9ca3af", fontSize: "13px" }}>({count})</span>
+        </h3>
+        <span style={{ fontSize: "18px", color: "#9ca3af", transition: "transform 0.2s", display: "inline-block", transform: open ? "rotate(180deg)" : "rotate(0deg)" }}>
+          ▾
+        </span>
+      </button>
+    );
+  }
+
+  // Biz info block reused across active + past cards
+  function BizInfoBlock({ order, showMaps }: { order: Order; showMaps: boolean }) {
+    const listing = order.listings;
+    if (!listing) return null;
+    return (
+      <div style={{ background: "#f9fafb", borderRadius: "10px", padding: "12px 14px", marginTop: "10px", border: "1px solid #e5e7eb" }}>
+        <p style={{ margin: "0 0 6px", fontSize: "13px", fontWeight: 700, color: "#0a2e1a" }}>📍 {listing.address}</p>
+        {showMaps && (
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: order.business_phone || order.business_email ? "8px" : "0" }}>
+            <a href={`https://maps.google.com/?q=${encodeURIComponent(listing.address || "")}`} target="_blank" rel="noreferrer"
+              style={{ background: "#e8f0fe", color: "#1a73e8", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🗺️ Google</a>
+            <a href={`https://maps.apple.com/?q=${encodeURIComponent(listing.address || "")}`} target="_blank" rel="noreferrer"
+              style={{ background: "#f3f4f6", color: "#374151", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🍎 Apple</a>
+            <a href={`https://waze.com/ul?q=${encodeURIComponent(listing.address || "")}`} target="_blank" rel="noreferrer"
+              style={{ background: "#e8f8ff", color: "#0099cc", padding: "4px 10px", borderRadius: "6px", textDecoration: "none", fontSize: "12px", fontWeight: 600 }}>🚗 Waze</a>
+          </div>
+        )}
+        {(order.business_phone || order.business_email) && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px", borderTop: showMaps ? "1px solid #e5e7eb" : "none", paddingTop: showMaps ? "8px" : "0" }}>
+            {order.business_phone && (
+              <p style={{ margin: 0, fontSize: "13px" }}>
+                📞 <a href={`tel:${order.business_phone}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>{order.business_phone}</a>
+              </p>
+            )}
+            {order.business_email && (
+              <p style={{ margin: 0, fontSize: "13px" }}>
+                ✉️ <a href={`mailto:${order.business_email}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>{order.business_email}</a>
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   if (loading) return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "sans-serif" }}>
       <p style={{ color: "#6b7280" }}>Loading your profile...</p>
     </div>
   );
 
-  // Order buckets — sorted: Active → No-show → Cancelled → Expired → Picked Up
   const activeOrders    = orders.filter(o => o.status === "active");
   const noshowOrders    = orders.filter(o => o.noshow || o.status === "noshow");
   const cancelledOrders = orders.filter(o => o.status === "cancelled" && !o.noshow);
   const pickedUpOrders  = orders.filter(o => o.status === "picked_up");
 
-  const noshowCount      = profile?.noshow_count ?? 0;
-  const permBanned       = profile?.permanently_banned ?? false;
-  const suspendedUntil   = profile?.suspended_until ?? null;
-  const warning          = noshowWarning(noshowCount, permBanned, suspendedUntil);
+  const noshowCount    = profile?.noshow_count ?? 0;
+  const permBanned     = profile?.permanently_banned ?? false;
+  const suspendedUntil = profile?.suspended_until ?? null;
+  const warning        = noshowWarning(noshowCount, permBanned, suspendedUntil);
 
   return (
     <div style={{ minHeight: "100vh", background: "#f9fafb", padding: "24px 16px", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
@@ -449,21 +508,23 @@ export default function CustomerProfile() {
               </div>
             )}
 
-            {/* ── 1. ACTIVE ─────────────────────────────────────────────── */}
+            {/* ── 1. ACTIVE — always expanded ───────────────────────── */}
             {!ordersLoading && activeOrders.length > 0 && (
               <div style={{ marginBottom: "20px" }}>
-                <h3 style={{ margin: "0 0 12px", fontSize: "14px", fontWeight: 800, color: "#2563eb" }}>🔵 Active Reservations</h3>
+                <h3 style={{ margin: "0 0 12px", fontSize: "14px", fontWeight: 800, color: "#2563eb" }}>
+                  🔵 Active Reservations <span style={{ fontWeight: 600, color: "#9ca3af", fontSize: "13px" }}>({activeOrders.length})</span>
+                </h3>
                 {activeOrders.map(order => {
-                  const listing   = order.listings;
-                  const qty       = order.quantity_claimed || 1;
-                  const eta       = etaLeft(order.created_at, order.eta_minutes || 30);
-                  const etaIsLow  = !!eta && parseInt(eta) <= 10 && eta.includes("m");
-                  const expiry    = listing?.expires_at ? expiryLeft(listing.expires_at) : null;
-                  const bizPhone  = order.business_phone || null;
-                  const maxEta    = listing?.expires_at
+                  const listing  = order.listings;
+                  const qty      = order.quantity_claimed || 1;
+                  const eta      = etaLeft(order.created_at, order.eta_minutes || 30);
+                  const etaIsLow = !!eta && parseInt(eta) <= 10 && eta.includes("m");
+                  const expiry   = listing?.expires_at ? expiryLeft(listing.expires_at) : null;
+                  const bizPhone = order.business_phone || null;
+                  const maxEta   = listing?.expires_at
                     ? Math.min(Math.floor((new Date(listing.expires_at).getTime() - Date.now()) / 60000), 600)
                     : 600;
-                  const etaOpts   = ETA_OPTIONS.filter(o => o.value <= maxEta);
+                  const etaOpts  = ETA_OPTIONS.filter(o => o.value <= maxEta);
 
                   return (
                     <div key={order.id} style={{ background: "#eff6ff", border: "2px solid #bfdbfe", borderRadius: "14px", padding: "18px 20px", marginBottom: "12px" }}>
@@ -476,15 +537,13 @@ export default function CustomerProfile() {
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <h3 style={{ margin: "0 0 4px", fontSize: "15px", fontWeight: 800, color: "#1d4ed8" }}>{listing?.food_name || "Food"}</h3>
                           <p style={{ margin: "0 0 2px", fontSize: "13px", fontWeight: 600, color: "#1e3a5f" }}>🏪 {listing?.business_name}</p>
-                          <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#3b82f6" }}>📍 {listing?.address}</p>
                           {qty > 1 && <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#1d4ed8", fontWeight: 700 }}>{qty} portions reserved</p>}
 
-                          {/* ETA countdown + listing expiry */}
-                          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "8px" }}>
+                          {/* ETA countdown + listing expiry badges */}
+                          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", margin: "6px 0 10px" }}>
                             {eta ? (
                               <div style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: etaIsLow ? "#fef3c7" : "#dbeafe", border: `1px solid ${etaIsLow ? "#fde68a" : "#93c5fd"}`, borderRadius: "20px", padding: "4px 10px" }}>
-                                <span style={{ fontSize: "12px" }}>⏱️</span>
-                                <span style={{ fontSize: "12px", fontWeight: 700, color: etaIsLow ? "#92400e" : "#1d4ed8" }}>ETA: {eta}</span>
+                                <span style={{ fontSize: "12px", fontWeight: 700, color: etaIsLow ? "#92400e" : "#1d4ed8" }}>⏱️ ETA: {eta}</span>
                               </div>
                             ) : (
                               <div style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "20px", padding: "4px 10px" }}>
@@ -505,10 +564,12 @@ export default function CustomerProfile() {
                         </div>
                       </div>
 
+                      {/* Business info with maps */}
+                      <BizInfoBlock order={order} showMaps={true} />
+
                       {/* Actions */}
                       <div style={{ marginTop: "14px" }}>
-
-                        {/* Urgent — running late */}
+                        {/* Urgent call banner */}
                         {etaIsLow && bizPhone && (
                           <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "10px", padding: "10px 14px", marginBottom: "12px" }}>
                             <p style={{ margin: "0 0 4px", fontSize: "13px", fontWeight: 700, color: "#92400e" }}>Running late?</p>
@@ -538,9 +599,7 @@ export default function CustomerProfile() {
                                   {etaLoading ? "..." : "Save"}
                                 </button>
                                 <button onClick={() => setEtaEditId(null)}
-                                  style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "8px 12px", borderRadius: "8px", cursor: "pointer", fontSize: "13px" }}>
-                                  ✕
-                                </button>
+                                  style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "8px 12px", borderRadius: "8px", cursor: "pointer", fontSize: "13px" }}>✕</button>
                               </div>
                             </div>
                           ) : (
@@ -556,7 +615,6 @@ export default function CustomerProfile() {
                           )}
                         </div>
 
-                        {/* Feedback message */}
                         {etaMsg[order.id] && (
                           <p style={{ margin: "0 0 10px", fontSize: "12px", color: etaMsg[order.id].includes("updated") ? "#16a34a" : "#dc2626", fontWeight: 600 }}>
                             {etaMsg[order.id]}
@@ -606,22 +664,15 @@ export default function CustomerProfile() {
               </div>
             )}
 
-            {/* ── 2. NO-SHOWS ───────────────────────────────────────────── */}
+            {/* ── 2. NO-SHOWS — collapsible ─────────────────────────── */}
             {!ordersLoading && noshowOrders.length > 0 && (
-              <div style={{ marginBottom: "20px" }}>
-                <h3 style={{ margin: "0 0 12px", fontSize: "14px", fontWeight: 800, color: "#dc2626" }}>
-                  🔴 No-shows ({noshowOrders.length})
-                  {noshowCount > 0 && (
-                    <span style={{ marginLeft: "8px", fontSize: "12px", fontWeight: 600, color: "#9ca3af" }}>
-                      — {noshowCount} total on record
-                    </span>
-                  )}
-                </h3>
-                {noshowOrders.map(order => {
+              <div style={{ background: "#fff", border: "1px solid #fecaca", borderRadius: "14px", padding: "14px 18px", marginBottom: "12px" }}>
+                <SectionHeader label="🔴 No-shows" count={noshowOrders.length} color="#dc2626" open={showNoshow} onToggle={() => setShowNoshow(v => !v)} />
+                {showNoshow && noshowOrders.map(order => {
                   const listing = order.listings;
                   const qty = order.quantity_claimed || 1;
                   return (
-                    <div key={order.id} style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "14px", padding: "16px 18px", marginBottom: "10px" }}>
+                    <div key={order.id} style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "10px", padding: "14px 16px", marginBottom: "8px" }}>
                       <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
                         {listing?.image_url ? (
                           <img src={listing.image_url} alt={listing.food_name} style={{ width: "48px", height: "48px", borderRadius: "8px", objectFit: "cover", flexShrink: 0 }}/>
@@ -629,12 +680,9 @@ export default function CustomerProfile() {
                           <div style={{ width: "48px", height: "48px", borderRadius: "8px", background: "#fee2e2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", flexShrink: 0 }}>🍽️</div>
                         )}
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginBottom: "2px" }}>
-                            <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 800, color: "#991b1b" }}>{listing?.food_name || "Food"}</h3>
-                            <span style={{ background: "#fef2f2", color: "#ef4444", fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "20px", border: "1px solid #fecaca", flexShrink: 0 }}>No-show</span>
-                          </div>
+                          <h3 style={{ margin: "0 0 2px", fontSize: "14px", fontWeight: 800, color: "#991b1b" }}>{listing?.food_name || "Food"}</h3>
                           <p style={{ margin: "0 0 2px", fontSize: "12px", fontWeight: 600, color: "#374151" }}>🏪 {listing?.business_name}</p>
-                          <p style={{ margin: "0 0 4px", fontSize: "11px", color: "#9ca3af" }}>
+                          <p style={{ margin: "0 0 6px", fontSize: "11px", color: "#9ca3af" }}>
                             {new Date(order.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                             {qty > 1 ? ` · ${qty} portions` : ""}
                           </p>
@@ -643,21 +691,22 @@ export default function CustomerProfile() {
                           </p>
                         </div>
                       </div>
+                      <BizInfoBlock order={order} showMaps={false} />
                     </div>
                   );
                 })}
               </div>
             )}
 
-            {/* ── 3. CANCELLED ──────────────────────────────────────────── */}
+            {/* ── 3. CANCELLED — collapsible ────────────────────────── */}
             {!ordersLoading && cancelledOrders.length > 0 && (
-              <div style={{ marginBottom: "20px" }}>
-                <h3 style={{ margin: "0 0 12px", fontSize: "14px", fontWeight: 800, color: "#6b7280" }}>⚫ Cancelled</h3>
-                {cancelledOrders.map(order => {
+              <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "14px", padding: "14px 18px", marginBottom: "12px" }}>
+                <SectionHeader label="⚫ Cancelled" count={cancelledOrders.length} color="#6b7280" open={showCancelled} onToggle={() => setShowCancelled(v => !v)} />
+                {showCancelled && cancelledOrders.map(order => {
                   const listing = order.listings;
                   const qty = order.quantity_claimed || 1;
                   return (
-                    <div key={order.id} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "14px", padding: "16px 18px", marginBottom: "10px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                    <div key={order.id} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "14px 16px", marginBottom: "8px" }}>
                       <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
                         {listing?.image_url ? (
                           <img src={listing.image_url} alt={listing.food_name} style={{ width: "48px", height: "48px", borderRadius: "8px", objectFit: "cover", flexShrink: 0 }}/>
@@ -665,10 +714,7 @@ export default function CustomerProfile() {
                           <div style={{ width: "48px", height: "48px", borderRadius: "8px", background: "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", flexShrink: 0 }}>🍽️</div>
                         )}
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginBottom: "2px" }}>
-                            <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 800, color: "#374151" }}>{listing?.food_name || "Food"}</h3>
-                            <span style={{ background: "#f9fafb", color: "#9ca3af", fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "20px", border: "1px solid #e5e7eb", flexShrink: 0 }}>Cancelled</span>
-                          </div>
+                          <h3 style={{ margin: "0 0 2px", fontSize: "14px", fontWeight: 800, color: "#374151" }}>{listing?.food_name || "Food"}</h3>
                           <p style={{ margin: "0 0 2px", fontSize: "12px", fontWeight: 600, color: "#374151" }}>🏪 {listing?.business_name}</p>
                           <p style={{ margin: 0, fontSize: "11px", color: "#9ca3af" }}>
                             {new Date(order.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
@@ -676,32 +722,30 @@ export default function CustomerProfile() {
                           </p>
                         </div>
                       </div>
+                      <BizInfoBlock order={order} showMaps={false} />
                     </div>
                   );
                 })}
               </div>
             )}
 
-            {/* ── 4. PICKED UP ──────────────────────────────────────────── */}
+            {/* ── 4. PICKED UP — collapsible ────────────────────────── */}
             {!ordersLoading && pickedUpOrders.length > 0 && (
-              <div>
-                <h3 style={{ margin: "0 0 12px", fontSize: "14px", fontWeight: 800, color: "#16a34a" }}>✅ Picked Up</h3>
-                {pickedUpOrders.map(order => {
+              <div style={{ background: "#fff", border: "1px solid #bbf7d0", borderRadius: "14px", padding: "14px 18px", marginBottom: "12px" }}>
+                <SectionHeader label="✅ Picked Up" count={pickedUpOrders.length} color="#16a34a" open={showPickedUp} onToggle={() => setShowPickedUp(v => !v)} />
+                {showPickedUp && pickedUpOrders.map(order => {
                   const listing = order.listings;
                   const qty = order.quantity_claimed || 1;
                   return (
-                    <div key={order.id} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "14px", padding: "16px 18px", marginBottom: "10px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                    <div key={order.id} style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "14px 16px", marginBottom: "8px" }}>
                       <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
                         {listing?.image_url ? (
                           <img src={listing.image_url} alt={listing.food_name} style={{ width: "48px", height: "48px", borderRadius: "8px", objectFit: "cover", flexShrink: 0 }}/>
                         ) : (
-                          <div style={{ width: "48px", height: "48px", borderRadius: "8px", background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", flexShrink: 0 }}>🍽️</div>
+                          <div style={{ width: "48px", height: "48px", borderRadius: "8px", background: "#dcfce7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", flexShrink: 0 }}>🍽️</div>
                         )}
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginBottom: "2px" }}>
-                            <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 800, color: "#0a2e1a" }}>{listing?.food_name || "Food"}</h3>
-                            <span style={{ background: "#f0fdf4", color: "#16a34a", fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "20px", border: "1px solid #bbf7d0", flexShrink: 0 }}>Picked Up</span>
-                          </div>
+                          <h3 style={{ margin: "0 0 2px", fontSize: "14px", fontWeight: 800, color: "#0a2e1a" }}>{listing?.food_name || "Food"}</h3>
                           <p style={{ margin: "0 0 2px", fontSize: "12px", fontWeight: 600, color: "#374151" }}>🏪 {listing?.business_name}</p>
                           <p style={{ margin: 0, fontSize: "11px", color: "#9ca3af" }}>
                             {new Date(order.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
@@ -709,6 +753,7 @@ export default function CustomerProfile() {
                           </p>
                         </div>
                       </div>
+                      <BizInfoBlock order={order} showMaps={false} />
                     </div>
                   );
                 })}
@@ -720,3 +765,4 @@ export default function CustomerProfile() {
     </div>
   );
 }
+    
