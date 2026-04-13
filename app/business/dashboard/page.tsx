@@ -89,6 +89,7 @@ export default function BusinessDashboard() {
   const [businessName, setBusiness]         = useState<string | null>(null);
   const [businessId, setBusinessId]         = useState<string | null>(null);
   const [authUserId, setAuthUserId]         = useState<string | null>(null);
+  const [authEmail, setAuthEmail]           = useState<string>("");  // ← ADDED
   const [businessAddress, setAddress]       = useState("");
   const [businessLogoUrl, setLogoUrl]       = useState<string | null>(null);
   const [accountType, setAccountType]       = useState<string>("restaurant");
@@ -172,6 +173,7 @@ export default function BusinessDashboard() {
     const email = user.email || "";
     const admin = email === ADMIN_EMAIL;
     setIsAdmin(admin); setAuthUserId(user.id);
+    setAuthEmail(user.email || "");  // ← ADDED
     if (admin) {
       const { data } = await supabase.from("listings").select("business_name").order("business_name");
       setAllBizNames([...new Set((data || []).map((b: any) => b.business_name).filter(Boolean))] as string[]);
@@ -568,50 +570,26 @@ export default function BusinessDashboard() {
     );
   }
 
-  // History outcome summary: names grouped by what happened to them
   function renderOutcomeSummary(listing: ListingRow) {
     const claims = listing.claims || [];
     const totalOriginal = listing.quantity_total || 1;
-
     const pickedUp  = claims.filter(c => c.status === "picked_up");
     const noshow    = claims.filter(c => c.status === "noshow");
     const cancelled = claims.filter(c => c.status === "cancelled");
-
     const pickedUpQty  = pickedUp.reduce((s, c) => s + (c.quantity_claimed || 1), 0);
     const noshowQty    = noshow.reduce((s, c) => s + (c.quantity_claimed || 1), 0);
     const cancelledQty = cancelled.reduce((s, c) => s + (c.quantity_claimed || 1), 0);
     const neverClaimedQty = Math.max(0, totalOriginal - pickedUpQty - noshowQty - cancelledQty);
-
-    // Helper: "Alice (3)" or just "Alice" for single portions
     function nameLabel(c: ClaimRow) {
       return (c.quantity_claimed || 1) > 1 ? `${c.first_name} (${c.quantity_claimed})` : c.first_name;
     }
-
     const sections = [
-      pickedUp.length > 0 && {
-        emoji: "✅", label: "Picked up", qty: pickedUpQty,
-        names: pickedUp.map(nameLabel).join(", "),
-        color: "#166534", bg: "#f0fdf4", border: "#bbf7d0",
-      },
-      noshow.length > 0 && {
-        emoji: "👻", label: "No-show", qty: noshowQty,
-        names: noshow.map(nameLabel).join(", "),
-        color: "#92400e", bg: "#fffbeb", border: "#fde68a",
-      },
-      cancelled.length > 0 && {
-        emoji: "❌", label: "Cancelled", qty: cancelledQty,
-        names: cancelled.map(nameLabel).join(", "),
-        color: "#b91c1c", bg: "#fef2f2", border: "#fecaca",
-      },
-      neverClaimedQty > 0 && {
-        emoji: "⬜", label: "Never claimed", qty: neverClaimedQty,
-        names: null,
-        color: "#6b7280", bg: "#f9fafb", border: "#e5e7eb",
-      },
+      pickedUp.length > 0 && { emoji: "✅", label: "Picked up", qty: pickedUpQty, names: pickedUp.map(nameLabel).join(", "), color: "#166534", bg: "#f0fdf4", border: "#bbf7d0" },
+      noshow.length > 0 && { emoji: "👻", label: "No-show", qty: noshowQty, names: noshow.map(nameLabel).join(", "), color: "#92400e", bg: "#fffbeb", border: "#fde68a" },
+      cancelled.length > 0 && { emoji: "❌", label: "Cancelled", qty: cancelledQty, names: cancelled.map(nameLabel).join(", "), color: "#b91c1c", bg: "#fef2f2", border: "#fecaca" },
+      neverClaimedQty > 0 && { emoji: "⬜", label: "Never claimed", qty: neverClaimedQty, names: null, color: "#6b7280", bg: "#f9fafb", border: "#e5e7eb" },
     ].filter(Boolean) as { emoji: string; label: string; qty: number; names: string | null; color: string; bg: string; border: string }[];
-
     if (sections.length === 0) return null;
-
     return (
       <div style={{ marginTop: "14px", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "14px 16px" }}>
         <p style={{ margin: "0 0 10px", fontSize: "12px", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.6px" }}>
@@ -624,11 +602,7 @@ export default function BusinessDashboard() {
                 <span style={{ fontSize: "15px", fontWeight: 900, color: s.color }}>{s.qty}</span>
                 <span style={{ fontSize: "12px", fontWeight: 700, color: s.color }}>{s.emoji} {s.label}</span>
               </div>
-              {s.names && (
-                <p style={{ margin: 0, fontSize: "12px", color: s.color, opacity: 0.85, paddingLeft: "2px" }}>
-                  {s.names}
-                </p>
-              )}
+              {s.names && <p style={{ margin: 0, fontSize: "12px", color: s.color, opacity: 0.85, paddingLeft: "2px" }}>{s.names}</p>}
             </div>
           ))}
         </div>
@@ -646,7 +620,6 @@ export default function BusinessDashboard() {
     const isMultiPortion = listing.quantity_total != null && listing.quantity_total > 1;
     const remaining   = listing.quantity_remaining ?? listing.quantity_total ?? null;
     const isEditingThis = editingId === listing.id;
-
     return (
       <div key={listing.id} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "24px", marginBottom: "16px", opacity: isTerminal ? 0.88 : 1 }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "14px", gap: "12px" }}>
@@ -658,16 +631,14 @@ export default function BusinessDashboard() {
             {listing.status === "NOSHOW" ? "NO-SHOW" : listing.status}
           </span>
         </div>
-
         <div style={{ fontSize: "14px", color: "#1f2937", lineHeight: 1.9 }}>
           <p style={{ margin: "2px 0" }}><b>Category:</b> {listing.category || "N/A"}</p>
           <p style={{ margin: "2px 0" }}>
             <b>Quantity:</b>{" "}
             {isMultiPortion && remaining != null && !isTerminal
               ? <span style={{ color: remaining <= 3 ? "#ef4444" : "#16a34a", fontWeight: 700 }}>{remaining} of {listing.quantity_total} portions remaining</span>
-              : isMultiPortion
-                ? <span style={{ color: "#6b7280" }}>{listing.quantity_total} portions total</span>
-                : listing.quantity || "N/A"}
+              : isMultiPortion ? <span style={{ color: "#6b7280" }}>{listing.quantity_total} portions total</span>
+              : listing.quantity || "N/A"}
             {weightLbs && weightLbs > 0 && <span style={{ color: "#9ca3af", fontWeight: 400 }}> · {weightLbs.toFixed(1)} lbs</span>}
           </p>
           <p style={{ margin: "2px 0" }}><b>Address:</b> {listing.address || "N/A"}</p>
@@ -676,73 +647,50 @@ export default function BusinessDashboard() {
           {listing.note && <p style={{ margin: "2px 0" }}><b>Note:</b> {listing.note}</p>}
           <p style={{ margin: "2px 0" }}><b>Posted:</b> {new Date(listing.created_at).toLocaleString()}</p>
         </div>
-
         {!isTerminal && renderClaimRows(listing)}
         {isTerminal && renderOutcomeSummary(listing)}
-
         {(listing.status === "NOSHOW" || noshowClaim) && (
           <div style={{ background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: "12px", padding: "14px 20px", marginTop: "16px" }}>
             <p style={{ margin: "0 0 4px", fontWeight: 700, color: "#92400e", fontSize: "14px" }}>No-Show</p>
             <p style={{ margin: 0, fontSize: "13px", color: "#78350f" }}>{noshowClaim ? `${noshowClaim.first_name} did not arrive.` : "Customer did not arrive."}</p>
           </div>
         )}
-
         {isEditingThis && editMode && renderEditPanel(listing)}
-
         {relistId === listing.id && (
           <div style={{ background: "#f0fdf4", border: "1.5px solid #16a34a", borderRadius: "12px", padding: "16px", marginTop: "14px" }}>
             <p style={{ margin: "0 0 10px", fontSize: "14px", fontWeight: 700, color: "#0a2e1a" }}>Re-list this food</p>
             <label style={lbl}>New expiry date and time *</label>
-            <input style={{ ...inp, marginBottom: "12px" }} type="datetime-local"
-              min={new Date().toISOString().slice(0, 16)}
-              value={relistExpiry} onChange={e => setRelistExpiry(e.target.value)}/>
+            <input style={{ ...inp, marginBottom: "12px" }} type="datetime-local" min={new Date().toISOString().slice(0, 16)} value={relistExpiry} onChange={e => setRelistExpiry(e.target.value)}/>
             <div style={{ display: "flex", gap: "8px" }}>
-              <button onClick={() => handleRelist(listing.id)} disabled={!relistExpiry}
-                style={{ background: !relistExpiry ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "9px 20px", borderRadius: "8px", cursor: !relistExpiry ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "14px" }}>
-                Re-list Now
-              </button>
-              <button onClick={() => { setRelistId(null); setRelistExpiry(""); }}
-                style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "9px 16px", borderRadius: "8px", cursor: "pointer", fontSize: "14px" }}>
-                Cancel
-              </button>
+              <button onClick={() => handleRelist(listing.id)} disabled={!relistExpiry} style={{ background: !relistExpiry ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", padding: "9px 20px", borderRadius: "8px", cursor: !relistExpiry ? "not-allowed" : "pointer", fontWeight: 700, fontSize: "14px" }}>Re-list Now</button>
+              <button onClick={() => { setRelistId(null); setRelistExpiry(""); }} style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "9px 16px", borderRadius: "8px", cursor: "pointer", fontSize: "14px" }}>Cancel</button>
             </div>
           </div>
         )}
-
         {!isTerminal && !isEditingThis && (
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "20px" }}>
             {isEditable && (
               <button onClick={() => { setEditingId(listing.id); setEditMode("details"); setEditForm({}); setEditMsg(""); setClaimEditQtys({}); }}
-                style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>
-                ✏️ Edit
-              </button>
+                style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>✏️ Edit</button>
             )}
             {isEditable && (
               <button onClick={() => handleCancelListing(listing.id)}
-                style={{ background: "#ef4444", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>
-                Cancel Listing
-              </button>
+                style={{ background: "#ef4444", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>Cancel Listing</button>
             )}
           </div>
         )}
         {isEditingThis && (
           <div style={{ marginTop: "12px" }}>
             <button onClick={() => { setEditingId(null); setEditMode(null); setEditMsg(""); }}
-              style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "9px 16px", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: 600 }}>
-              Close Edit
-            </button>
+              style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", padding: "9px 16px", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: 600 }}>Close Edit</button>
           </div>
         )}
-
         {isCancelled && !relistId && (
           <div style={{ marginTop: "16px" }}>
             <button onClick={() => { setRelistId(listing.id); setRelistExpiry(""); }}
-              style={{ background: "#16a34a", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>
-              🔄 Re-list Food
-            </button>
+              style={{ background: "#16a34a", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}>🔄 Re-list Food</button>
           </div>
         )}
-
         {isTerminal && !isCancelled && (
           <p style={{ marginTop: "12px", fontSize: "13px", color: "#6b7280", fontStyle: "italic" }}>
             {listing.status === "PICKED_UP" && "Listing closed — all active claims resolved."}
@@ -897,6 +845,11 @@ export default function BusinessDashboard() {
           </div>
         )}
 
+        {/* ← ADDED: API Key section appears here, only for real businesses (not admin) */}
+        {!isAdmin && businessName && (
+          <ApiKeySection businessName={businessName} businessEmail={authEmail} />
+        )}
+
         <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "24px 28px", marginBottom: "24px" }}>
           <h2 style={{ margin: "0 0 16px", fontSize: "17px", fontWeight: 800, color: "#0a2e1a" }}>Your Impact</h2>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
@@ -1001,6 +954,110 @@ export default function BusinessDashboard() {
         )}
 
       </div>
+    </div>
+  );
+}
+
+// ← ADDED: API Key section component (self-contained, no changes to anything above)
+function ApiKeySection({ businessName, businessEmail }: { businessName: string | null; businessEmail: string }) {
+  const [apiKey, setApiKey]     = useState<string | null>(null);
+  const [loading, setLoading]   = useState(false);
+  const [copied, setCopied]     = useState(false);
+  const [visible, setVisible]   = useState(false);
+  const [calls, setCalls]       = useState(0);
+  const [lastUsed, setLastUsed] = useState<string | null>(null);
+
+  async function generateKey() {
+    if (!businessName || !businessEmail) return;
+    setLoading(true);
+    const res = await fetch("/api/generate-api-key", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ business_name: businessName, business_email: businessEmail }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setApiKey(data.api_key);
+      setCalls(data.total_calls || 0);
+      setLastUsed(data.last_used_at || null);
+    }
+    setLoading(false);
+  }
+
+  function copyKey() {
+    if (!apiKey) return;
+    navigator.clipboard.writeText(apiKey);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  const inp2: React.CSSProperties = { width: "100%", padding: "10px 14px", borderRadius: "8px", border: "1px solid #d1d5db", fontSize: "14px", color: "#111827", boxSizing: "border-box", outline: "none", background: "#fff" };
+
+  return (
+    <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "24px 28px", marginBottom: "24px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: "17px", fontWeight: 800, color: "#0a2e1a" }}>🔑 API Key</h2>
+          <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#6b7280" }}>
+            Post food listings automatically without logging in. Perfect for automating end-of-day surplus.
+          </p>
+        </div>
+        {apiKey && calls > 0 && (
+          <div style={{ display: "flex", gap: "8px" }}>
+            <span style={{ background: "#f0fdf4", color: "#16a34a", fontSize: "12px", fontWeight: 700, padding: "4px 10px", borderRadius: "8px" }}>{calls} API calls</span>
+            {lastUsed && <span style={{ background: "#f1f5f9", color: "#64748b", fontSize: "12px", fontWeight: 600, padding: "4px 10px", borderRadius: "8px" }}>Last used {new Date(lastUsed).toLocaleDateString()}</span>}
+          </div>
+        )}
+      </div>
+
+      {!apiKey ? (
+        <button onClick={generateKey} disabled={loading || !businessName}
+          style={{ background: "#0a2e1a", color: "#fff", border: "none", borderRadius: "10px", padding: "12px 24px", cursor: "pointer", fontSize: "14px", fontWeight: 700 }}>
+          {loading ? "Generating..." : "Generate API Key"}
+        </button>
+      ) : (
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px 16px" }}>
+            <code style={{ flex: 1, fontSize: "13px", color: "#0a2e1a", fontFamily: "monospace", letterSpacing: "0.5px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {visible ? apiKey : apiKey.slice(0, 12) + "••••••••••••••••••••••••"}
+            </code>
+            <button onClick={() => setVisible(v => !v)}
+              style={{ background: "none", border: "none", cursor: "pointer", fontSize: "13px", color: "#6b7280", fontWeight: 600, flexShrink: 0 }}>
+              {visible ? "Hide" : "Show"}
+            </button>
+            <button onClick={copyKey}
+              style={{ background: copied ? "#16a34a" : "#0a2e1a", color: "#fff", border: "none", borderRadius: "8px", padding: "8px 16px", cursor: "pointer", fontSize: "13px", fontWeight: 700, flexShrink: 0, transition: "background 0.2s" }}>
+              {copied ? "✓ Copied!" : "Copy"}
+            </button>
+          </div>
+
+          <div style={{ marginTop: "14px", background: "#f8fafc", borderRadius: "10px", padding: "14px 18px", border: "1px solid #e2e8f0" }}>
+            <p style={{ margin: "0 0 8px", fontSize: "12px", fontWeight: 700, color: "#374151", textTransform: "uppercase", letterSpacing: "0.5px" }}>Quick Example</p>
+            <pre style={{ margin: 0, fontSize: "12px", color: "#334155", overflowX: "auto", lineHeight: 1.7, fontFamily: "monospace" }}>{`curl -X POST https://gawaloop.com/api/v1/listings \\
+  -H "Authorization: Bearer ${visible ? apiKey : apiKey.slice(0, 12) + "..."}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"food_name":"Jerk chicken","quantity":"10"}'`}</pre>
+          </div>
+
+          <div style={{ marginTop: "12px", display: "flex", gap: "6px", flexWrap: "wrap" }}>
+            {[
+              { label: "POST /listings", desc: "Create listing" },
+              { label: "GET /listings", desc: "View listings" },
+              { label: "DELETE /listings/:id", desc: "Cancel" },
+              { label: "PATCH /listings/:id", desc: "Mark picked up" },
+            ].map(ep => (
+              <div key={ep.label} style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px", padding: "5px 10px" }}>
+                <span style={{ fontSize: "11px", fontWeight: 700, color: "#15803d", fontFamily: "monospace" }}>{ep.label}</span>
+                <span style={{ fontSize: "11px", color: "#6b7280", marginLeft: "6px" }}>{ep.desc}</span>
+              </div>
+            ))}
+          </div>
+          <p style={{ margin: "10px 0 0", fontSize: "12px", color: "#9ca3af" }}>
+            Keep this key private. Full docs at{" "}
+            <a href="https://gawaloop.com/api/v1" target="_blank" rel="noreferrer" style={{ color: "#16a34a" }}>gawaloop.com/api/v1</a>
+          </p>
+        </div>
+      )}
     </div>
   );
 }
