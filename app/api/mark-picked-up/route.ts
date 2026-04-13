@@ -7,6 +7,38 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+async function resolveListingAfterPickup(listingId: string) {
+  // Re-fetch current listing state after marking claim picked up
+  const { data: listing } = await supabase
+    .from("listings")
+    .select("id, status, quantity_remaining, quantity_total")
+    .eq("id", listingId)
+    .single();
+
+  if (!listing) return;
+
+  // Count remaining active claims
+  const { data: activeClaimsLeft } = await supabase
+    .from("claims")
+    .select("id")
+    .eq("listing_id", listingId)
+    .eq("status", "active");
+
+  const activeCount    = (activeClaimsLeft || []).length;
+  const unclaimedLeft  = listing.quantity_remaining ?? 0;
+
+  if (unclaimedLeft === 0 && activeCount === 0) {
+    // All portions claimed AND all pickups resolved — close listing
+    await supabase.from("listings").update({ status: "PICKED_UP" }).eq("id", listingId);
+  } else if (listing.status === "CLAIMED" && unclaimedLeft > 0 && activeCount === 0) {
+    // Was fully claimed but remaining portions freed up — put back to AVAILABLE
+    await supabase.from("listings")
+      .update({ status: "AVAILABLE", reserved_until: null })
+      .eq("id", listingId);
+  }
+  // If listing is already AVAILABLE (partial-claim scenario) — leave it alone
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { listingId, claimId, confirmationCode } = await req.json();
@@ -16,13 +48,12 @@ export async function POST(req: NextRequest) {
       .from("listings").select("*").eq("id", listingId).single();
     if (!listing) return NextResponse.json({ error: "Listing not found" }, { status: 404 });
 
-    // ── Mode 1: Mark a specific claim by claimId (per-claim manual pickup) ──
+    // ── Mode 1: Mark a specific claim by claimId ──────────────────────────
     if (claimId) {
       const { data: claim } = await supabase
         .from("claims").select("*").eq("id", claimId).single();
       if (!claim) return NextResponse.json({ error: "Claim not found" }, { status: 404 });
 
-      // If a code was provided, verify it
       if (confirmationCode && confirmationCode.trim()) {
         const trimmedCode = confirmationCode.trim().toUpperCase();
         if (claim.confirmation_code?.toUpperCase() !== trimmedCode) {
@@ -32,13 +63,12 @@ export async function POST(req: NextRequest) {
 
       await supabase.from("claims").update({ status: "picked_up" }).eq("id", claimId);
 
-      // Check if all active claims on this listing are now done
-      const { data: remaining } = await supabase
-        .from("claims").select("id").eq("listing_id", listingId).eq("status", "active");
+      // ← FIXED: check both active claims AND quantity_remaining
+      await resolveListingAfterPickup(listingId);
 
-      if (!remaining || remaining.length === 0) {
-        await supabase.from("listings").update({ status: "PICKED_UP" }).eq("id", listingId);
-      }
+      // Re-fetch to know final state for response
+      const { data: finalListing } = await supabase
+        .from("listings").select("status").eq("id", listingId).single();
 
       sendEmail(
         claim.email,
@@ -60,11 +90,11 @@ export async function POST(req: NextRequest) {
         verified: !!confirmationCode,
         claimerName: claim.first_name,
         quantityClaimed: claim.quantity_claimed || 1,
-        listingPickedUp: !remaining || remaining.length === 0,
+        listingPickedUp: finalListing?.status === "PICKED_UP",
       });
     }
 
-    // ── Mode 2: Legacy — mark by confirmationCode (no claimId provided) ──
+    // ── Mode 2: Mark by confirmationCode (no claimId) ────────────────────
     const { data: activeClaims } = await supabase
       .from("claims").select("*").eq("listing_id", listingId).eq("status", "active");
     const claims = (activeClaims || []) as any[];
@@ -80,12 +110,8 @@ export async function POST(req: NextRequest) {
 
       await supabase.from("claims").update({ status: "picked_up" }).eq("id", matchingClaim.id);
 
-      const { data: remainingActive } = await supabase
-        .from("claims").select("id").eq("listing_id", listingId).eq("status", "active");
-
-      if (!remainingActive || remainingActive.length === 0) {
-        await supabase.from("listings").update({ status: "PICKED_UP" }).eq("id", listingId);
-      }
+      // ← FIXED: check both active claims AND quantity_remaining
+      await resolveListingAfterPickup(listingId);
 
       sendEmail(
         matchingClaim.email,
@@ -110,12 +136,14 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // No claimId, no code — mark ALL active claims as picked up
+    // ── Mode 3: No claimId, no code — mark ALL active claims picked up ────
     if (claims.length > 0) {
       await supabase.from("claims").update({ status: "picked_up" })
         .eq("listing_id", listingId).eq("status", "active");
     }
-    await supabase.from("listings").update({ status: "PICKED_UP" }).eq("id", listingId);
+
+    // ← FIXED: check quantity_remaining before closing
+    await resolveListingAfterPickup(listingId);
 
     return NextResponse.json({ success: true });
   } catch (err) {
