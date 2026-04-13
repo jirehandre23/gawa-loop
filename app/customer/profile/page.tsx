@@ -58,12 +58,10 @@ export default function CustomerProfile() {
   const [activeTab, setActiveTab]   = useState<"profile" | "orders">("profile");
   const [now, setNow]               = useState(Date.now());
 
-  // Section collapse state — Active always open, others collapsed by default
   const [showNoshow,    setShowNoshow]    = useState(false);
   const [showCancelled, setShowCancelled] = useState(false);
   const [showPickedUp,  setShowPickedUp]  = useState(false);
 
-  // Cancel + ETA state
   const [etaEditId, setEtaEditId]         = useState<string | null>(null);
   const [etaEditValue, setEtaEditValue]   = useState<number>(30);
   const [etaLoading, setEtaLoading]       = useState(false);
@@ -74,13 +72,11 @@ export default function CustomerProfile() {
   const cameraRef = useRef<HTMLInputElement>(null);
   const fileRef   = useRef<HTMLInputElement>(null);
 
-  // Tick every 30s so ETA countdowns update live
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(id);
   }, []);
 
-  // ETA time left — based on claim created_at + eta_minutes
   function etaLeft(created_at: string, eta_minutes: number) {
     const deadline = new Date(created_at).getTime() + eta_minutes * 60000;
     const diff = deadline - Date.now();
@@ -90,7 +86,6 @@ export default function CustomerProfile() {
     return `${Math.floor(mins / 60)}h ${mins % 60}m`;
   }
 
-  // Listing expiry time left
   function expiryLeft(expires_at: string) {
     const diff = new Date(expires_at).getTime() - Date.now();
     if (diff <= 0) return null;
@@ -99,7 +94,6 @@ export default function CustomerProfile() {
     return `${Math.floor(mins / 60)}h ${mins % 60}m left`;
   }
 
-  // No-show warning banner
   function noshowWarning(count: number, permanently_banned: boolean, suspended_until: string | null): { text: string; color: string; bg: string; border: string } | null {
     if (permanently_banned) return {
       text: "Your account is permanently banned due to repeated no-shows. Contact admin@gawaloop.com.",
@@ -230,7 +224,6 @@ export default function CustomerProfile() {
       .filter(o => { if (seen.has(o.id)) return false; seen.add(o.id); return true; })
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-    // Fetch business info (phone + email) for ALL orders
     const bizNames = [...new Set(merged.map((o: any) => o.listings?.business_name).filter(Boolean))];
     let bizMap: Record<string, { phone: string | null; email: string | null }> = {};
     if (bizNames.length > 0) {
@@ -304,7 +297,6 @@ export default function CustomerProfile() {
     display: "block", fontSize: "13px", fontWeight: 600, color: "#374151", marginBottom: "6px",
   };
 
-  // Reusable section header with dropdown toggle
   function SectionHeader({ label, count, color, open, onToggle }: {
     label: string; count: number; color: string; open: boolean; onToggle: () => void;
   }) {
@@ -321,7 +313,6 @@ export default function CustomerProfile() {
     );
   }
 
-  // Biz info block reused across active + past cards
   function BizInfoBlock({ order, showMaps }: { order: Order; showMaps: boolean }) {
     const listing = order.listings;
     if (!listing) return null;
@@ -376,7 +367,6 @@ export default function CustomerProfile() {
     <div style={{ minHeight: "100vh", background: "#f9fafb", padding: "24px 16px", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
       <div style={{ maxWidth: "560px", margin: "0 auto" }}>
 
-        {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <a href="/browse"><img src="/gawa-logo-green.png" alt="GAWA Loop" style={{ width: "36px", height: "36px", objectFit: "contain" }}/></a>
@@ -388,7 +378,6 @@ export default function CustomerProfile() {
           </button>
         </div>
 
-        {/* Avatar */}
         <div style={{ background: "#fff", borderRadius: "16px", padding: "24px", marginBottom: "16px", border: "1px solid #e5e7eb", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
             <div style={{ position: "relative" }}>
@@ -430,7 +419,6 @@ export default function CustomerProfile() {
           {msg && <p style={{ margin: "12px 0 0", fontSize: "13px", color: msg.includes("✅") ? "#16a34a" : "#ef4444", fontWeight: 600 }}>{msg}</p>}
         </div>
 
-        {/* Tabs */}
         <div style={{ display: "flex", gap: "4px", background: "#fff", borderRadius: "12px", padding: "4px", border: "1px solid #e5e7eb", marginBottom: "16px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
           {[
             { key: "profile", label: "👤 Profile" },
@@ -445,7 +433,6 @@ export default function CustomerProfile() {
           ))}
         </div>
 
-        {/* Profile Tab */}
         {activeTab === "profile" && (
           <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "28px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
             <form onSubmit={handleSave}>
@@ -487,12 +474,10 @@ export default function CustomerProfile() {
           </div>
         )}
 
-        {/* Orders Tab */}
         {activeTab === "orders" && (
           <div>
             {ordersLoading && <p style={{ textAlign: "center", color: "#6b7280", padding: "40px 0" }}>Loading your orders...</p>}
 
-            {/* No-show warning banner */}
             {!ordersLoading && warning && (
               <div style={{ background: warning.bg, border: `1px solid ${warning.border}`, borderRadius: "12px", padding: "14px 18px", marginBottom: "16px" }}>
                 <p style={{ margin: 0, fontSize: "13px", color: warning.color, lineHeight: 1.5 }}>{warning.text}</p>
@@ -508,7 +493,6 @@ export default function CustomerProfile() {
               </div>
             )}
 
-            {/* ── 1. ACTIVE — always expanded ───────────────────────── */}
             {!ordersLoading && activeOrders.length > 0 && (
               <div style={{ marginBottom: "20px" }}>
                 <h3 style={{ margin: "0 0 12px", fontSize: "14px", fontWeight: 800, color: "#2563eb" }}>
@@ -539,7 +523,6 @@ export default function CustomerProfile() {
                           <p style={{ margin: "0 0 2px", fontSize: "13px", fontWeight: 600, color: "#1e3a5f" }}>🏪 {listing?.business_name}</p>
                           {qty > 1 && <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#1d4ed8", fontWeight: 700 }}>{qty} portions reserved</p>}
 
-                          {/* ETA countdown + listing expiry badges */}
                           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", margin: "6px 0 10px" }}>
                             {eta ? (
                               <div style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: etaIsLow ? "#fef3c7" : "#dbeafe", border: `1px solid ${etaIsLow ? "#fde68a" : "#93c5fd"}`, borderRadius: "20px", padding: "4px 10px" }}>
@@ -557,19 +540,27 @@ export default function CustomerProfile() {
                             )}
                           </div>
 
-                          <div style={{ background: "#fff", border: "1px solid #bfdbfe", borderRadius: "8px", padding: "8px 12px", display: "inline-block" }}>
+                          {/* Pickup code + QR code */}
+                          <div style={{ background: "#fff", border: "1px solid #bfdbfe", borderRadius: "8px", padding: "10px 14px", display: "inline-block" }}>
                             <p style={{ margin: "0 0 2px", fontSize: "11px", color: "#6b7280", fontWeight: 600 }}>PICKUP CODE</p>
-                            <p style={{ margin: 0, fontSize: "24px", fontWeight: 900, color: "#1d4ed8", letterSpacing: "4px", fontFamily: "monospace" }}>{order.confirmation_code}</p>
+                            <p style={{ margin: "0 0 10px", fontSize: "24px", fontWeight: 900, color: "#1d4ed8", letterSpacing: "4px", fontFamily: "monospace" }}>{order.confirmation_code}</p>
+                            <div style={{ textAlign: "center" }}>
+                              <img
+                                src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${order.confirmation_code}&bgcolor=ffffff&color=0a2e1a&margin=4`}
+                                alt={`QR code for ${order.confirmation_code}`}
+                                width={160}
+                                height={160}
+                                style={{ borderRadius: "8px", display: "block" }}
+                              />
+                              <p style={{ margin: "6px 0 0", fontSize: "11px", color: "#9ca3af" }}>Show this QR code to the business</p>
+                            </div>
                           </div>
                         </div>
                       </div>
 
-                      {/* Business info with maps */}
                       <BizInfoBlock order={order} showMaps={true} />
 
-                      {/* Actions */}
                       <div style={{ marginTop: "14px" }}>
-                        {/* Urgent call banner */}
                         {etaIsLow && bizPhone && (
                           <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "10px", padding: "10px 14px", marginBottom: "12px" }}>
                             <p style={{ margin: "0 0 4px", fontSize: "13px", fontWeight: 700, color: "#92400e" }}>Running late?</p>
@@ -582,7 +573,6 @@ export default function CustomerProfile() {
                           </div>
                         )}
 
-                        {/* ETA editor */}
                         <div style={{ marginBottom: "10px" }}>
                           {etaEditId === order.id ? (
                             <div style={{ background: "#f0f9ff", border: "1px solid #bfdbfe", borderRadius: "10px", padding: "12px 14px" }}>
@@ -621,7 +611,6 @@ export default function CustomerProfile() {
                           </p>
                         )}
 
-                        {/* Soft call nudge */}
                         {!etaIsLow && bizPhone && (
                           <div style={{ background: "#f0f9ff", border: "1px solid #bfdbfe", borderRadius: "10px", padding: "10px 14px", marginBottom: "10px" }}>
                             <p style={{ margin: "0 0 4px", fontSize: "12px", color: "#1d4ed8", lineHeight: 1.5 }}>
@@ -633,7 +622,6 @@ export default function CustomerProfile() {
                           </div>
                         )}
 
-                        {/* Cancel */}
                         {cancelConfirm === order.id ? (
                           <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "10px", padding: "12px 14px" }}>
                             <p style={{ margin: "0 0 6px", fontSize: "13px", fontWeight: 700, color: "#991b1b" }}>Cancel this reservation?</p>
@@ -664,7 +652,6 @@ export default function CustomerProfile() {
               </div>
             )}
 
-            {/* ── 2. NO-SHOWS — collapsible ─────────────────────────── */}
             {!ordersLoading && noshowOrders.length > 0 && (
               <div style={{ background: "#fff", border: "1px solid #fecaca", borderRadius: "14px", padding: "14px 18px", marginBottom: "12px" }}>
                 <SectionHeader label="🔴 No-shows" count={noshowOrders.length} color="#dc2626" open={showNoshow} onToggle={() => setShowNoshow(v => !v)} />
@@ -698,7 +685,6 @@ export default function CustomerProfile() {
               </div>
             )}
 
-            {/* ── 3. CANCELLED — collapsible ────────────────────────── */}
             {!ordersLoading && cancelledOrders.length > 0 && (
               <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "14px", padding: "14px 18px", marginBottom: "12px" }}>
                 <SectionHeader label="⚫ Cancelled" count={cancelledOrders.length} color="#6b7280" open={showCancelled} onToggle={() => setShowCancelled(v => !v)} />
@@ -729,7 +715,6 @@ export default function CustomerProfile() {
               </div>
             )}
 
-            {/* ── 4. PICKED UP — collapsible ────────────────────────── */}
             {!ordersLoading && pickedUpOrders.length > 0 && (
               <div style={{ background: "#fff", border: "1px solid #bbf7d0", borderRadius: "14px", padding: "14px 18px", marginBottom: "12px" }}>
                 <SectionHeader label="✅ Picked Up" count={pickedUpOrders.length} color="#16a34a" open={showPickedUp} onToggle={() => setShowPickedUp(v => !v)} />
@@ -765,4 +750,3 @@ export default function CustomerProfile() {
     </div>
   );
 }
-    
