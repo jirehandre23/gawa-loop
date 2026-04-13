@@ -17,18 +17,18 @@ async function getBusinessFromKey(req: NextRequest): Promise<{ business_name: st
   return data?.active ? data : null;
 }
 
+type RouteContext = { params: Promise<{ id: string }> };
+
 // GET /api/v1/listings/:id
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(req: NextRequest, context: RouteContext) {
+  const { id } = await context.params;
   const biz = await getBusinessFromKey(req);
   if (!biz) return NextResponse.json({ success: false, error: "Invalid API key." }, { status: 401 });
 
   const { data: listing } = await supabase
     .from("listings")
     .select("*, claims(*)")
-    .eq("id", params.id)
+    .eq("id", id)
     .eq("business_name", biz.business_name)
     .single();
 
@@ -37,17 +37,15 @@ export async function GET(
 }
 
 // DELETE /api/v1/listings/:id — cancel a listing
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(req: NextRequest, context: RouteContext) {
+  const { id } = await context.params;
   const biz = await getBusinessFromKey(req);
   if (!biz) return NextResponse.json({ success: false, error: "Invalid API key." }, { status: 401 });
 
   const { data: listing } = await supabase
     .from("listings")
     .select("id, status, food_name, business_name")
-    .eq("id", params.id)
+    .eq("id", id)
     .eq("business_name", biz.business_name)
     .single();
 
@@ -60,7 +58,7 @@ export async function DELETE(
     );
   }
 
-  await supabase.from("listings").update({ status: "CANCELLED" }).eq("id", params.id);
+  await supabase.from("listings").update({ status: "CANCELLED" }).eq("id", id);
 
   return NextResponse.json({
     success: true,
@@ -69,17 +67,15 @@ export async function DELETE(
 }
 
 // PATCH /api/v1/listings/:id — mark as picked up
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(req: NextRequest, context: RouteContext) {
+  const { id } = await context.params;
   const biz = await getBusinessFromKey(req);
   if (!biz) return NextResponse.json({ success: false, error: "Invalid API key." }, { status: 401 });
 
   const { data: listing } = await supabase
     .from("listings")
     .select("id, status, food_name")
-    .eq("id", params.id)
+    .eq("id", id)
     .eq("business_name", biz.business_name)
     .single();
 
@@ -92,7 +88,7 @@ export async function PATCH(
     );
   }
 
-  await supabase.from("listings").update({ status: "PICKED_UP" }).eq("id", params.id);
+  await supabase.from("listings").update({ status: "PICKED_UP" }).eq("id", id);
 
   return NextResponse.json({
     success: true,
