@@ -41,17 +41,12 @@ export async function GET(req: NextRequest) {
     .update({ status: "cancelled", cancelled_at: now.toISOString() })
     .eq("id", claimId);
 
-  // Restore portions to listing if not expired
-  if (listing && stillActive) {
-    const qty = (claim as any).quantity_claimed || 1;
-    const newRemaining = Math.min(
-      (listing.quantity_remaining || 0) + qty,
-      listing.quantity_total || 1
-    );
-    await supabase.from("listings")
-      .update({ status: "AVAILABLE", quantity_remaining: newRemaining, reserved_until: null, claim_code: null })
-      .eq("id", listing.id);
-  } else if (listing && !stillActive) {
+  // ← FIXED: use restore_listing_quantity instead of manual quantity math
+  // This correctly handles multi-portion listings with other active claims,
+  // respects expiry, and only sets AVAILABLE when appropriate.
+  if (stillActive) {
+    await supabase.rpc("restore_listing_quantity", { p_claim_id: claimId });
+  } else if (listing) {
     await supabase.from("listings")
       .update({ status: "EXPIRED", reserved_until: null })
       .eq("id", listing.id)
@@ -156,19 +151,11 @@ export async function POST(req: NextRequest) {
       .update({ status: "cancelled", cancelled_at: now.toISOString() })
       .eq("id", claimId);
 
-    // Restore portions if listing not expired
+    // ← FIXED: use restore_listing_quantity instead of manual quantity math
     if (listing && stillActive) {
-      const qty = claim.quantity_claimed || 1;
-      const newRemaining = Math.min(
-        (listing.quantity_remaining || 0) + qty,
-        listing.quantity_total || 1
-      );
-      await supabase.from("listings")
-        .update({ status: "AVAILABLE", quantity_remaining: newRemaining, reserved_until: null, claim_code: null })
-        .eq("id", listing.id);
+      await supabase.rpc("restore_listing_quantity", { p_claim_id: claimId });
     }
 
-    // Send cancellation emails (non-blocking)
     const customerName = claim.first_name || "Customer";
     const foodName     = listing?.food_name || "food";
     const businessName = listing?.business_name || "the business";
