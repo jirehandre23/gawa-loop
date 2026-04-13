@@ -11,7 +11,7 @@ const supabase = createClient(
 
 const ADMIN_EMAIL = "admin@gawaloop.com";
 const TERMINAL    = ["PICKED_UP", "EXPIRED", "CANCELLED", "NOSHOW"];
-const EDITABLE    = ["AVAILABLE", "RESERVED", "CLAIMED"];
+const EDITABLE    = ["AVAILABLE", "RESERVED", "CLAIMED", "SCHEDULED"]; // ← CHANGED
 
 const STATUS_COLOR: Record<string, { bg: string; text: string }> = {
   AVAILABLE: { bg: "#16a34a", text: "#fff" },
@@ -21,6 +21,7 @@ const STATUS_COLOR: Record<string, { bg: string; text: string }> = {
   EXPIRED:   { bg: "#9ca3af", text: "#fff" },
   CANCELLED: { bg: "#ef4444", text: "#fff" },
   NOSHOW:    { bg: "#f59e0b", text: "#fff" },
+  SCHEDULED: { bg: "#8b5cf6", text: "#fff" }, // ← ADDED
 };
 
 type ClaimRow = {
@@ -33,7 +34,7 @@ type ListingRow = {
   id: string; food_name: string; category: string; quantity: string;
   quantity_total: number; quantity_remaining: number;
   address: string; allergy_note: string; estimated_value: number; note: string;
-  status: string; expires_at: string; created_at: string; reserved_until: string;
+  status: string; expires_at: string; starts_at?: string; created_at: string; reserved_until: string; // ← ADDED starts_at
   claim_code: string; image_url?: string; weight_kg?: number;
   business_logo_url?: string;
   claims?: ClaimRow[];
@@ -89,7 +90,7 @@ export default function BusinessDashboard() {
   const [businessName, setBusiness]         = useState<string | null>(null);
   const [businessId, setBusinessId]         = useState<string | null>(null);
   const [authUserId, setAuthUserId]         = useState<string | null>(null);
-  const [authEmail, setAuthEmail]           = useState<string>("");  // ← ADDED
+  const [authEmail, setAuthEmail]           = useState<string>("");
   const [businessAddress, setAddress]       = useState("");
   const [businessLogoUrl, setLogoUrl]       = useState<string | null>(null);
   const [accountType, setAccountType]       = useState<string>("restaurant");
@@ -173,7 +174,7 @@ export default function BusinessDashboard() {
     const email = user.email || "";
     const admin = email === ADMIN_EMAIL;
     setIsAdmin(admin); setAuthUserId(user.id);
-    setAuthEmail(user.email || "");  // ← ADDED
+    setAuthEmail(user.email || "");
     if (admin) {
       const { data } = await supabase.from("listings").select("business_name").order("business_name");
       setAllBizNames([...new Set((data || []).map((b: any) => b.business_name).filter(Boolean))] as string[]);
@@ -611,14 +612,15 @@ export default function BusinessDashboard() {
   }
 
   function renderListingCard(listing: ListingRow) {
-    const isTerminal  = TERMINAL.includes(listing.status);
-    const isEditable  = EDITABLE.includes(listing.status);
-    const isCancelled = listing.status === "CANCELLED";
-    const sc          = STATUS_COLOR[listing.status] || { bg: "#6b7280", text: "#fff" };
-    const noshowClaim = listing.claims?.find(c => c.noshow === true);
-    const weightLbs   = listing.weight_kg ? listing.weight_kg * 2.205 : null;
+    const isTerminal   = TERMINAL.includes(listing.status);
+    const isEditable   = EDITABLE.includes(listing.status);
+    const isCancelled  = listing.status === "CANCELLED";
+    const isScheduled  = listing.status === "SCHEDULED"; // ← ADDED
+    const sc           = STATUS_COLOR[listing.status] || { bg: "#6b7280", text: "#fff" };
+    const noshowClaim  = listing.claims?.find(c => c.noshow === true);
+    const weightLbs    = listing.weight_kg ? listing.weight_kg * 2.205 : null;
     const isMultiPortion = listing.quantity_total != null && listing.quantity_total > 1;
-    const remaining   = listing.quantity_remaining ?? listing.quantity_total ?? null;
+    const remaining    = listing.quantity_remaining ?? listing.quantity_total ?? null;
     const isEditingThis = editingId === listing.id;
     return (
       <div key={listing.id} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "24px", marginBottom: "16px", opacity: isTerminal ? 0.88 : 1 }}>
@@ -628,7 +630,7 @@ export default function BusinessDashboard() {
             <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "#0a2e1a", lineHeight: 1.3 }}>{listing.food_name || "Unnamed food"}</h3>
           </div>
           <span style={{ background: sc.bg, color: sc.text, fontSize: "12px", fontWeight: 700, padding: "5px 14px", borderRadius: "20px", flexShrink: 0 }}>
-            {listing.status === "NOSHOW" ? "NO-SHOW" : listing.status}
+            {listing.status === "NOSHOW" ? "NO-SHOW" : isScheduled ? "⏳ SCHEDULED" : listing.status}
           </span>
         </div>
         <div style={{ fontSize: "14px", color: "#1f2937", lineHeight: 1.9 }}>
@@ -647,6 +649,23 @@ export default function BusinessDashboard() {
           {listing.note && <p style={{ margin: "2px 0" }}><b>Note:</b> {listing.note}</p>}
           <p style={{ margin: "2px 0" }}><b>Posted:</b> {new Date(listing.created_at).toLocaleString()}</p>
         </div>
+
+        {/* ← ADDED: Scheduled info box */}
+        {isScheduled && listing.starts_at && (
+          <div style={{ marginTop: "12px", background: "#f5f3ff", border: "1.5px solid #ddd6fe", borderRadius: "10px", padding: "12px 16px" }}>
+            <p style={{ margin: "0 0 4px", fontSize: "13px", fontWeight: 700, color: "#7c3aed" }}>⏳ Scheduled listing</p>
+            <p style={{ margin: "2px 0", fontSize: "13px", color: "#374151" }}>
+              <b>Goes live:</b> {new Date(listing.starts_at).toLocaleString()}
+            </p>
+            <p style={{ margin: "2px 0", fontSize: "13px", color: "#374151" }}>
+              <b>Expires:</b> {new Date(listing.expires_at).toLocaleString()}
+            </p>
+            <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#7c3aed" }}>
+              Hidden from Browse until it goes live. Customers cannot see or claim it yet.
+            </p>
+          </div>
+        )}
+
         {!isTerminal && renderClaimRows(listing)}
         {isTerminal && renderOutcomeSummary(listing)}
         {(listing.status === "NOSHOW" || noshowClaim) && (
@@ -845,7 +864,6 @@ export default function BusinessDashboard() {
           </div>
         )}
 
-        {/* ← ADDED: API Key section appears here, only for real businesses (not admin) */}
         {!isAdmin && businessName && (
           <ApiKeySection businessName={businessName} businessEmail={authEmail} />
         )}
@@ -958,7 +976,6 @@ export default function BusinessDashboard() {
   );
 }
 
-// ← ADDED: API Key section component (self-contained, no changes to anything above)
 function ApiKeySection({ businessName, businessEmail }: { businessName: string | null; businessEmail: string }) {
   const [apiKey, setApiKey]     = useState<string | null>(null);
   const [loading, setLoading]   = useState(false);
@@ -991,8 +1008,6 @@ function ApiKeySection({ businessName, businessEmail }: { businessName: string |
     setTimeout(() => setCopied(false), 2000);
   }
 
-  const inp2: React.CSSProperties = { width: "100%", padding: "10px 14px", borderRadius: "8px", border: "1px solid #d1d5db", fontSize: "14px", color: "#111827", boxSizing: "border-box", outline: "none", background: "#fff" };
-
   return (
     <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "24px 28px", marginBottom: "24px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
@@ -1009,7 +1024,6 @@ function ApiKeySection({ businessName, businessEmail }: { businessName: string |
           </div>
         )}
       </div>
-
       {!apiKey ? (
         <button onClick={generateKey} disabled={loading || !businessName}
           style={{ background: "#0a2e1a", color: "#fff", border: "none", borderRadius: "10px", padding: "12px 24px", cursor: "pointer", fontSize: "14px", fontWeight: 700 }}>
@@ -1030,7 +1044,6 @@ function ApiKeySection({ businessName, businessEmail }: { businessName: string |
               {copied ? "✓ Copied!" : "Copy"}
             </button>
           </div>
-
           <div style={{ marginTop: "14px", background: "#f8fafc", borderRadius: "10px", padding: "14px 18px", border: "1px solid #e2e8f0" }}>
             <p style={{ margin: "0 0 8px", fontSize: "12px", fontWeight: 700, color: "#374151", textTransform: "uppercase", letterSpacing: "0.5px" }}>Quick Example</p>
             <pre style={{ margin: 0, fontSize: "12px", color: "#334155", overflowX: "auto", lineHeight: 1.7, fontFamily: "monospace" }}>{`curl -X POST https://gawaloop.com/api/v1/listings \\
@@ -1038,7 +1051,6 @@ function ApiKeySection({ businessName, businessEmail }: { businessName: string |
   -H "Content-Type: application/json" \\
   -d '{"food_name":"Jerk chicken","quantity":"10"}'`}</pre>
           </div>
-
           <div style={{ marginTop: "12px", display: "flex", gap: "6px", flexWrap: "wrap" }}>
             {[
               { label: "POST /listings", desc: "Create listing" },
