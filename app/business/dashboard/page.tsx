@@ -45,7 +45,6 @@ type ReceivedClaim = {
   listing_id: string; food_name: string; business_name: string;
   image_url: string | null; address: string;
 };
-// ← ADDED
 type FlatClaim = {
   claimId: string; listingId: string; foodName: string;
   firstName: string; code: string; qty: number;
@@ -127,7 +126,7 @@ export default function BusinessDashboard() {
   const [claimEditQtys, setClaimEditQtys]   = useState<Record<string, number>>({});
   const [relistId, setRelistId]             = useState<string | null>(null);
   const [relistExpiry, setRelistExpiry]     = useState("");
-  const [pickupMode, setPickupMode]         = useState(false); // ← ADDED
+  const [pickupMode, setPickupMode]         = useState(false);
   const listingFileRef = useRef<HTMLInputElement>(null);
   const logoRef        = useRef<HTMLInputElement>(null);
 
@@ -239,8 +238,6 @@ export default function BusinessDashboard() {
   const receivedActive    = receivedClaims.filter(c => c.status === "active");
   const receivedPickedUp  = receivedClaims.filter(c => c.status === "picked_up");
   const receivedCancelled = receivedClaims.filter(c => c.status === "cancelled");
-
-  // ← ADDED: total active claims count for showing the Pickup Mode button
   const totalActiveClaims = listings.reduce((s, l) => s + (l.claims?.filter(c => c.status === "active").length || 0), 0);
 
   function computeExpiresAt(): string {
@@ -788,7 +785,14 @@ export default function BusinessDashboard() {
               </select>
             )}
             <button onClick={() => { setShowForm(true); setPostMsg(""); }} style={{ background: "#16a34a", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontSize: "14px", fontWeight: 700 }}>+ New Listing</button>
-            {/* ← ADDED: Pickup Mode button — only shown when there are active claims */}
+            {/* 📷 Scan — QR scanner for pickup confirmation */}
+            {!isAdmin && (
+              <a href="/business/scan"
+                style={{ background: "#0a2e1a", color: "#4ade80", border: "1px solid #166534", padding: "10px 18px", borderRadius: "8px", textDecoration: "none", fontSize: "14px", fontWeight: 700 }}>
+                📷 Scan
+              </a>
+            )}
+            {/* Pickup Mode — only shown when there are active claims */}
             {!isAdmin && totalActiveClaims > 0 && (
               <button onClick={() => setPickupMode(true)}
                 style={{ background: "#2563eb", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontSize: "14px", fontWeight: 700 }}>
@@ -908,7 +912,6 @@ export default function BusinessDashboard() {
           </div>
         </div>
 
-        {/* ← ADDED: Quick Pickup Mode panel */}
         {pickupMode && !isAdmin && (
           <QuickPickupMode
             listings={listings}
@@ -993,12 +996,7 @@ export default function BusinessDashboard() {
   );
 }
 
-// ─── Quick Pickup Mode ─────────────────────────────────────────────────────────
-// All active claims across all listings shown as large tappable code cards.
-// Business glances at customer phone → taps matching code → done.
-// No scrolling. No typing. No searching by name.
-// Filter bar lets staff narrow down if needed (by code digits OR name OR food).
-// ──────────────────────────────────────────────────────────────────────────────
+// ─── Quick Pickup Mode ────────────────────────────────────────────────────────
 function QuickPickupMode({
   listings,
   onPickedUp,
@@ -1013,7 +1011,6 @@ function QuickPickupMode({
   const [done, setDone]             = useState<Set<string>>(new Set());
   const [loadingId, setLoadingId]   = useState<string | null>(null);
 
-  // Flatten all active claims from all listings into one flat list
   const allClaims: FlatClaim[] = listings.flatMap(l =>
     (l.claims || [])
       .filter(c => c.status === "active")
@@ -1029,14 +1026,12 @@ function QuickPickupMode({
       }))
   );
 
-  // Sort: most overdue first (oldest created_at + eta)
   const sorted = [...allClaims].sort((a, b) => {
     const aDeadline = new Date(a.createdAt).getTime() + a.eta * 60000;
     const bDeadline = new Date(b.createdAt).getTime() + b.eta * 60000;
     return aDeadline - bDeadline;
   });
 
-  // Filter by code digits, name, or food name — still no typing required to confirm
   const q = filter.trim().toLowerCase();
   const visible = q
     ? sorted.filter(c =>
@@ -1059,7 +1054,6 @@ function QuickPickupMode({
 
   return (
     <div style={{ background: "#fff", border: "2px solid #2563eb", borderRadius: "16px", padding: "20px 24px", marginBottom: "24px" }}>
-      {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
         <div>
           <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "#1d4ed8" }}>⚡ Pickup Mode</h2>
@@ -1077,20 +1071,15 @@ function QuickPickupMode({
           </button>
         </div>
       </div>
-
-      {/* Filter — optional, for narrowing when staff knows part of a code or name */}
       <input
         placeholder="Filter by code, name, or food (optional)..."
         value={filter}
         onChange={e => { setFilter(e.target.value); setConfirming(null); }}
         style={{ width: "100%", padding: "10px 14px", borderRadius: "10px", border: "1px solid #d1d5db", fontSize: "14px", color: "#111827", boxSizing: "border-box", outline: "none", background: "#f9fafb", marginBottom: "16px" }}
       />
-
       {allClaims.length === 0 && (
         <p style={{ textAlign: "center", color: "#9ca3af", padding: "24px 0", fontSize: "14px" }}>No active claims right now.</p>
       )}
-
-      {/* Pending cards */}
       {remaining.length > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "10px", marginBottom: doneList.length > 0 ? "20px" : 0 }}>
           {remaining.map(claim => {
@@ -1099,7 +1088,6 @@ function QuickPickupMode({
             const etaDeadline   = new Date(claim.createdAt).getTime() + claim.eta * 60000;
             const minsLeft      = Math.floor((etaDeadline - Date.now()) / 60000);
             const isOverdue     = minsLeft < 0;
-
             return (
               <div key={claim.claimId}
                 onClick={() => !isLoading && setConfirming(isConfirming ? null : claim.claimId)}
@@ -1110,7 +1098,6 @@ function QuickPickupMode({
                   transition: "border-color 0.15s, background 0.15s",
                   display: "flex", flexDirection: "column", gap: "6px",
                 }}>
-                {/* Big code — the main thing the business is looking for */}
                 <div style={{ fontFamily: "monospace", fontSize: "28px", fontWeight: 900, letterSpacing: "6px", color: isConfirming ? "#1d4ed8" : "#0a2e1a", lineHeight: 1 }}>
                   {claim.code}
                 </div>
@@ -1119,7 +1106,6 @@ function QuickPickupMode({
                 <div style={{ fontSize: "11px", color: isOverdue ? "#dc2626" : "#9ca3af", fontWeight: isOverdue ? 700 : 400 }}>
                   {isOverdue ? `⚠️ ${Math.abs(minsLeft)}m overdue` : `ETA in ${minsLeft}m`}
                 </div>
-                {/* Confirm button appears after tap */}
                 {isConfirming && (
                   <button
                     onClick={e => { e.stopPropagation(); markPickedUp(claim); }}
@@ -1133,8 +1119,6 @@ function QuickPickupMode({
           })}
         </div>
       )}
-
-      {/* Done cards — shown smaller at the bottom */}
       {doneList.length > 0 && (
         <div>
           <p style={{ margin: "0 0 10px", fontSize: "12px", fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.5px" }}>
