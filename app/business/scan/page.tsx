@@ -1,33 +1,21 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
+import jsQR from "jsqr";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// Inline jsQR loader — fetches the script text and evals it so no external
-// script tag is needed (avoids CSP / Next.js script loading issues).
-async function loadJsQR(): Promise<(data: Uint8ClampedArray, width: number, height: number) => { data: string } | null> {
-  if ((window as any).jsQR) return (window as any).jsQR;
-  const res = await fetch("https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js");
-  const text = await res.text();
-  // eslint-disable-next-line no-eval
-  eval(text);
-  return (window as any).jsQR;
-}
-
 export default function ScanPage() {
   const videoRef    = useRef<HTMLVideoElement>(null);
   const canvasRef   = useRef<HTMLCanvasElement>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const jsQRRef     = useRef<((data: Uint8ClampedArray, w: number, h: number) => { data: string } | null) | null>(null);
 
   const [status, setStatus]     = useState<"idle" | "scanning" | "success" | "error">("idle");
   const [message, setMessage]   = useState("");
   const [lastCode, setLastCode] = useState("");
-  const [loading, setLoading]   = useState(true);
   const [authOk, setAuthOk]     = useState(false);
   const [bizName, setBizName]   = useState<string | null>(null);
 
@@ -44,26 +32,7 @@ export default function ScanPage() {
     check();
   }, []);
 
-  // Pre-load jsQR as soon as the page mounts
-  useEffect(() => {
-    loadJsQR().then(fn => {
-      jsQRRef.current = fn;
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, []);
-
   async function startCamera() {
-    // Ensure jsQR is ready (retry load if pre-load failed)
-    if (!jsQRRef.current) {
-      const fn = await loadJsQR();
-      if (!fn) {
-        setStatus("error");
-        setMessage("QR scanner failed to load. Please check your internet connection and try again.");
-        return;
-      }
-      jsQRRef.current = fn;
-    }
-
     setStatus("scanning");
     setMessage("");
     setLastCode("");
@@ -73,12 +42,12 @@ export default function ScanPage() {
       });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.play();
+        await videoRef.current.play();
       }
       intervalRef.current = setInterval(scanFrame, 300);
-    } catch {
+    } catch (err: any) {
       setStatus("error");
-      setMessage("Camera access denied. Please allow camera access and try again.");
+      setMessage("Camera access denied or unavailable. Please allow camera access and try again.");
     }
   }
 
@@ -96,8 +65,7 @@ export default function ScanPage() {
   function scanFrame() {
     const video  = videoRef.current;
     const canvas = canvasRef.current;
-    const jsQR   = jsQRRef.current;
-    if (!video || !canvas || !jsQR || video.readyState < 2) return;
+    if (!video || !canvas || video.readyState < 2) return;
     canvas.width  = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext("2d");
@@ -223,9 +191,8 @@ export default function ScanPage() {
         {status === "idle" && (
           <button
             onClick={startCamera}
-            disabled={loading}
-            style={{ width: "100%", background: loading ? "#374151" : "#16a34a", color: "#fff", border: "none", borderRadius: "12px", padding: "16px", fontSize: "17px", fontWeight: 800, cursor: loading ? "not-allowed" : "pointer" }}>
-            {loading ? "Initializing..." : "📷 Start Scanning"}
+            style={{ width: "100%", background: "#16a34a", color: "#fff", border: "none", borderRadius: "12px", padding: "16px", fontSize: "17px", fontWeight: 800, cursor: "pointer" }}>
+            📷 Start Scanning
           </button>
         )}
 
