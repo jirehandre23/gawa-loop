@@ -19,7 +19,9 @@ export async function GET(req: NextRequest) {
 
   const now = new Date().toISOString();
 
-  // 1. RESERVED listings past reserved_until → no-show
+  // ─── 1. RESERVED listings past reserved_until → no-show ───────────────────
+  // Only applies to single-portion listings or fully-claimed multi-portion ones
+  // (status RESERVED means all portions are spoken for)
   const { data: noShowListings } = await supabase
     .from("listings")
     .select("id, claims(*)")
@@ -46,7 +48,6 @@ export async function GET(req: NextRequest) {
           const name = activeClaim.first_name || "there";
 
           if (result.suspended && result.permanent) {
-            // PERMANENT BAN email
             await sendEmail(activeClaim.email, "Your GAWA Loop account has been permanently banned",
               emailWrapper(`
                 <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#991b1b;">Account Permanently Banned</h2>
@@ -59,7 +60,6 @@ export async function GET(req: NextRequest) {
               `)
             );
           } else if (result.suspended) {
-            // SUSPENSION email (1 wk / 3 wks / 8 wks)
             const weeks = result.suspension_weeks;
             const count = result.suspension_count;
             const until = new Date(result.suspended_until).toLocaleDateString("en-US", {
@@ -84,7 +84,6 @@ export async function GET(req: NextRequest) {
               `)
             );
           } else if (result.noshow_count % 3 !== 0) {
-            // WARNING email (no-shows 1, 2 before first suspension; 4, 5 before second, etc.)
             const remaining = 3 - (result.noshow_count % 3);
             await sendEmail(activeClaim.email, "⚠️ Missed pickup warning — GAWA Loop",
               emailWrapper(`
@@ -104,27 +103,45 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Return listing to AVAILABLE
-      await supabase.from("listings")
-        .update({ status: "AVAILABLE", reserved_until: null, claim_code: null })
-        .eq("id", listing.id);
+      // ← FIXED: use restore_listing_quantity instead of blindly setting AVAILABLE
+      // This correctly handles multi-portion listings:
+      // - adds back the no-show's quantity_claimed to quantity_remaining
+      // - only sets AVAILABLE if remaining > 0 or no other claims exist
+      // - respects expiry (won't restore if listing already expired)
+      await supabase.rpc("restore_listing_quantity", { p_claim_id: activeClaim?.id });
 
       noshowCount++;
     }
   }
 
-  // 2. AVAILABLE listings past expires_at → EXPIRED
-  const { data: expiredListings, error: expireError } = await supabase
+  // ─── 2. Expire overdue listings safely ────────────────────────────────────
+  // ← FIXED: use safe_expire_listing() per listing instead of bulk UPDATE
+  // safe_expire_listing() checks for active claims before expiring —
+  // a listing with active claims is NEVER expired until those claims resolve.
+  // This prevents listings with reserved portions from disappearing from Browse.
+  const { data: expiryCandidates } = await supabase
     .from("listings")
-    .update({ status: "EXPIRED" })
-    .eq("status", "AVAILABLE")
-    .lt("expires_at", now)
-    .select("id");
+    .select("id")
+    .in("status", ["AVAILABLE", "CLAIMED"])
+    .lt("expires_at", now);
+
+  let expiredCount = 0;
+  let skippedCount = 0;
+
+  if (expiryCandidates && expiryCandidates.length > 0) {
+    for (const listing of expiryCandidates) {
+      const { data: result } = await supabase
+        .rpc("safe_expire_listing", { p_listing_id: listing.id });
+      if (result === "expired") expiredCount++;
+      else skippedCount++;
+    }
+  }
 
   return NextResponse.json({
     success: true,
     noshows_returned: noshowCount,
-    expired: expiredListings?.length ?? 0,
+    expired: expiredCount,
+    skipped_active_claims: skippedCount,
     ran_at: now,
   });
 }
