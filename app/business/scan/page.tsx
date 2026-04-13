@@ -7,19 +7,31 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+// Inline jsQR loader — fetches the script text and evals it so no external
+// script tag is needed (avoids CSP / Next.js script loading issues).
+async function loadJsQR(): Promise<(data: Uint8ClampedArray, width: number, height: number) => { data: string } | null> {
+  if ((window as any).jsQR) return (window as any).jsQR;
+  const res = await fetch("https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js");
+  const text = await res.text();
+  // eslint-disable-next-line no-eval
+  eval(text);
+  return (window as any).jsQR;
+}
+
 export default function ScanPage() {
   const videoRef    = useRef<HTMLVideoElement>(null);
   const canvasRef   = useRef<HTMLCanvasElement>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const jsQRRef     = useRef<((data: Uint8ClampedArray, w: number, h: number) => { data: string } | null) | null>(null);
 
-  const [status, setStatus]         = useState<"idle" | "scanning" | "success" | "error">("idle");
-  const [message, setMessage]       = useState("");
-  const [lastCode, setLastCode]     = useState("");
-  const [jsQRLoaded, setJsQRLoaded] = useState(false);
-  const [authOk, setAuthOk]         = useState(false);
-  const [bizName, setBizName]       = useState<string | null>(null);
+  const [status, setStatus]     = useState<"idle" | "scanning" | "success" | "error">("idle");
+  const [message, setMessage]   = useState("");
+  const [lastCode, setLastCode] = useState("");
+  const [loading, setLoading]   = useState(true);
+  const [authOk, setAuthOk]     = useState(false);
+  const [bizName, setBizName]   = useState<string | null>(null);
 
-  // Auth check — must be a logged-in business (non-admin)
+  // Auth check
   useEffect(() => {
     async function check() {
       const { data: { user } } = await supabase.auth.getUser();
@@ -32,17 +44,26 @@ export default function ScanPage() {
     check();
   }, []);
 
-  // Load jsQR from CDN
+  // Pre-load jsQR as soon as the page mounts
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if ((window as any).jsQR) { setJsQRLoaded(true); return; }
-    const script = document.createElement("script");
-    script.src = "https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js";
-    script.onload = () => setJsQRLoaded(true);
-    document.head.appendChild(script);
+    loadJsQR().then(fn => {
+      jsQRRef.current = fn;
+      setLoading(false);
+    }).catch(() => setLoading(false));
   }, []);
 
   async function startCamera() {
+    // Ensure jsQR is ready (retry load if pre-load failed)
+    if (!jsQRRef.current) {
+      const fn = await loadJsQR();
+      if (!fn) {
+        setStatus("error");
+        setMessage("QR scanner failed to load. Please check your internet connection and try again.");
+        return;
+      }
+      jsQRRef.current = fn;
+    }
+
     setStatus("scanning");
     setMessage("");
     setLastCode("");
@@ -75,7 +96,7 @@ export default function ScanPage() {
   function scanFrame() {
     const video  = videoRef.current;
     const canvas = canvasRef.current;
-    const jsQR   = (window as any).jsQR;
+    const jsQR   = jsQRRef.current;
     if (!video || !canvas || !jsQR || video.readyState < 2) return;
     canvas.width  = video.videoWidth;
     canvas.height = video.videoHeight;
@@ -95,7 +116,6 @@ export default function ScanPage() {
     setStatus("idle");
     setMessage(`Code detected: ${code} — looking up claim...`);
 
-    // Find active claim with this confirmation code
     const { data: claims, error } = await supabase
       .from("claims")
       .select("id, listing_id, first_name, quantity_claimed, status, listings(food_name, business_name)")
@@ -110,14 +130,12 @@ export default function ScanPage() {
 
     const claim = claims[0] as any;
 
-    // Verify this claim belongs to this business
     if (bizName && claim.listings?.business_name !== bizName) {
       setStatus("error");
-      setMessage(`This code belongs to a different business (${claim.listings?.business_name}). You can only confirm pickups for your own listings.`);
+      setMessage(`This code belongs to a different business (${claim.listings?.business_name}).`);
       return;
     }
 
-    // Mark as picked up
     const res = await fetch("/api/mark-picked-up", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -129,7 +147,6 @@ export default function ScanPage() {
       setStatus("success");
       const qty = claim.quantity_claimed || 1;
       setMessage(`✅ ${claim.first_name} picked up ${qty > 1 ? `${qty} portions of ` : ""}${claim.listings?.food_name || "food"}!`);
-      // Auto-reset to scan again after 4 seconds
       setTimeout(() => {
         setStatus("idle");
         setMessage("");
@@ -176,19 +193,14 @@ export default function ScanPage() {
           />
           <canvas ref={canvasRef} style={{ display: "none" }} />
 
-          {/* Overlay when not scanning */}
           {status !== "scanning" && (
             <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "12px" }}>
               <div style={{ fontSize: "64px" }}>
                 {status === "success" ? "✅" : status === "error" ? "❌" : "📷"}
               </div>
-              <p style={{ margin: 0, fontSize: "14px", color: "#fff", opacity: 0.7, textAlign: "center", padding: "0 20px" }}>
-                {status === "idle" ? "Tap below to start camera" : ""}
-              </p>
             </div>
           )}
 
-          {/* Scanning crosshair */}
           {status === "scanning" && (
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
               <div style={{ width: "200px", height: "200px", border: "3px solid #4ade80", borderRadius: "12px", boxShadow: "0 0 0 2000px rgba(0,0,0,0.35)" }}/>
@@ -207,13 +219,13 @@ export default function ScanPage() {
           </div>
         )}
 
-        {/* Action buttons */}
+        {/* Buttons */}
         {status === "idle" && (
           <button
             onClick={startCamera}
-            disabled={!jsQRLoaded}
-            style={{ width: "100%", background: jsQRLoaded ? "#16a34a" : "#374151", color: "#fff", border: "none", borderRadius: "12px", padding: "16px", fontSize: "17px", fontWeight: 800, cursor: jsQRLoaded ? "pointer" : "not-allowed" }}>
-            {jsQRLoaded ? "📷 Start Scanning" : "Loading scanner..."}
+            disabled={loading}
+            style={{ width: "100%", background: loading ? "#374151" : "#16a34a", color: "#fff", border: "none", borderRadius: "12px", padding: "16px", fontSize: "17px", fontWeight: 800, cursor: loading ? "not-allowed" : "pointer" }}>
+            {loading ? "Initializing..." : "📷 Start Scanning"}
           </button>
         )}
 
@@ -225,7 +237,7 @@ export default function ScanPage() {
           </button>
         )}
 
-        {(status === "error") && (
+        {status === "error" && (
           <button
             onClick={() => { setStatus("idle"); setMessage(""); setLastCode(""); }}
             style={{ width: "100%", background: "#16a34a", color: "#fff", border: "none", borderRadius: "12px", padding: "16px", fontSize: "17px", fontWeight: 800, cursor: "pointer" }}>
@@ -233,7 +245,6 @@ export default function ScanPage() {
           </button>
         )}
 
-        {/* Manual fallback note */}
         <p style={{ margin: "20px 0 0", fontSize: "12px", color: "#6b7280", textAlign: "center", lineHeight: 1.6 }}>
           No QR code? Use the dashboard to mark pickups manually.
         </p>
