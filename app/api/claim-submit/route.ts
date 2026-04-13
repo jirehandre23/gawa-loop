@@ -64,15 +64,21 @@ export async function POST(req: NextRequest) {
     }
 
     const newRemaining = remaining - qty;
-    const newStatus = newRemaining <= 0 ? "CLAIMED" : "AVAILABLE";
+    const allClaimed   = newRemaining <= 0;          // ← FIXED: named clearly
+    const newStatus    = allClaimed ? "CLAIMED" : "AVAILABLE";
 
     // Atomic update — only proceeds if status still AVAILABLE and remaining sufficient
+    // ← FIXED: reserved_until is only set when ALL portions are claimed.
+    //   For partial claims the listing stays AVAILABLE with reduced quantity_remaining
+    //   and reserved_until stays null — so Browse keeps showing it with updated count.
     const { error: updateErr } = await supabase
       .from("listings")
       .update({
-        status: newStatus,
+        status:             newStatus,
         quantity_remaining: newRemaining,
-        reserved_until: new Date(Date.now() + (listing.claim_hold_minutes || 60) * 60000).toISOString(),
+        reserved_until:     allClaimed
+          ? new Date(Date.now() + (listing.claim_hold_minutes || 60) * 60000).toISOString()
+          : null,
       })
       .eq("id", listingId)
       .eq("status", "AVAILABLE")
@@ -103,8 +109,9 @@ export async function POST(req: NextRequest) {
     if (claimErr || !claim) {
       // Rollback listing quantity
       await supabase.from("listings").update({
-        status: "AVAILABLE",
+        status:             "AVAILABLE",
         quantity_remaining: remaining,
+        reserved_until:     null,
       }).eq("id", listingId);
       return NextResponse.json({ error: "Failed to create claim. Please try again." }, { status: 500 });
     }
