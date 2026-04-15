@@ -37,7 +37,7 @@ export default function ApiDocsPage() {
               ✅ Live
             </span>
             <span style={{ background: "rgba(255,255,255,0.1)", color: "#fff", fontSize: "13px", padding: "6px 14px", borderRadius: "8px" }}>
-              Base URL: https://gawaloop.com/api/v1
+              Base URL: https://www.gawaloop.com/api/v1
             </span>
             <span style={{ background: "rgba(255,255,255,0.1)", color: "#fff", fontSize: "13px", padding: "6px 14px", borderRadius: "8px" }}>
               Auth: Bearer token
@@ -96,7 +96,7 @@ export default function ApiDocsPage() {
   "message": "\"Jerk chicken plates\" is now live on GAWA Loop."
 }`}</code>
           <p style={{ margin: "14px 0 8px", fontSize: "13px", fontWeight: 700, color: "#374151" }}>Example</p>
-          <code style={inp}>{`curl -X POST https://gawaloop.com/api/v1/listings \\
+          <code style={inp}>{`curl -X POST https://www.gawaloop.com/api/v1/listings \\
   -H "Authorization: Bearer gawa_live_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -118,7 +118,7 @@ export default function ApiDocsPage() {
           <p style={{ margin: "0 0 14px", fontSize: "14px", color: "#374151", lineHeight: 1.6 }}>
             Returns all listings for your business (up to 50), ordered by newest first.
           </p>
-          <code style={inp}>{`curl https://gawaloop.com/api/v1/listings \\
+          <code style={inp}>{`curl https://www.gawaloop.com/api/v1/listings \\
   -H "Authorization: Bearer gawa_live_YOUR_KEY"`}</code>
           <p style={{ margin: "14px 0 8px", fontSize: "13px", fontWeight: 700, color: "#374151" }}>Response</p>
           <code style={inp}>{`{
@@ -145,7 +145,7 @@ export default function ApiDocsPage() {
             <code style={{ fontSize: "16px", fontWeight: 700, color: "#0a2e1a" }}>/listings/:id</code>
             <span style={{ fontSize: "14px", color: "#6b7280", marginLeft: "8px" }}>Mark a listing as picked up</span>
           </div>
-          <code style={inp}>{`curl -X PATCH https://gawaloop.com/api/v1/listings/3f2a1b \\
+          <code style={inp}>{`curl -X PATCH https://www.gawaloop.com/api/v1/listings/3f2a1b \\
   -H "Authorization: Bearer gawa_live_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{ "action": "mark_picked_up" }'`}</code>
@@ -161,7 +161,7 @@ export default function ApiDocsPage() {
           <p style={{ margin: "0 0 14px", fontSize: "14px", color: "#374151", lineHeight: 1.6 }}>
             Cancels the listing and notifies any active claimers by email automatically.
           </p>
-          <code style={inp}>{`curl -X DELETE https://gawaloop.com/api/v1/listings/3f2a1b \\
+          <code style={inp}>{`curl -X DELETE https://www.gawaloop.com/api/v1/listings/3f2a1b \\
   -H "Authorization: Bearer gawa_live_YOUR_KEY"`}</code>
         </div>
 
@@ -179,7 +179,7 @@ export default function ApiDocsPage() {
           <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "14px 16px", fontSize: "13px", color: "#374151", lineHeight: 2 }}>
             <p style={{ margin: "0 0 4px", fontWeight: 700, color: "#0a2e1a" }}>Example: Google Sheets → GAWA Loop</p>
             <p style={{ margin: 0 }}>Trigger: New row added to sheet</p>
-            <p style={{ margin: 0 }}>Action: Webhooks by Zapier → POST → https://gawaloop.com/api/v1/listings</p>
+            <p style={{ margin: 0 }}>Action: Webhooks by Zapier → POST → https://www.gawaloop.com/api/v1/listings</p>
             <p style={{ margin: 0 }}>Header: Authorization: Bearer gawa_live_YOUR_KEY</p>
           </div>
         </div>
@@ -197,7 +197,7 @@ export default function ApiDocsPage() {
 app.post("/pos-webhook", async (req) => {
   const { unsold_items } = req.body;
   for (const item of unsold_items) {
-    await fetch("https://gawaloop.com/api/v1/listings", {
+    await fetch("https://www.gawaloop.com/api/v1/listings", {
       method: "POST",
       headers: {
         "Authorization": "Bearer gawa_live_YOUR_KEY",
@@ -223,7 +223,7 @@ app.post("/pos-webhook", async (req) => {
             Runs automatically every night at 9 PM with no human action needed.
           </p>
           <code style={inp}>{`# Add to crontab (run: crontab -e)
-0 21 * * * curl -X POST https://gawaloop.com/api/v1/listings \\
+0 21 * * * curl -X POST https://www.gawaloop.com/api/v1/listings \\
   -H "Authorization: Bearer gawa_live_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"food_name":"End of day surplus","quantity":"10","expires_in_minutes":60}'`}</code>
