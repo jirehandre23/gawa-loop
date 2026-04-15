@@ -37,6 +37,7 @@ type ListingRow = {
   status: string; expires_at: string; starts_at?: string; created_at: string; reserved_until: string;
   claim_code: string; image_url?: string; weight_kg?: number;
   business_logo_url?: string;
+  max_portions_per_claim?: number | null;
   claims?: ClaimRow[];
 };
 type ReceivedClaim = {
@@ -54,6 +55,7 @@ type FlatClaim = {
 const EMPTY_FORM = {
   food_name: "", category: "Food", quantity: "", allergy_note: "",
   estimated_value: "", weight_lbs: "", note: "", claim_hold: "10",
+  max_portions_per_claim: "",
 };
 const LBS_TO_KG = 0.453592;
 type ExpiryMode = "hours" | "days" | "datetime";
@@ -269,6 +271,7 @@ export default function BusinessDashboard() {
     const imageUrl = await uploadImage(listingFileRef.current.files[0], "listing-images", businessName.replace(/\s/g, "_"));
     const expiresAt = computeExpiresAt();
     const weightKg = form.weight_lbs ? Number(form.weight_lbs) * LBS_TO_KG : null;
+    const maxPortions = form.max_portions_per_claim ? Math.max(1, Math.floor(Number(form.max_portions_per_claim))) : null;
     const { error } = await supabase.from("listings").insert({
       business_name: businessName, address: businessAddress,
       food_name: form.food_name, category: form.category,
@@ -277,6 +280,7 @@ export default function BusinessDashboard() {
       weight_kg: weightKg, note: form.note || null, status: "AVAILABLE",
       expires_at: expiresAt, claim_hold_minutes: Number(form.claim_hold),
       image_url: imageUrl, business_logo_url: bizData?.logo_url || null,
+      max_portions_per_claim: maxPortions,
     });
     if (error) setPostMsg("Error posting. Please try again.");
     else {
@@ -389,6 +393,15 @@ export default function BusinessDashboard() {
               <div style={{ gridColumn: "1/-1" }}>
                 <label style={lbl}>Note</label>
                 <textarea style={{ ...inp, height: "60px", resize: "vertical" }} value={editForm.note ?? (listing.note || "")} onChange={e => setEditForm(f => ({ ...f, note: e.target.value }))}/>
+              </div>
+              {/* ← ADDED: max portions per claim — editable after posting */}
+              <div style={{ gridColumn: "1/-1" }}>
+                <label style={lbl}>Max portions per person <span style={{ fontWeight: 400, color: "#9ca3af" }}>(optional)</span></label>
+                <input style={inp} type="number" min="1" max="500"
+                  value={editForm.max_portions_per_claim ?? (listing.max_portions_per_claim != null ? String(listing.max_portions_per_claim) : "")}
+                  onChange={e => setEditForm(f => ({ ...f, max_portions_per_claim: e.target.value }))}
+                  placeholder="e.g. 2 — leave blank for no limit"/>
+                <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#9ca3af" }}>Limits how many portions each customer can claim. Leave blank for no limit.</p>
               </div>
             </div>
             {activeClaims.length > 0 && (
@@ -650,6 +663,15 @@ export default function BusinessDashboard() {
               : listing.quantity || "N/A"}
             {weightLbs && weightLbs > 0 && <span style={{ color: "#9ca3af", fontWeight: 400 }}> · {weightLbs.toFixed(1)} lbs</span>}
           </p>
+          {/* ← ADDED: show limit badge in dashboard card */}
+          {listing.max_portions_per_claim != null && listing.max_portions_per_claim > 0 && (
+            <p style={{ margin: "2px 0" }}>
+              <b>Limit:</b>{" "}
+              <span style={{ background: "#eff6ff", color: "#2563eb", fontSize: "12px", fontWeight: 700, padding: "2px 10px", borderRadius: "12px", border: "1px solid #bfdbfe" }}>
+                Max {listing.max_portions_per_claim} per person
+              </span>
+            </p>
+          )}
           <p style={{ margin: "2px 0" }}><b>Address:</b> {listing.address || "N/A"}</p>
           {listing.estimated_value && listing.estimated_value > 0 && <p style={{ margin: "2px 0" }}><b>Est. Value:</b> ${Number(listing.estimated_value).toFixed(2)}</p>}
           {listing.allergy_note && <p style={{ margin: "2px 0" }}><b>Allergy:</b> {listing.allergy_note}</p>}
@@ -785,14 +807,12 @@ export default function BusinessDashboard() {
               </select>
             )}
             <button onClick={() => { setShowForm(true); setPostMsg(""); }} style={{ background: "#16a34a", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontSize: "14px", fontWeight: 700 }}>+ New Listing</button>
-            {/* 📷 Scan — QR scanner for pickup confirmation */}
             {!isAdmin && (
               <a href="/business/scan"
                 style={{ background: "#0a2e1a", color: "#4ade80", border: "1px solid #166534", padding: "10px 18px", borderRadius: "8px", textDecoration: "none", fontSize: "14px", fontWeight: 700 }}>
                 📷 Scan
               </a>
             )}
-            {/* Pickup Mode — only shown when there are active claims */}
             {!isAdmin && totalActiveClaims > 0 && (
               <button onClick={() => setPickupMode(true)}
                 style={{ background: "#2563eb", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", cursor: "pointer", fontSize: "14px", fontWeight: 700 }}>
@@ -835,6 +855,15 @@ export default function BusinessDashboard() {
                   <label style={lbl}>Number of Portions *</label>
                   <input style={inp} type="number" min="1" max="500" required value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} placeholder="e.g. 50"/>
                   <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#9ca3af" }}>Individual portions, meals, or items</p>
+                </div>
+                {/* ← ADDED: max portions per claim in new listing form */}
+                <div>
+                  <label style={lbl}>Max portions per person <span style={{ fontWeight: 400, color: "#9ca3af" }}>(optional)</span></label>
+                  <input style={inp} type="number" min="1" max="500"
+                    value={form.max_portions_per_claim}
+                    onChange={e => setForm(f => ({ ...f, max_portions_per_claim: e.target.value }))}
+                    placeholder="e.g. 2"/>
+                  <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#9ca3af" }}>Leave blank for no limit</p>
                 </div>
                 <div><label style={lbl}>Weight (lbs)</label><input style={inp} type="number" min="0" step="0.1" value={form.weight_lbs} onChange={e => setForm(f => ({ ...f, weight_lbs: e.target.value }))} placeholder="e.g. 8"/></div>
                 <div><label style={lbl}>Est. Value ($)</label><input style={inp} type="number" min="0" step="0.01" value={form.estimated_value} onChange={e => setForm(f => ({ ...f, estimated_value: e.target.value }))} placeholder="e.g. 25"/></div>
