@@ -75,10 +75,10 @@ export default function ApiDocsPage() {
           <code style={inp}>{`{
   "food_name":              "Jerk chicken plates",                  // required
   "quantity":               "12",                                   // required — number of portions
-  "category":               "Prepared Meals",                       // optional — Food | Bakery | Beverages | Prepared Meals | Produce | Other
+  "category":               "Prepared Meals",                       // required — Food | Bakery | Beverages | Prepared Meals | Produce | Other
   "allergy_note":           "Contains soy",                         // optional
   "note":                   "Ask for Maria.",                       // optional
-  "image_url":              "https://example.com/jerk-chicken.jpg", // optional — direct public image URL
+  "image_url":              "https://example.com/jerk-chicken.jpg", // required — direct public image URL
   "estimated_value":        60,                                     // optional — USD
   "weight_lbs":             8,                                      // optional
   "expires_in_minutes":     120,                                    // optional — default 120 (2 hours)
