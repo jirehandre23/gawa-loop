@@ -1,3 +1,6 @@
+"use client";
+import React from "react";
+
 export default function ApiDocsPage() {
   const inp: React.CSSProperties = {
     width: "100%", background: "#0d1117", border: "1px solid #30363d",
@@ -70,20 +73,27 @@ export default function ApiDocsPage() {
           </p>
           <p style={{ margin: "0 0 8px", fontSize: "13px", fontWeight: 700, color: "#374151" }}>Request body</p>
           <code style={inp}>{`{
-  "food_name":       "Jerk chicken plates",   // required
-  "quantity":        "12",                    // required — number of portions
-  "category":        "Prepared Meals",        // optional — Food | Bakery | Beverages | Prepared Meals | Produce | Other
-  "allergy_note":    "Contains soy",          // optional
-  "note":            "Ask for Maria.",        // optional
-  "estimated_value": 60,                      // optional — USD
-  "weight_lbs":      8,                       // optional
-  "expires_in_hours": 2                       // optional — default 2
+  "food_name":              "Jerk chicken plates",  // required
+  "quantity":               "12",                   // required — number of portions
+  "category":               "Prepared Meals",       // optional — Food | Bakery | Beverages | Prepared Meals | Produce | Other
+  "allergy_note":           "Contains soy",         // optional
+  "note":                   "Ask for Maria.",       // optional
+  "estimated_value":        60,                     // optional — USD
+  "weight_lbs":             8,                      // optional
+  "expires_in_minutes":     120,                    // optional — default 120 (2 hours)
+  "max_portions_per_claim": 2,                      // optional — limit per person (null = no limit)
+  "starts_at":              "2026-04-13T17:00:00Z", // optional — schedule for future (ISO 8601)
+  "expires_at":             "2026-04-13T21:00:00Z", // optional — overrides expires_in_minutes
+  "claim_hold_minutes":     30                      // optional — how long to hold after claim, default 30
 }`}</code>
           <p style={{ margin: "14px 0 8px", fontSize: "13px", fontWeight: 700, color: "#374151" }}>Response</p>
           <code style={inp}>{`{
   "success": true,
   "listing_id": "3f2a1b...",
-  "message": "Listing created successfully."
+  "status": "AVAILABLE",
+  "expires_at": "2026-04-13T21:00:00Z",
+  "max_portions_per_claim": 2,
+  "message": "\"Jerk chicken plates\" is now live on GAWA Loop."
 }`}</code>
           <p style={{ margin: "14px 0 8px", fontSize: "13px", fontWeight: 700, color: "#374151" }}>Example</p>
           <code style={inp}>{`curl -X POST https://gawaloop.com/api/v1/listings \\
@@ -93,7 +103,8 @@ export default function ApiDocsPage() {
     "food_name": "Jerk chicken plates",
     "quantity": "12",
     "category": "Prepared Meals",
-    "expires_in_hours": 2
+    "expires_in_minutes": 120,
+    "max_portions_per_claim": 2
   }'`}</code>
         </div>
 
@@ -105,22 +116,23 @@ export default function ApiDocsPage() {
             <span style={{ fontSize: "14px", color: "#6b7280", marginLeft: "8px" }}>Get your active listings</span>
           </div>
           <p style={{ margin: "0 0 14px", fontSize: "14px", color: "#374151", lineHeight: 1.6 }}>
-            Returns all current listings for your business including status, quantity remaining, and active claims.
+            Returns all listings for your business (up to 50), ordered by newest first.
           </p>
           <code style={inp}>{`curl https://gawaloop.com/api/v1/listings \\
   -H "Authorization: Bearer gawa_live_YOUR_KEY"`}</code>
           <p style={{ margin: "14px 0 8px", fontSize: "13px", fontWeight: 700, color: "#374151" }}>Response</p>
           <code style={inp}>{`{
   "success": true,
+  "business": "Your Business Name",
+  "total": 1,
   "listings": [
     {
       "id": "3f2a1b...",
       "food_name": "Jerk chicken plates",
       "status": "AVAILABLE",
-      "quantity_remaining": 10,
-      "quantity_total": 12,
+      "quantity": "12",
       "expires_at": "2026-04-13T21:30:00Z",
-      "active_claims": 2
+      "max_portions_per_claim": 2
     }
   ]
 }`}</code>
@@ -194,7 +206,7 @@ app.post("/pos-webhook", async (req) => {
       body: JSON.stringify({
         food_name: item.name,
         quantity: String(item.qty),
-        expires_in_hours: 1
+        expires_in_minutes: 60
       })
     });
   }
@@ -214,19 +226,21 @@ app.post("/pos-webhook", async (req) => {
 0 21 * * * curl -X POST https://gawaloop.com/api/v1/listings \\
   -H "Authorization: Bearer gawa_live_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"food_name":"End of day surplus","quantity":"10","expires_in_hours":1}'`}</code>
+  -d '{"food_name":"End of day surplus","quantity":"10","expires_in_minutes":60}'`}</code>
         </div>
 
         {section("Error codes")}
         <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "14px", overflow: "hidden" }}>
           {[
             { code: "401", label: "Unauthorized", desc: "Missing or invalid API key" },
+            { code: "403", label: "Forbidden", desc: "Business not approved or account suspended" },
             { code: "400", label: "Bad Request", desc: "Missing required fields (food_name or quantity)" },
+            { code: "409", label: "Conflict", desc: "Portion limit exceeded or listing no longer available" },
             { code: "404", label: "Not Found", desc: "Listing ID not found or belongs to a different business" },
             { code: "500", label: "Server Error", desc: "Something went wrong — try again or contact admin@gawaloop.com" },
-          ].map((e, i) => (
-            <div key={e.code} style={{ display: "flex", alignItems: "center", gap: "16px", padding: "14px 20px", borderBottom: i < 3 ? "1px solid #f3f4f6" : "none" }}>
-              <span style={{ background: e.code.startsWith("4") ? "#fef2f2" : "#f0fdf4", color: e.code.startsWith("4") ? "#ef4444" : "#16a34a", fontFamily: "monospace", fontWeight: 800, fontSize: "14px", padding: "4px 10px", borderRadius: "6px", flexShrink: 0 }}>{e.code}</span>
+          ].map((e, i, arr) => (
+            <div key={e.code} style={{ display: "flex", alignItems: "center", gap: "16px", padding: "14px 20px", borderBottom: i < arr.length - 1 ? "1px solid #f3f4f6" : "none" }}>
+              <span style={{ background: e.code.startsWith("5") ? "#f0fdf4" : "#fef2f2", color: e.code.startsWith("5") ? "#16a34a" : "#ef4444", fontFamily: "monospace", fontWeight: 800, fontSize: "14px", padding: "4px 10px", borderRadius: "6px", flexShrink: 0 }}>{e.code}</span>
               <span style={{ fontWeight: 700, fontSize: "14px", color: "#374151", flexShrink: 0 }}>{e.label}</span>
               <span style={{ fontSize: "13px", color: "#6b7280" }}>{e.desc}</span>
             </div>
