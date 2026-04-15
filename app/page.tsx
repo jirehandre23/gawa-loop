@@ -1,7 +1,7 @@
 "use client";
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { detectLocale, t, Locale, setLocale as saveLocale, FLAG, LANG_NAME } from "@/lib/i18n";
 
@@ -11,6 +11,181 @@ const supabase = createClient(
 );
 
 const LOCALES: Locale[] = ["en", "fr", "es", "pt", "ar"];
+
+// ─── Partner Carousel ────────────────────────────────────────────────────────
+const PARTNERS = [
+  { name: "Green Garden Bistro",    neighborhood: "Brooklyn, NY", photo: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=600&q=80" },
+  { name: "La Maison Bakery",       neighborhood: "Manhattan, NY", photo: "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=600&q=80" },
+  { name: "Sunrise Kitchen",        neighborhood: "Queens, NY", photo: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=600&q=80" },
+  { name: "The Fresh Corner",       neighborhood: "Bronx, NY", photo: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=600&q=80" },
+  { name: "Harbor View Restaurant", neighborhood: "Staten Island, NY", photo: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=600&q=80" },
+  { name: "Midtown Deli",           neighborhood: "Manhattan, NY", photo: "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=600&q=80" },
+];
+
+function PartnerCarousel() {
+  const [current, setCurrent]   = useState(0);
+  const [paused, setPaused]     = useState(false);
+  const [fading, setFading]     = useState(false);
+  const timerRef                = useRef<NodeJS.Timeout | null>(null);
+
+  function goTo(index: number) {
+    setFading(true);
+    setTimeout(() => {
+      setCurrent((index + PARTNERS.length) % PARTNERS.length);
+      setFading(false);
+    }, 300);
+  }
+
+  useEffect(() => {
+    if (paused) return;
+    timerRef.current = setInterval(() => {
+      goTo(current + 1);
+    }, 5000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [current, paused]);
+
+  const visible = [
+    (current - 1 + PARTNERS.length) % PARTNERS.length,
+    current,
+    (current + 1) % PARTNERS.length,
+    (current + 2) % PARTNERS.length,
+  ];
+
+  return (
+    <section
+      style={{ background: "#0a2e1a", padding: "56px 24px" }}
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+    >
+      <div style={{ maxWidth: "960px", margin: "0 auto" }}>
+        <p style={{ margin: "0 0 6px", fontSize: "12px", fontWeight: 700, color: "#4ade80", textTransform: "uppercase", letterSpacing: "0.8px", textAlign: "center" }}>
+          🤝 Our Business Partners
+        </p>
+        <h2 style={{ margin: "0 0 4px", fontSize: "28px", fontWeight: 800, color: "#fff", textAlign: "center" }}>
+          Restaurants fighting food waste
+        </h2>
+        <p style={{ margin: "0 0 36px", fontSize: "14px", color: "#a3c9b0", textAlign: "center" }}>
+          These businesses donate surplus food to their community every day.
+        </p>
+
+        {/* Cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px", marginBottom: "24px" }}>
+          {visible.map((idx, pos) => {
+            const partner = PARTNERS[idx];
+            const isCenter = pos === 1;
+            return (
+              <div key={idx}
+                style={{
+                  borderRadius: "16px", overflow: "hidden",
+                  border: isCenter ? "2px solid #4ade80" : "2px solid rgba(255,255,255,0.1)",
+                  opacity: isCenter ? 1 : fading ? 0.4 : 0.65,
+                  transform: isCenter ? "scale(1.04)" : "scale(1)",
+                  transition: "all 0.3s ease",
+                  cursor: "pointer",
+                }}
+                onClick={() => goTo(idx)}
+              >
+                <div style={{ height: "180px", overflow: "hidden", position: "relative" }}>
+                  <img
+                    src={partner.photo}
+                    alt={partner.name}
+                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", transition: "transform 0.4s" }}
+                    onMouseEnter={e => (e.currentTarget.style.transform = "scale(1.06)")}
+                    onMouseLeave={e => (e.currentTarget.style.transform = "scale(1)")}
+                  />
+                </div>
+                <div style={{ background: isCenter ? "rgba(74,222,128,0.15)" : "rgba(255,255,255,0.06)", padding: "12px 14px" }}>
+                  <p style={{ margin: "0 0 2px", fontSize: "13px", fontWeight: 700, color: isCenter ? "#4ade80" : "#fff" }}>{partner.name}</p>
+                  <p style={{ margin: 0, fontSize: "11px", color: "#a3c9b0" }}>📍 {partner.neighborhood}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Navigation */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "16px" }}>
+          <button
+            onClick={() => goTo(current - 1)}
+            style={{ width: "36px", height: "36px", borderRadius: "50%", background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", fontSize: "16px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            ←
+          </button>
+          <div style={{ display: "flex", gap: "6px" }}>
+            {PARTNERS.map((_, i) => (
+              <button key={i} onClick={() => goTo(i)}
+                style={{ width: i === current ? "20px" : "8px", height: "8px", borderRadius: "4px", background: i === current ? "#4ade80" : "rgba(255,255,255,0.3)", border: "none", cursor: "pointer", transition: "all 0.3s", padding: 0 }} />
+            ))}
+          </div>
+          <button
+            onClick={() => goTo(current + 1)}
+            style={{ width: "36px", height: "36px", borderRadius: "50%", background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", fontSize: "16px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            →
+          </button>
+        </div>
+
+        <p style={{ margin: "20px 0 0", textAlign: "center", fontSize: "12px", color: "#4b7c5e" }}>
+          Want your business featured here?{" "}
+          <a href="/business/signup" style={{ color: "#4ade80", fontWeight: 700, textDecoration: "none" }}>Join GAWA Loop →</a>
+        </p>
+      </div>
+    </section>
+  );
+}
+
+// ─── About Us ─────────────────────────────────────────────────────────────────
+function AboutUs({ locale }: { locale: Locale }) {
+  return (
+    <section id="about" style={{ background: "#fff", borderTop: "1px solid #e5e7eb", padding: "80px 24px" }}>
+      <div style={{ maxWidth: "820px", margin: "0 auto", textAlign: "center" }}>
+        <p style={{ margin: "0 0 12px", fontSize: "12px", fontWeight: 700, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.8px" }}>
+          {locale === "fr" ? "À propos de nous" : locale === "es" ? "Sobre nosotros" : locale === "pt" ? "Sobre nós" : locale === "ar" ? "عن غاوا لوب" : "About Us"}
+        </p>
+        <h2 style={{ margin: "0 0 16px", fontSize: "clamp(32px, 5vw, 52px)", fontWeight: 900, color: "#0a2e1a", lineHeight: 1.15 }}>
+          {locale === "fr" ? "Déplacez la nourriture avant qu'elle devienne un déchet" :
+           locale === "es" ? "Mueve los alimentos antes de que se conviertan en desperdicio" :
+           locale === "pt" ? "Mova os alimentos antes que virem desperdício" :
+           locale === "ar" ? "انقل الطعام قبل أن يصبح نفايات" :
+           "Move food before it becomes waste"}
+        </h2>
+        <p style={{ margin: "0 0 8px", fontSize: "20px", fontWeight: 700, color: "#16a34a" }}>
+          {locale === "fr" ? "En moins de 60 minutes" :
+           locale === "es" ? "En menos de 60 minutos" :
+           locale === "pt" ? "Em menos de 60 minutos" :
+           locale === "ar" ? "في أقل من 60 دقيقة" :
+           "In under 60 minutes"}
+        </p>
+        <p style={{ margin: "0 0 40px", fontSize: "16px", color: "#64748b", maxWidth: "620px", margin: "0 auto 40px", lineHeight: 1.8 }}>
+          {locale === "fr" ? "GAWA Loop connecte les restaurants et commerces locaux avec les membres de la communauté — offrant les surplus alimentaires avant qu'ils ne finissent à la poubelle. Gratuit pour tout le monde, toujours." :
+           locale === "es" ? "GAWA Loop conecta restaurantes y tiendas locales con miembros de la comunidad — compartiendo alimentos sobrantes antes de que vayan a la basura. Gratis para todos, siempre." :
+           locale === "pt" ? "GAWA Loop conecta restaurantes e estabelecimentos locais com membros da comunidade — compartilhando alimentos excedentes antes que virem lixo. Grátis para todos, sempre." :
+           locale === "ar" ? "غاوا لوب تربط المطاعم والمحلات المحلية بأفراد المجتمع — مشاركة الطعام الفائض قبل أن يُهدر. مجاني للجميع، دائماً." :
+           "GAWA Loop connects local restaurants and stores with community members — sharing surplus food before it ends up in the trash. Free for everyone, always."}
+        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "16px", justifyContent: "center", marginBottom: "48px" }}>
+          {[
+            { icon: "🏙️", label: locale === "fr" ? "Basé à NYC" : locale === "es" ? "Con base en NYC" : locale === "pt" ? "Baseado em NYC" : locale === "ar" ? "مقرنا نيويورك" : "Based in NYC" },
+            { icon: "🍽️", label: locale === "fr" ? "100% gratuit" : locale === "es" ? "100% gratis" : locale === "pt" ? "100% grátis" : locale === "ar" ? "مجاني 100٪" : "100% free" },
+            { icon: "🌱", label: locale === "fr" ? "Zéro gaspillage" : locale === "es" ? "Cero desperdicio" : locale === "pt" ? "Zero desperdício" : locale === "ar" ? "صفر هدر" : "Zero waste mission" },
+            { icon: "⚡", label: locale === "fr" ? "Temps réel" : locale === "es" ? "Tiempo real" : locale === "pt" ? "Tempo real" : locale === "ar" ? "وقت فعلي" : "Real-time listings" },
+          ].map((item, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "999px", padding: "8px 18px" }}>
+              <span style={{ fontSize: "16px" }}>{item.icon}</span>
+              <span style={{ fontSize: "13px", fontWeight: 700, color: "#166534" }}>{item.label}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: "14px", justifyContent: "center", flexWrap: "wrap" }}>
+          <a href="/browse" style={{ background: "#16a34a", color: "#fff", padding: "13px 32px", borderRadius: "12px", textDecoration: "none", fontWeight: 700, fontSize: "15px" }}>
+            {locale === "fr" ? "Voir la nourriture" : locale === "es" ? "Ver comida" : locale === "pt" ? "Ver comida" : locale === "ar" ? "تصفح الطعام" : "Browse Free Food"}
+          </a>
+          <a href="/business/signup" style={{ background: "#fff", color: "#0a2e1a", padding: "13px 32px", borderRadius: "12px", textDecoration: "none", fontWeight: 700, fontSize: "15px", border: "2px solid #e5e7eb" }}>
+            {locale === "fr" ? "Rejoindre en tant qu'entreprise" : locale === "es" ? "Unirse como negocio" : locale === "pt" ? "Entrar como empresa" : locale === "ar" ? "انضم كشركة" : "Join as a Business"}
+          </a>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 export default function HomePage() {
   const [locale, setLocaleState]      = useState<Locale>("en");
@@ -141,7 +316,6 @@ export default function HomePage() {
     background: "#fff", outline: "none", boxSizing: "border-box",
   };
 
-  // Community Map removed from Explore section
   const navSections = [
     {
       id: "explore",
@@ -149,6 +323,7 @@ export default function HomePage() {
       items: [
         { label: locale==="ar"?"تصفح الطعام المجاني":locale==="fr"?"Voir la nourriture gratuite":locale==="es"?"Ver comida gratis":locale==="pt"?"Ver comida grátis":"Browse Free Food", href: "/browse", icon: "🍽️" },
         { label: locale==="ar"?"كيف يعمل":locale==="fr"?"Comment ça marche":locale==="es"?"Cómo funciona":locale==="pt"?"Como funciona":"How It Works", onClick: () => scrollTo("how-it-works"), icon: "📖" },
+        { label: locale==="ar"?"عن غاوا لوب":locale==="fr"?"À propos":locale==="es"?"Sobre nosotros":locale==="pt"?"Sobre nós":"About Us", onClick: () => scrollTo("about"), icon: "🌱" },
       ],
     },
     {
@@ -194,6 +369,7 @@ export default function HomePage() {
         @media (max-width: 768px) {
           .desktop-nav { display: none !important; }
           .hamburger-btn { display: flex !important; }
+          .partner-grid { grid-template-columns: repeat(2, 1fr) !important; }
         }
         @media (min-width: 769px) {
           .hamburger-btn { display: none !important; }
@@ -204,6 +380,7 @@ export default function HomePage() {
       <main dir={isRTL ? "rtl" : "ltr"} className="min-h-screen bg-white text-slate-900"
         style={{ fontFamily: isRTL ? "'Noto Sans Arabic', sans-serif" : undefined }}>
 
+        {/* ── NAV ── */}
         <nav id="main-nav" className="sticky top-0 z-50 border-b border-slate-100 bg-white/95 backdrop-blur-sm">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
             <a href="/" className="flex items-center gap-3" style={{ textDecoration: "none" }}>
@@ -213,44 +390,23 @@ export default function HomePage() {
               <span className="text-lg font-bold text-slate-900">GAWA Loop</span>
             </a>
 
-            {/* Desktop nav */}
             <div className="desktop-nav" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
               {navSections.map(section => (
                 <div key={section.id} style={{ position: "relative" }}>
                   <button
                     onClick={() => setActiveDropdown(activeDropdown === section.id ? null : section.id)}
-                    style={{
-                      background: activeDropdown === section.id ? "#f0fdf4" : "transparent",
-                      border: "none", cursor: "pointer",
-                      padding: "8px 12px", borderRadius: "8px", fontSize: "14px",
-                      fontWeight: 600,
-                      color: activeDropdown === section.id ? "#16a34a" : "#374151",
-                      display: "flex", alignItems: "center", gap: "4px",
-                      transition: "all 0.15s",
-                    }}
+                    style={{ background: activeDropdown === section.id ? "#f0fdf4" : "transparent", border: "none", cursor: "pointer", padding: "8px 12px", borderRadius: "8px", fontSize: "14px", fontWeight: 600, color: activeDropdown === section.id ? "#16a34a" : "#374151", display: "flex", alignItems: "center", gap: "4px", transition: "all 0.15s" }}
                     onMouseEnter={e => { if (activeDropdown !== section.id) (e.currentTarget as HTMLElement).style.background = "#f9fafb"; }}
-                    onMouseLeave={e => { if (activeDropdown !== section.id) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                  >
+                    onMouseLeave={e => { if (activeDropdown !== section.id) (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
                     {section.label}
                     <span style={{ fontSize: "10px", opacity: 0.6, transform: activeDropdown === section.id ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.2s", display: "inline-block" }}>▼</span>
                   </button>
                   {activeDropdown === section.id && (
-                    <div className="nav-dropdown" style={{
-                      position: "absolute", top: "calc(100% + 8px)", left: 0,
-                      background: "#fff", border: "1px solid #e5e7eb", borderRadius: "14px",
-                      boxShadow: "0 12px 40px rgba(0,0,0,0.12)", overflow: "hidden",
-                      minWidth: "220px", zIndex: 999,
-                    }}>
+                    <div className="nav-dropdown" style={{ position: "absolute", top: "calc(100% + 8px)", left: 0, background: "#fff", border: "1px solid #e5e7eb", borderRadius: "14px", boxShadow: "0 12px 40px rgba(0,0,0,0.12)", overflow: "hidden", minWidth: "220px", zIndex: 999 }}>
                       {section.items.map((item, i) => (
                         <button key={i} className="nav-item"
                           onClick={() => { item.onClick ? item.onClick() : item.href ? (window.location.href = item.href) : null; setActiveDropdown(null); }}
-                          style={{
-                            display: "flex", alignItems: "center", gap: "10px", width: "100%",
-                            padding: "12px 16px", background: "#fff", border: "none", cursor: "pointer",
-                            fontSize: "13px", color: "#111827", fontWeight: 500, textAlign: "left",
-                            borderBottom: i < section.items.length - 1 ? "1px solid #f3f4f6" : "none",
-                            transition: "all 0.12s",
-                          }}>
+                          style={{ display: "flex", alignItems: "center", gap: "10px", width: "100%", padding: "12px 16px", background: "#fff", border: "none", cursor: "pointer", fontSize: "13px", color: "#111827", fontWeight: 500, textAlign: "left", borderBottom: i < section.items.length - 1 ? "1px solid #f3f4f6" : "none", transition: "all 0.12s" }}>
                           <span style={{ fontSize: "16px", flexShrink: 0 }}>{item.icon}</span>
                           {item.label}
                         </button>
@@ -259,24 +415,20 @@ export default function HomePage() {
                   )}
                 </div>
               ))}
-
               <div style={{ marginLeft: "8px", display: "flex", gap: "8px", alignItems: "center" }}>
-                <Link href="/browse"
-                  style={{ background: "#16a34a", color: "#fff", padding: "8px 18px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 700, transition: "background 0.15s" }}
+                <Link href="/browse" style={{ background: "#16a34a", color: "#fff", padding: "8px 18px", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: 700, transition: "background 0.15s" }}
                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#15803d"}
                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "#16a34a"}>
                   {T.browse}
                 </Link>
                 <div style={{ position: "relative" }}>
-                  <button onClick={() => setLangOpen(o => !o)}
-                    style={{ background: "transparent", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "6px 10px", cursor: "pointer", fontSize: "13px", fontWeight: 600, display: "flex", alignItems: "center", gap: "4px", color: "#374151" }}>
+                  <button onClick={() => setLangOpen(o => !o)} style={{ background: "transparent", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "6px 10px", cursor: "pointer", fontSize: "13px", fontWeight: 600, display: "flex", alignItems: "center", gap: "4px", color: "#374151" }}>
                     {FLAG[locale]} ▾
                   </button>
                   {langOpen && (
                     <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, background: "#fff", border: "1px solid #e5e7eb", borderRadius: "10px", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", overflow: "hidden", minWidth: "150px", zIndex: 999 }}>
                       {LOCALES.map(loc => (
-                        <button key={loc} onClick={() => switchLocale(loc)}
-                          style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "10px 14px", background: loc===locale?"#f0fdf4":"#fff", border: "none", cursor: "pointer", fontSize: "13px", color: loc===locale?"#16a34a":"#111827", fontWeight: loc===locale?700:400, borderBottom: "1px solid #f3f4f6", textAlign: "left" }}>
+                        <button key={loc} onClick={() => switchLocale(loc)} style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "10px 14px", background: loc===locale?"#f0fdf4":"#fff", border: "none", cursor: "pointer", fontSize: "13px", color: loc===locale?"#16a34a":"#111827", fontWeight: loc===locale?700:400, borderBottom: "1px solid #f3f4f6", textAlign: "left" }}>
                           {FLAG[loc]} {LANG_NAME[loc]}
                         </button>
                       ))}
@@ -286,27 +438,22 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* Mobile right side */}
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <div style={{ position: "relative" }}>
-                <button onClick={() => setLangOpen(o => !o)}
-                  style={{ background: "transparent", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "6px 10px", cursor: "pointer", fontSize: "13px", fontWeight: 600, display: "flex", alignItems: "center", gap: "4px", color: "#374151" }}>
+                <button onClick={() => setLangOpen(o => !o)} style={{ background: "transparent", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "6px 10px", cursor: "pointer", fontSize: "13px", fontWeight: 600, display: "flex", alignItems: "center", gap: "4px", color: "#374151" }}>
                   {FLAG[locale]} ▾
                 </button>
                 {langOpen && (
                   <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, background: "#fff", border: "1px solid #e5e7eb", borderRadius: "10px", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", overflow: "hidden", minWidth: "150px", zIndex: 999 }}>
                     {LOCALES.map(loc => (
-                      <button key={loc} onClick={() => switchLocale(loc)}
-                        style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "10px 14px", background: loc===locale?"#f0fdf4":"#fff", border: "none", cursor: "pointer", fontSize: "13px", color: loc===locale?"#16a34a":"#111827", fontWeight: loc===locale?700:400, borderBottom: "1px solid #f3f4f6", textAlign: "left" }}>
+                      <button key={loc} onClick={() => switchLocale(loc)} style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "10px 14px", background: loc===locale?"#f0fdf4":"#fff", border: "none", cursor: "pointer", fontSize: "13px", color: loc===locale?"#16a34a":"#111827", fontWeight: loc===locale?700:400, borderBottom: "1px solid #f3f4f6", textAlign: "left" }}>
                         {FLAG[loc]} {LANG_NAME[loc]}
                       </button>
                     ))}
                   </div>
                 )}
               </div>
-              <button className="hamburger-btn"
-                onClick={() => setMenuOpen(o => !o)}
-                style={{ display: "none", flexDirection: "column", gap: "5px", background: "none", border: "1px solid #e5e7eb", padding: "8px 10px", borderRadius: "8px", cursor: "pointer" }}>
+              <button className="hamburger-btn" onClick={() => setMenuOpen(o => !o)} style={{ display: "none", flexDirection: "column", gap: "5px", background: "none", border: "1px solid #e5e7eb", padding: "8px 10px", borderRadius: "8px", cursor: "pointer" }}>
                 <span style={{ display: "block", width: "20px", height: "2px", background: menuOpen ? "#16a34a" : "#374151", transition: "all 0.2s", transform: menuOpen ? "rotate(45deg) translate(5px, 5px)" : "none" }} />
                 <span style={{ display: "block", width: "20px", height: "2px", background: menuOpen ? "#16a34a" : "#374151", transition: "all 0.2s", opacity: menuOpen ? 0 : 1 }} />
                 <span style={{ display: "block", width: "20px", height: "2px", background: menuOpen ? "#16a34a" : "#374151", transition: "all 0.2s", transform: menuOpen ? "rotate(-45deg) translate(5px, -5px)" : "none" }} />
@@ -314,7 +461,6 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Mobile menu */}
           {menuOpen && (
             <div className="mobile-menu" style={{ borderTop: "1px solid #e5e7eb", background: "#fff", padding: "8px 0 16px" }}>
               {navSections.map(section => (
@@ -339,6 +485,7 @@ export default function HomePage() {
           )}
         </nav>
 
+        {/* ── HERO VIDEO ── */}
         <section style={{ position:"relative", width:"100%", height:"480px", overflow:"hidden" }}>
           <video autoPlay muted loop playsInline style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }}>
             <source src="/hero-video.mp4" type="video/mp4"/>
@@ -360,6 +507,7 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* ── STATS BAR ── */}
         <section style={{ borderBottom:"1px solid #e5e7eb", background:"#fff" }}>
           <div style={{ maxWidth:"900px", margin:"0 auto", padding:"18px 24px", display:"flex", flexWrap:"wrap", justifyContent:"center", gap:"32px" }}>
             {[
@@ -375,6 +523,13 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* ── PARTNER CAROUSEL ── NEW */}
+        <PartnerCarousel />
+
+        {/* ── ABOUT US ── NEW */}
+        <AboutUs locale={locale} />
+
+        {/* ── IMAGE GRID ── unchanged */}
         <section style={{ padding:0 }}>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gridTemplateRows:"220px 220px", gap:"3px" }}>
             <div style={{ gridColumn:"1/3", overflow:"hidden" }}><img src="/hero-community.jpg" alt="Community sharing food" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/></div>
@@ -387,6 +542,7 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* ── HOW IT WORKS ── unchanged */}
         <section id="how-it-works" className="mx-auto max-w-6xl px-6 py-20">
           <div className="mb-4 text-center text-sm font-semibold uppercase tracking-widest text-green-500">{locale==="ar"?"للباحثين عن طعام":locale==="fr"?"Pour les chercheurs de nourriture":locale==="es"?"Para buscadores de comida":locale==="pt"?"Para quem procura comida":"For food seekers"}</div>
           <h2 className="mb-4 text-center text-4xl font-extrabold text-slate-900">{T.how_title}</h2>
@@ -412,6 +568,7 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* ── IMPACT STATS ── unchanged */}
         <section style={{ background:"#0a2e1a", padding:"72px 24px" }}>
           <div style={{ maxWidth:"820px", margin:"0 auto", textAlign:"center" }}>
             <p style={{ margin:"0 0 8px", fontSize:"13px", fontWeight:700, color:"#4ade80", textTransform:"uppercase", letterSpacing:"0.8px" }}>🌍 {locale==="ar"?"تأثير حقيقي":locale==="fr"?"Impact Réel":locale==="es"?"Impacto Real":locale==="pt"?"Impacto Real":"Real Impact, Right Now"}</p>
@@ -430,6 +587,7 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* ── FOR BUSINESSES ── unchanged */}
         <section className="bg-slate-900 text-white">
           <div className="mx-auto max-w-6xl px-6 py-20">
             <div className="grid items-center gap-12 md:grid-cols-2">
@@ -461,6 +619,7 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* ── WHY GAWA ── unchanged */}
         <section id="why-gawa" className="mx-auto max-w-6xl px-6 py-20">
           <h2 className="mb-4 text-center text-4xl font-extrabold text-slate-900">{locale==="ar"?"لماذا GAWA Loop؟":locale==="fr"?"Pourquoi GAWA Loop ?":locale==="es"?"¿Por qué GAWA Loop?":locale==="pt"?"Por que GAWA Loop?":"Why GAWA Loop?"}</h2>
           <p className="mx-auto mb-14 max-w-xl text-center text-slate-500">{locale==="ar"?"مبني لجعل مشاركة الطعام بسيطة وآمنة.":locale==="fr"?"Conçu pour rendre le partage alimentaire simple et sûr.":locale==="es"?"Construido para hacer el intercambio simple y seguro.":locale==="pt"?"Construído para tornar o compartilhamento simples e seguro.":"Built to make food sharing simple, safe, and reliable."}</p>
@@ -487,6 +646,7 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* ── FAQ ── unchanged */}
         <section id="faq" style={{ background:"#f8fafc", padding:"80px 24px" }}>
           <div style={{ maxWidth:"720px", margin:"0 auto" }}>
             <h2 style={{ margin:"0 0 8px", fontSize:"36px", fontWeight:800, color:"#0f172a", textAlign:"center" }}>{locale==="ar"?"الأسئلة الشائعة":locale==="fr"?"Questions fréquentes":locale==="es"?"Preguntas frecuentes":locale==="pt"?"Perguntas frequentes":"Frequently Asked Questions"}</h2>
@@ -494,8 +654,7 @@ export default function HomePage() {
             <div style={{ display:"flex", flexDirection:"column", gap:"10px" }}>
               {faqs.map((faq, i) => (
                 <div key={i} style={{ background:"#fff", borderRadius:"16px", border:"1px solid #e2e8f0", overflow:"hidden" }}>
-                  <button onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                    style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between", padding:"20px 24px", background:"none", border:"none", cursor:"pointer", textAlign:"left" }}>
+                  <button onClick={() => setOpenFaq(openFaq === i ? null : i)} style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between", padding:"20px 24px", background:"none", border:"none", cursor:"pointer", textAlign:"left" }}>
                     <span style={{ fontWeight:700, color:"#0f172a", fontSize:"15px", paddingRight:"16px" }}>{faq.q}</span>
                     <span style={{ color:"#16a34a", fontSize:"22px", flexShrink:0, transition:"transform 0.2s", transform: openFaq===i?"rotate(45deg)":"rotate(0deg)", display:"inline-block" }}>+</span>
                   </button>
@@ -506,6 +665,7 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* ── SIGN IN ── unchanged */}
         <section id="signin" style={{ background:"#f0fdf4", padding:"80px 24px", borderTop:"1px solid #bbf7d0" }}>
           <div style={{ maxWidth:"480px", margin:"0 auto" }}>
             <p style={{ margin:"0 0 8px", fontSize:"13px", fontWeight:700, color:"#16a34a", textTransform:"uppercase", letterSpacing:"0.8px", textAlign:"center" }}>{locale==="ar"?"أعضاء المجتمع":locale==="fr"?"Membres de la communauté":locale==="es"?"Miembros de la comunidad":locale==="pt"?"Membros da comunidade":"Community Members"}</p>
@@ -570,6 +730,7 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* ── CONTACT ── unchanged */}
         <section id="contact" style={{ background:"#fff", padding:"80px 24px", borderTop:"1px solid #e5e7eb" }}>
           <div style={{ maxWidth:"560px", margin:"0 auto" }}>
             <p style={{ margin:"0 0 8px", fontSize:"13px", fontWeight:700, color:"#16a34a", textTransform:"uppercase", letterSpacing:"0.8px", textAlign:"center" }}>{locale==="ar"?"تواصل معنا":locale==="fr"?"Contactez-nous":locale==="es"?"Contáctenos":locale==="pt"?"Entre em contato":"Get in touch"}</p>
@@ -610,6 +771,7 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* ── FINAL CTA ── unchanged */}
         <section className="bg-gradient-to-br from-green-500 to-emerald-600">
           <div className="mx-auto max-w-4xl px-6 py-20 text-center">
             <div className="mb-8 flex justify-center"><div className="rounded-3xl bg-white/20 p-10 backdrop-blur-sm"><Image src="/gawa-logo-green.png" width={160} height={160} alt="GAWA Loop" style={{ objectFit:"contain" }} /></div></div>
@@ -622,6 +784,7 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* ── FOOTER ── unchanged */}
         <footer className="border-t border-slate-100 bg-white">
           <div className="mx-auto max-w-6xl px-6 py-10">
             <div className="flex flex-col items-center justify-between gap-6 md:flex-row">
@@ -637,6 +800,7 @@ export default function HomePage() {
             </div>
           </div>
         </footer>
+
       </main>
     </>
   );
