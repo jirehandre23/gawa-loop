@@ -68,8 +68,7 @@ function PartnerCarousel() {
           These businesses donate surplus food to their community every day.
         </p>
 
-        {/* Cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px", marginBottom: "24px" }}>
+        <div className="partner-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px", marginBottom: "24px" }}>
           {visible.map((idx, pos) => {
             const partner = PARTNERS[idx];
             const isCenter = pos === 1;
@@ -85,7 +84,7 @@ function PartnerCarousel() {
                 }}
                 onClick={() => goTo(idx)}
               >
-                <div style={{ height: "180px", overflow: "hidden", position: "relative" }}>
+                <div style={{ height: "180px", overflow: "hidden" }}>
                   <img
                     src={partner.photo}
                     alt={partner.name}
@@ -103,7 +102,6 @@ function PartnerCarousel() {
           })}
         </div>
 
-        {/* Navigation */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "16px" }}>
           <button
             onClick={() => goTo(current - 1)}
@@ -154,7 +152,7 @@ function AboutUs({ locale }: { locale: Locale }) {
            locale === "ar" ? "في أقل من 60 دقيقة" :
            "In under 60 minutes"}
         </p>
-        <p style={{ margin: "0 0 40px", fontSize: "16px", color: "#64748b", maxWidth: "620px", margin: "0 auto 40px", lineHeight: 1.8 }}>
+        <p style={{ maxWidth: "620px", margin: "0 auto 40px", fontSize: "16px", color: "#64748b", lineHeight: 1.8 }}>
           {locale === "fr" ? "GAWA Loop connecte les restaurants et commerces locaux avec les membres de la communauté — offrant les surplus alimentaires avant qu'ils ne finissent à la poubelle. Gratuit pour tout le monde, toujours." :
            locale === "es" ? "GAWA Loop conecta restaurantes y tiendas locales con miembros de la comunidad — compartiendo alimentos sobrantes antes de que vayan a la basura. Gratis para todos, siempre." :
            locale === "pt" ? "GAWA Loop conecta restaurantes e estabelecimentos locais com membros da comunidade — compartilhando alimentos excedentes antes que virem lixo. Grátis para todos, sempre." :
@@ -529,7 +527,7 @@ export default function HomePage() {
         {/* ── ABOUT US ── NEW */}
         <AboutUs locale={locale} />
 
-        {/* ── IMAGE GRID ── unchanged */}
+        {/* ── IMAGE GRID ── */}
         <section style={{ padding:0 }}>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gridTemplateRows:"220px 220px", gap:"3px" }}>
             <div style={{ gridColumn:"1/3", overflow:"hidden" }}><img src="/hero-community.jpg" alt="Community sharing food" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", transition:"transform 0.4s" }} onMouseEnter={e=>(e.currentTarget.style.transform="scale(1.04)")} onMouseLeave={e=>(e.currentTarget.style.transform="scale(1)")}/></div>
@@ -542,7 +540,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── HOW IT WORKS ── unchanged */}
+        {/* ── HOW IT WORKS ── */}
         <section id="how-it-works" className="mx-auto max-w-6xl px-6 py-20">
           <div className="mb-4 text-center text-sm font-semibold uppercase tracking-widest text-green-500">{locale==="ar"?"للباحثين عن طعام":locale==="fr"?"Pour les chercheurs de nourriture":locale==="es"?"Para buscadores de comida":locale==="pt"?"Para quem procura comida":"For food seekers"}</div>
           <h2 className="mb-4 text-center text-4xl font-extrabold text-slate-900">{T.how_title}</h2>
@@ -568,7 +566,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── IMPACT STATS ── unchanged */}
+        {/* ── IMPACT STATS ── */}
         <section style={{ background:"#0a2e1a", padding:"72px 24px" }}>
           <div style={{ maxWidth:"820px", margin:"0 auto", textAlign:"center" }}>
             <p style={{ margin:"0 0 8px", fontSize:"13px", fontWeight:700, color:"#4ade80", textTransform:"uppercase", letterSpacing:"0.8px" }}>🌍 {locale==="ar"?"تأثير حقيقي":locale==="fr"?"Impact Réel":locale==="es"?"Impacto Real":locale==="pt"?"Impacto Real":"Real Impact, Right Now"}</p>
@@ -587,7 +585,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── FOR BUSINESSES ── unchanged */}
+        {/* ── FOR BUSINESSES ── */}
         <section className="bg-slate-900 text-white">
           <div className="mx-auto max-w-6xl px-6 py-20">
             <div className="grid items-center gap-12 md:grid-cols-2">
@@ -619,7 +617,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── WHY GAWA ── unchanged */}
+        {/* ── WHY GAWA ── */}
         <section id="why-gawa" className="mx-auto max-w-6xl px-6 py-20">
           <h2 className="mb-4 text-center text-4xl font-extrabold text-slate-900">{locale==="ar"?"لماذا GAWA Loop؟":locale==="fr"?"Pourquoi GAWA Loop ?":locale==="es"?"¿Por qué GAWA Loop?":locale==="pt"?"Por que GAWA Loop?":"Why GAWA Loop?"}</h2>
           <p className="mx-auto mb-14 max-w-xl text-center text-slate-500">{locale==="ar"?"مبني لجعل مشاركة الطعام بسيطة وآمنة.":locale==="fr"?"Conçu pour rendre le partage alimentaire simple et sûr.":locale==="es"?"Construido para hacer el intercambio simple y seguro.":locale==="pt"?"Construído para tornar o compartilhamento simples e seguro.":"Built to make food sharing simple, safe, and reliable."}</p>
@@ -646,7 +644,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── FAQ ── unchanged */}
+        {/* ── FAQ ── */}
         <section id="faq" style={{ background:"#f8fafc", padding:"80px 24px" }}>
           <div style={{ maxWidth:"720px", margin:"0 auto" }}>
             <h2 style={{ margin:"0 0 8px", fontSize:"36px", fontWeight:800, color:"#0f172a", textAlign:"center" }}>{locale==="ar"?"الأسئلة الشائعة":locale==="fr"?"Questions fréquentes":locale==="es"?"Preguntas frecuentes":locale==="pt"?"Perguntas frequentes":"Frequently Asked Questions"}</h2>
@@ -665,7 +663,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── SIGN IN ── unchanged */}
+        {/* ── SIGN IN ── */}
         <section id="signin" style={{ background:"#f0fdf4", padding:"80px 24px", borderTop:"1px solid #bbf7d0" }}>
           <div style={{ maxWidth:"480px", margin:"0 auto" }}>
             <p style={{ margin:"0 0 8px", fontSize:"13px", fontWeight:700, color:"#16a34a", textTransform:"uppercase", letterSpacing:"0.8px", textAlign:"center" }}>{locale==="ar"?"أعضاء المجتمع":locale==="fr"?"Membres de la communauté":locale==="es"?"Miembros de la comunidad":locale==="pt"?"Membros da comunidade":"Community Members"}</p>
@@ -730,7 +728,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── CONTACT ── unchanged */}
+        {/* ── CONTACT ── */}
         <section id="contact" style={{ background:"#fff", padding:"80px 24px", borderTop:"1px solid #e5e7eb" }}>
           <div style={{ maxWidth:"560px", margin:"0 auto" }}>
             <p style={{ margin:"0 0 8px", fontSize:"13px", fontWeight:700, color:"#16a34a", textTransform:"uppercase", letterSpacing:"0.8px", textAlign:"center" }}>{locale==="ar"?"تواصل معنا":locale==="fr"?"Contactez-nous":locale==="es"?"Contáctenos":locale==="pt"?"Entre em contato":"Get in touch"}</p>
@@ -771,7 +769,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── FINAL CTA ── unchanged */}
+        {/* ── FINAL CTA ── */}
         <section className="bg-gradient-to-br from-green-500 to-emerald-600">
           <div className="mx-auto max-w-4xl px-6 py-20 text-center">
             <div className="mb-8 flex justify-center"><div className="rounded-3xl bg-white/20 p-10 backdrop-blur-sm"><Image src="/gawa-logo-green.png" width={160} height={160} alt="GAWA Loop" style={{ objectFit:"contain" }} /></div></div>
@@ -784,7 +782,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── FOOTER ── unchanged */}
+        {/* ── FOOTER ── */}
         <footer className="border-t border-slate-100 bg-white">
           <div className="mx-auto max-w-6xl px-6 py-10">
             <div className="flex flex-col items-center justify-between gap-6 md:flex-row">
