@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
 
   // ─── 1. EDIT DETAILS ─────────────────────────────────────────────────────
   if (action === "edit_details") {
-    const { food_name, category, allergy_note, note, estimated_value, weight_lbs } = params;
+    const { food_name, category, allergy_note, note, estimated_value, weight_lbs, max_portions_per_claim } = params;
     const weightKg = weight_lbs ? Number(weight_lbs) * 0.453592 : null;
 
     const updates: Record<string, any> = {};
@@ -32,6 +32,13 @@ export async function POST(req: NextRequest) {
     if (note         !== undefined) updates.note         = note || null;
     if (estimated_value !== undefined) updates.estimated_value = estimated_value ? Number(estimated_value) : null;
     if (weight_lbs   !== undefined) updates.weight_kg    = weightKg;
+    // ← ADDED: save max_portions_per_claim — empty string or 0 clears the limit
+    if (max_portions_per_claim !== undefined) {
+      const parsed = max_portions_per_claim === "" || max_portions_per_claim === null
+        ? null
+        : Math.max(1, Math.floor(Number(max_portions_per_claim)));
+      updates.max_portions_per_claim = parsed || null;
+    }
 
     await supabase.from("listings").update(updates).eq("id", listingId);
 
@@ -68,7 +75,6 @@ export async function POST(req: NextRequest) {
     const oldTotal = listing.quantity_total || 1;
     const oldRemaining = listing.quantity_remaining || 0;
 
-    // Get all active claims sorted by created_at (oldest first — they get priority)
     const { data: activeClaims } = await supabase
       .from("claims").select("*").eq("listing_id", listingId)
       .eq("status", "active").order("created_at", { ascending: true });
@@ -77,7 +83,6 @@ export async function POST(req: NextRequest) {
     const totalClaimed = claims.reduce((s, c) => s + (c.quantity_claimed || 1), 0);
 
     if (newTotal >= totalClaimed) {
-      // Simple case — new total fits everyone, just update remaining
       const newRemaining = newTotal - totalClaimed;
       await supabase.from("listings").update({
         quantity_total:     newTotal,
@@ -86,7 +91,6 @@ export async function POST(req: NextRequest) {
         status:             newRemaining === 0 && claims.length > 0 ? "CLAIMED" : "AVAILABLE",
       }).eq("id", listingId);
 
-      // Notify claimers if quantity went down
       if (newTotal < oldTotal) {
         for (const claim of claims) {
           const msg = `The total quantity for "${listing.food_name}" was updated from ${oldTotal} to ${newTotal} portions. Your reservation of ${claim.quantity_claimed || 1} portion(s) is still fully active.`;
@@ -107,15 +111,12 @@ export async function POST(req: NextRequest) {
         }
       }
     } else {
-      // Hard case — new total is less than what's already claimed
-      // Reduce the most recent claimers first
       let budget = newTotal;
       const claimsLatestFirst = [...claims].reverse();
 
       for (const claim of claimsLatestFirst) {
         const originalQty = claim.quantity_claimed || 1;
         if (budget <= 0) {
-          // Cancel this claim entirely
           await supabase.from("claims").update({
             status: "cancelled", cancelled_at: new Date().toISOString(), quantity_claimed: 0,
           }).eq("id", claim.id);
@@ -136,7 +137,6 @@ export async function POST(req: NextRequest) {
             <a href="https://gawaloop.com/browse" style="display:inline-block;background:#16a34a;color:#fff;font-weight:700;padding:12px 24px;border-radius:10px;text-decoration:none;font-size:14px;">Browse Other Food</a>
           `)).catch(() => {});
         } else if (originalQty > budget) {
-          // Reduce this claim
           const newQty = budget;
           await supabase.from("claims").update({ quantity_claimed: newQty }).eq("id", claim.id);
           budget = 0;
@@ -161,7 +161,6 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Recalculate and update listing
       const { data: updatedClaims } = await supabase
         .from("claims").select("quantity_claimed").eq("listing_id", listingId).eq("status", "active");
       const newTotalClaimed = (updatedClaims || []).reduce((s, c) => s + (c.quantity_claimed || 0), 0);
@@ -230,7 +229,6 @@ export async function POST(req: NextRequest) {
     if (diff <= 0) return NextResponse.json({ error: "New quantity must be less than current" }, { status: 400 });
 
     if (newQty === 0) {
-      // Cancel the claim entirely and restore all portions
       await supabase.from("claims").update({
         status: "cancelled", cancelled_at: new Date().toISOString(), quantity_claimed: 0,
       }).eq("id", claimId);
@@ -251,7 +249,6 @@ export async function POST(req: NextRequest) {
         <a href="https://gawaloop.com/browse" style="display:inline-block;background:#16a34a;color:#fff;font-weight:700;padding:12px 24px;border-radius:10px;text-decoration:none;font-size:14px;">Browse Other Food</a>
       `)).catch(() => {});
     } else {
-      // Reduce portions and restore the difference
       await supabase.from("claims").update({ quantity_claimed: newQty }).eq("id", claimId);
       await supabase.from("listings").update({
         quantity_remaining: Math.min(listing.quantity_total, (listing.quantity_remaining || 0) + diff),
