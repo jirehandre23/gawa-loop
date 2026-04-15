@@ -6,62 +6,10 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// ─── POST /api/v1/listings ────────────────────────────────────────────────────
-//
-// REQUIRED:
-//   food_name           string    "Jerk chicken plates"
-//   quantity            string    "12 portions"
-//
-// SCHEDULING (most important new fields):
-//   starts_at           string    ISO 8601 — when listing becomes visible to customers
-//                                 e.g. "2026-04-13T17:00:00.000Z"
-//                                 If omitted or in the past → visible immediately (AVAILABLE)
-//                                 If in the future → hidden until then (SCHEDULED)
-//
-//   expires_at          string    ISO 8601 — when listing stops being available
-//                                 e.g. "2026-04-13T21:00:00.000Z"
-//                                 Takes priority over expires_in_minutes.
-//
-//   expires_in_minutes  number    Minutes from now until expiry. Default: 120.
-//                                 Only used if expires_at is not provided.
-//
-// FOOD DETAILS:
-//   category            string    "Food"|"Bakery"|"Beverages"|"Prepared Meals"|"Produce"|"Other"
-//   allergy_note        string    "Contains nuts, halal"
-//   note                string    "Ask for Maria at the front"
-//   estimated_value     number    45.00
-//   weight_lbs          number    8.5  (auto-converted to kg)
-//   image_url           string    Public URL to a photo of the food
-//   claim_hold_minutes  number    How long to hold after claim. Default: 30. Max: 1440.
-//
-// EXAMPLE — food pantry scheduling pickup window:
-//   {
-//     "food_name": "Hot meals from hotel donation",
-//     "quantity": "200 meals",
-//     "image_url": "https://example.com/meals.jpg",
-//     "starts_at": "2026-04-13T17:00:00.000Z",
-//     "expires_at": "2026-04-13T20:00:00.000Z",
-//     "allergy_note": "Vegetarian options available",
-//     "note": "Enter through side door on Flatbush Ave"
-//   }
-//
-// EXAMPLE — restaurant posting end-of-day surplus now:
-//   {
-//     "food_name": "Jerk chicken",
-//     "quantity": "12",
-//     "expires_in_minutes": 90,
-//     "weight_lbs": 8.5
-//   }
-//
-// RESPONSE 201:
-//   { success, listing_id, status, starts_at, expires_at, message }
-// ─────────────────────────────────────────────────────────────────────────────
-
 const LBS_TO_KG = 0.453592;
 const VALID_CATEGORIES = ["Food", "Bakery", "Beverages", "Prepared Meals", "Produce", "Other"];
 
 export async function POST(req: NextRequest) {
-  // 1. Authenticate
   const authHeader = req.headers.get("authorization") || "";
   const apiKey = authHeader.replace("Bearer ", "").trim();
 
@@ -85,7 +33,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 2. Get business address
   const { data: biz } = await supabase
     .from("businesses")
     .select("address, status")
@@ -99,7 +46,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 3. Parse body
   let body: Record<string, unknown>;
   try {
     body = await req.json();
@@ -107,7 +53,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: "Invalid JSON body." }, { status: 400 });
   }
 
-  // 4. Validate required fields
   const foodName = String(body.food_name || "").trim();
   const quantity  = String(body.quantity  || "").trim();
 
@@ -124,7 +69,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 5. Parse optional food fields
   const category    = VALID_CATEGORIES.includes(String(body.category || "")) ? String(body.category) : "Food";
   const note        = body.note         ? String(body.note)         : null;
   const allergyNote = body.allergy_note ? String(body.allergy_note) : null;
@@ -133,7 +77,11 @@ export async function POST(req: NextRequest) {
   const weightKg    = body.weight_lbs      ? Number(body.weight_lbs) * LBS_TO_KG : null;
   const claimHold   = body.claim_hold_minutes ? Math.min(Number(body.claim_hold_minutes), 1440) : 30;
 
-  // 6. Parse starts_at — when listing becomes visible
+  // ← ADDED: optional max portions per claim
+  const maxPortionsPerClaim = body.max_portions_per_claim
+    ? Math.max(1, Math.floor(Number(body.max_portions_per_claim)))
+    : null;
+
   let startsAt: string | null = null;
   let isScheduled = false;
 
@@ -149,10 +97,8 @@ export async function POST(req: NextRequest) {
       startsAt    = parsed.toISOString();
       isScheduled = true;
     }
-    // If starts_at is in the past, treat as immediate (no scheduling needed)
   }
 
-  // 7. Parse expires_at — when listing stops being available
   let expiresAt: string;
 
   if (body.expires_at) {
@@ -163,7 +109,6 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    // Sanity check: expires_at must be after starts_at
     if (startsAt && parsed <= new Date(startsAt)) {
       return NextResponse.json(
         { success: false, error: "expires_at must be after starts_at." },
@@ -177,30 +122,29 @@ export async function POST(req: NextRequest) {
     expiresAt     = new Date(base.getTime() + minutes * 60 * 1000).toISOString();
   }
 
-  // 8. Determine initial status
   const initialStatus = isScheduled ? "SCHEDULED" : "AVAILABLE";
-
-  // 9. Create the listing
   const quantityNum = parseInt(quantity) || 1;
+
   const { data: listing, error: listingError } = await supabase
     .from("listings")
     .insert({
-      business_name:      keyRow.business_name,
-      address:            biz.address,
-      food_name:          foodName,
+      business_name:         keyRow.business_name,
+      address:               biz.address,
+      food_name:             foodName,
       category,
       quantity,
-      quantity_total:     quantityNum,
-      quantity_remaining: quantityNum,
-      allergy_note:       allergyNote,
+      quantity_total:        quantityNum,
+      quantity_remaining:    quantityNum,
+      allergy_note:          allergyNote,
       note,
-      estimated_value:    estValue,
-      weight_kg:          weightKg,
-      image_url:          imageUrl,
-      starts_at:          startsAt,
-      status:             initialStatus,
-      expires_at:         expiresAt,
-      claim_hold_minutes: claimHold,
+      estimated_value:       estValue,
+      weight_kg:             weightKg,
+      image_url:             imageUrl,
+      starts_at:             startsAt,
+      status:                initialStatus,
+      expires_at:            expiresAt,
+      claim_hold_minutes:    claimHold,
+      max_portions_per_claim: maxPortionsPerClaim,  // ← ADDED
     })
     .select("id, status, starts_at, expires_at")
     .single();
@@ -212,7 +156,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 10. Update API key usage stats (non-blocking)
   supabase
     .from("business_api_keys")
     .update({
@@ -224,7 +167,7 @@ export async function POST(req: NextRequest) {
 
   const scheduleMsg = isScheduled
     ? `Listing is scheduled — will go live at ${new Date(startsAt!).toLocaleString()} and expire at ${new Date(expiresAt).toLocaleString()}.`
-    : `"${foodName}" is now live on GAWA Loop. Customers can claim it at ${biz.address}. Expires at ${new Date(expiresAt).toLocaleString()}.`;
+    : `"${foodName}" is now live on GAWA Loop. Customers can claim it at ${biz.address}. Expires at ${new Date(expiresAt).toLocaleString()}.${maxPortionsPerClaim ? ` Max ${maxPortionsPerClaim} portion(s) per person.` : ""}`;
 
   return NextResponse.json(
     {
@@ -233,13 +176,12 @@ export async function POST(req: NextRequest) {
       status:     listing.status,
       starts_at:  listing.starts_at,
       expires_at: listing.expires_at,
+      max_portions_per_claim: maxPortionsPerClaim,
       message:    scheduleMsg,
     },
     { status: 201 }
   );
 }
-
-// ─── GET /api/v1/listings ─────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization") || "";
@@ -261,7 +203,7 @@ export async function GET(req: NextRequest) {
 
   const { data: listings } = await supabase
     .from("listings")
-    .select("id, food_name, category, quantity, status, starts_at, expires_at, created_at, image_url, weight_kg")
+    .select("id, food_name, category, quantity, status, starts_at, expires_at, created_at, image_url, weight_kg, max_portions_per_claim")
     .eq("business_name", keyRow.business_name)
     .order("created_at", { ascending: false })
     .limit(50);
