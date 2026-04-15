@@ -63,12 +63,46 @@ export async function POST(req: NextRequest) {
       }, { status: 409 });
     }
 
-    // ← ADDED: Check max portions per claim limit set by the business
+    // Check max portions per claim limit set by the business
     const maxPerClaim = listing.max_portions_per_claim ?? null;
     if (maxPerClaim !== null && qty > maxPerClaim) {
       return NextResponse.json({
         error: `This listing is limited to ${maxPerClaim} portion${maxPerClaim === 1 ? "" : "s"} per person. Please claim ${maxPerClaim} or fewer.`,
       }, { status: 409 });
+    }
+
+    // ← ADDED: Prevent the same person from claiming again to bypass the per-person limit.
+    // Only enforced when a limit is set. Checks by customer_user_id (logged-in) or email (guest).
+    if (maxPerClaim !== null) {
+      let alreadyClaimedQuery = supabase
+        .from("claims")
+        .select("quantity_claimed")
+        .eq("listing_id", listingId)
+        .eq("status", "active");
+
+      if (customer_user_id) {
+        alreadyClaimedQuery = alreadyClaimedQuery.eq("customer_user_id", customer_user_id);
+      } else {
+        alreadyClaimedQuery = alreadyClaimedQuery.eq("email", email.trim().toLowerCase());
+      }
+
+      const { data: existingClaims } = await alreadyClaimedQuery;
+      const alreadyClaimed = (existingClaims || []).reduce((s, c) => s + (c.quantity_claimed || 1), 0);
+
+      if (alreadyClaimed > 0) {
+        const totalWouldBe = alreadyClaimed + qty;
+        if (totalWouldBe > maxPerClaim) {
+          const canStillClaim = maxPerClaim - alreadyClaimed;
+          if (canStillClaim <= 0) {
+            return NextResponse.json({
+              error: `You already have an active reservation for this listing. Each person is limited to ${maxPerClaim} portion${maxPerClaim === 1 ? "" : "s"}.`,
+            }, { status: 409 });
+          }
+          return NextResponse.json({
+            error: `You already claimed ${alreadyClaimed} portion${alreadyClaimed === 1 ? "" : "s"} from this listing. You can claim ${canStillClaim} more (limit is ${maxPerClaim} per person).`,
+          }, { status: 409 });
+        }
+      }
     }
 
     const newRemaining = remaining - qty;
