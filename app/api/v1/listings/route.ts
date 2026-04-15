@@ -75,9 +75,8 @@ export async function POST(req: NextRequest) {
   const imageUrl    = body.image_url    ? String(body.image_url)    : null;
   const estValue    = body.estimated_value ? Number(body.estimated_value) : null;
   const weightKg    = body.weight_lbs      ? Number(body.weight_lbs) * LBS_TO_KG : null;
-  const claimHold   = body.claim_hold_minutes ? Math.min(Number(body.claim_hold_minutes), 1440) : 30;
+  const claimHold   = body.claim_hold_minutes ? Math.min(Number(body.claim_hold_minutes), 1440) : 50;  // ← CHANGED 30 → 50
 
-  // ← ADDED: optional max portions per claim
   const maxPortionsPerClaim = body.max_portions_per_claim
     ? Math.max(1, Math.floor(Number(body.max_portions_per_claim)))
     : null;
@@ -128,23 +127,23 @@ export async function POST(req: NextRequest) {
   const { data: listing, error: listingError } = await supabase
     .from("listings")
     .insert({
-      business_name:         keyRow.business_name,
-      address:               biz.address,
-      food_name:             foodName,
+      business_name:          keyRow.business_name,
+      address:                biz.address,
+      food_name:              foodName,
       category,
       quantity,
-      quantity_total:        quantityNum,
-      quantity_remaining:    quantityNum,
-      allergy_note:          allergyNote,
+      quantity_total:         quantityNum,
+      quantity_remaining:     quantityNum,
+      allergy_note:           allergyNote,
       note,
-      estimated_value:       estValue,
-      weight_kg:             weightKg,
-      image_url:             imageUrl,
-      starts_at:             startsAt,
-      status:                initialStatus,
-      expires_at:            expiresAt,
-      claim_hold_minutes:    claimHold,
-      max_portions_per_claim: maxPortionsPerClaim,  // ← ADDED
+      estimated_value:        estValue,
+      weight_kg:              weightKg,
+      image_url:              imageUrl,
+      starts_at:              startsAt,
+      status:                 initialStatus,
+      expires_at:             expiresAt,
+      claim_hold_minutes:     claimHold,
+      max_portions_per_claim: maxPortionsPerClaim,
     })
     .select("id, status, starts_at, expires_at")
     .single();
