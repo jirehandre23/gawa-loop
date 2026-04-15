@@ -76,23 +76,22 @@ export default function ApiDocsPage() {
   "food_name":              "Jerk chicken plates",                  // required
   "quantity":               "12",                                   // required — number of portions
   "category":               "Prepared Meals",                       // required — Food | Bakery | Beverages | Prepared Meals | Produce | Other
+  "image_url":              "https://example.com/jerk-chicken.jpg", // required — direct public image URL
   "allergy_note":           "Contains soy",                         // optional
   "note":                   "Ask for Maria.",                       // optional
-  "image_url":              "https://example.com/jerk-chicken.jpg", // required — direct public image URL
   "estimated_value":        60,                                     // optional — USD
   "weight_lbs":             8,                                      // optional
   "expires_in_minutes":     120,                                    // optional — default 120 (2 hours)
   "max_portions_per_claim": 2,                                      // optional — limit per person (null = no limit)
   "starts_at":              "2026-04-13T17:00:00Z",                 // optional — schedule for future (ISO 8601)
   "expires_at":             "2026-04-13T21:00:00Z",                 // optional — overrides expires_in_minutes
-  "claim_hold_minutes":     30                                      // optional — how long to hold after claim, default 30
+  "claim_hold_minutes":     50                                      // optional — how long to hold after claim, default 50
 }`}</code>
 
-          {/* ← EXPANDED image_url guidance */}
           <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "10px", padding: "16px 18px", marginTop: "14px" }}>
             <p style={{ margin: "0 0 10px", fontSize: "13px", fontWeight: 700, color: "#1d4ed8" }}>📸 Adding a photo with image_url</p>
             <p style={{ margin: "0 0 12px", fontSize: "13px", color: "#374151", lineHeight: 1.6 }}>
-              Pass a direct public link to an image file. The URL must end in an image extension and be accessible without login.
+              Pass a direct public link to an image file. The URL must point directly to an image and be accessible without login.
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "12px" }}>
               {[
@@ -116,9 +115,6 @@ export default function ApiDocsPage() {
                 </div>
               ))}
             </div>
-            <p style={{ margin: 0, fontSize: "12px", color: "#3b82f6" }}>
-              If no image is provided the listing will still appear on Browse with a default placeholder.
-            </p>
           </div>
 
           <p style={{ margin: "14px 0 8px", fontSize: "13px", fontWeight: 700, color: "#374151" }}>Response</p>
@@ -138,7 +134,7 @@ export default function ApiDocsPage() {
     "food_name": "Jerk chicken plates",
     "quantity": "12",
     "category": "Prepared Meals",
-    "image_url": "https://images.unsplash.com/photo-1604908176997-4318f3d3b3c4?w=800",
+    "image_url": "https://images.unsplash.com/photo-1598515214211-89d3c73ae83b?w=800",
     "expires_in_minutes": 120,
     "max_portions_per_claim": 2
   }'`}</code>
@@ -243,7 +239,8 @@ app.post("/pos-webhook", async (req) => {
       body: JSON.stringify({
         food_name: item.name,
         quantity: String(item.qty),
-        image_url: item.image_url,  // pass direct image URL from your POS
+        category: item.category,
+        image_url: item.image_url,
         expires_in_minutes: 60
       })
     });
@@ -264,7 +261,7 @@ app.post("/pos-webhook", async (req) => {
 0 21 * * * curl -X POST https://www.gawaloop.com/api/v1/listings \\
   -H "Authorization: Bearer gawa_live_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"food_name":"End of day surplus","quantity":"10","expires_in_minutes":60}'`}</code>
+  -d '{"food_name":"End of day surplus","quantity":"10","category":"Food","image_url":"https://example.com/food.jpg","expires_in_minutes":60}'`}</code>
         </div>
 
         {section("Error codes")}
@@ -272,7 +269,7 @@ app.post("/pos-webhook", async (req) => {
           {[
             { code: "401", label: "Unauthorized", desc: "Missing or invalid API key" },
             { code: "403", label: "Forbidden", desc: "Business not approved or account suspended" },
-            { code: "400", label: "Bad Request", desc: "Missing required fields (food_name or quantity)" },
+            { code: "400", label: "Bad Request", desc: "Missing required fields (food_name, quantity, category, or image_url)" },
             { code: "409", label: "Conflict", desc: "Portion limit exceeded or listing no longer available" },
             { code: "404", label: "Not Found", desc: "Listing ID not found or belongs to a different business" },
             { code: "500", label: "Server Error", desc: "Something went wrong — try again or contact admin@gawaloop.com" },
