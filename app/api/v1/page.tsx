@@ -73,19 +73,25 @@ export default function ApiDocsPage() {
           </p>
           <p style={{ margin: "0 0 8px", fontSize: "13px", fontWeight: 700, color: "#374151" }}>Request body</p>
           <code style={inp}>{`{
-  "food_name":              "Jerk chicken plates",  // required
-  "quantity":               "12",                   // required — number of portions
-  "category":               "Prepared Meals",       // optional — Food | Bakery | Beverages | Prepared Meals | Produce | Other
-  "allergy_note":           "Contains soy",         // optional
-  "note":                   "Ask for Maria.",       // optional
-  "estimated_value":        60,                     // optional — USD
-  "weight_lbs":             8,                      // optional
-  "expires_in_minutes":     120,                    // optional — default 120 (2 hours)
-  "max_portions_per_claim": 2,                      // optional — limit per person (null = no limit)
-  "starts_at":              "2026-04-13T17:00:00Z", // optional — schedule for future (ISO 8601)
-  "expires_at":             "2026-04-13T21:00:00Z", // optional — overrides expires_in_minutes
-  "claim_hold_minutes":     30                      // optional — how long to hold after claim, default 30
+  "food_name":              "Jerk chicken plates",                 // required
+  "quantity":               "12",                                  // required — number of portions
+  "category":               "Prepared Meals",                      // optional — Food | Bakery | Beverages | Prepared Meals | Produce | Other
+  "allergy_note":           "Contains soy",                        // optional
+  "note":                   "Ask for Maria.",                      // optional
+  "image_url":              "https://example.com/jerk-chicken.jpg", // optional — public image URL
+  "estimated_value":        60,                                    // optional — USD
+  "weight_lbs":             8,                                     // optional
+  "expires_in_minutes":     120,                                   // optional — default 120 (2 hours)
+  "max_portions_per_claim": 2,                                     // optional — limit per person (null = no limit)
+  "starts_at":              "2026-04-13T17:00:00Z",                // optional — schedule for future (ISO 8601)
+  "expires_at":             "2026-04-13T21:00:00Z",                // optional — overrides expires_in_minutes
+  "claim_hold_minutes":     30                                     // optional — how long to hold after claim, default 30
 }`}</code>
+          <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "10px", padding: "14px 18px", marginTop: "14px" }}>
+            <p style={{ margin: 0, fontSize: "13px", color: "#1d4ed8" }}>
+              📸 <strong>Photo support:</strong> use <code style={{ background: "#dbeafe", padding: "2px 6px", borderRadius: "4px", fontSize: "12px" }}>image_url</code> to attach a photo. The link must be public and directly accessible — links that require login may not display correctly.
+            </p>
+          </div>
           <p style={{ margin: "14px 0 8px", fontSize: "13px", fontWeight: 700, color: "#374151" }}>Response</p>
           <code style={inp}>{`{
   "success": true,
@@ -103,6 +109,7 @@ export default function ApiDocsPage() {
     "food_name": "Jerk chicken plates",
     "quantity": "12",
     "category": "Prepared Meals",
+    "image_url": "https://example.com/jerk-chicken.jpg",
     "expires_in_minutes": 120,
     "max_portions_per_claim": 2
   }'`}</code>
@@ -206,6 +213,7 @@ app.post("/pos-webhook", async (req) => {
       body: JSON.stringify({
         food_name: item.name,
         quantity: String(item.qty),
+        image_url: item.image_url,
         expires_in_minutes: 60
       })
     });
