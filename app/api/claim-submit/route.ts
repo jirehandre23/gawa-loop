@@ -63,14 +63,18 @@ export async function POST(req: NextRequest) {
       }, { status: 409 });
     }
 
+    // ← ADDED: Check max portions per claim limit set by the business
+    const maxPerClaim = listing.max_portions_per_claim ?? null;
+    if (maxPerClaim !== null && qty > maxPerClaim) {
+      return NextResponse.json({
+        error: `This listing is limited to ${maxPerClaim} portion${maxPerClaim === 1 ? "" : "s"} per person. Please claim ${maxPerClaim} or fewer.`,
+      }, { status: 409 });
+    }
+
     const newRemaining = remaining - qty;
-    const allClaimed   = newRemaining <= 0;          // ← FIXED: named clearly
+    const allClaimed   = newRemaining <= 0;
     const newStatus    = allClaimed ? "CLAIMED" : "AVAILABLE";
 
-    // Atomic update — only proceeds if status still AVAILABLE and remaining sufficient
-    // ← FIXED: reserved_until is only set when ALL portions are claimed.
-    //   For partial claims the listing stays AVAILABLE with reduced quantity_remaining
-    //   and reserved_until stays null — so Browse keeps showing it with updated count.
     const { error: updateErr } = await supabase
       .from("listings")
       .update({
@@ -107,7 +111,6 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (claimErr || !claim) {
-      // Rollback listing quantity
       await supabase.from("listings").update({
         status:             "AVAILABLE",
         quantity_remaining: remaining,
@@ -147,8 +150,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// Called when business marks no-show OR customer cancels
-// Restores quantity to listing if it has not expired yet
 export async function DELETE(req: NextRequest) {
   try {
     const { claimId, isNoshow } = await req.json();
@@ -158,7 +159,6 @@ export async function DELETE(req: NextRequest) {
       .from("claims").select("*").eq("id", claimId).single();
     if (!claim) return NextResponse.json({ error: "Claim not found" }, { status: 404 });
 
-    // Mark claim cancelled or noshow
     await supabase.from("claims").update({
       status:       isNoshow ? "noshow" : "cancelled",
       cancelled_at: new Date().toISOString(),
@@ -166,10 +166,8 @@ export async function DELETE(req: NextRequest) {
       noshow_at:    isNoshow ? new Date().toISOString() : null,
     }).eq("id", claimId);
 
-    // Restore quantity to listing via DB function (checks expiry automatically)
     await supabase.rpc("restore_listing_quantity", { p_claim_id: claimId });
 
-    // Suspension rules — unchanged
     if (isNoshow && claim.customer_user_id) {
       const { data: profile } = await supabase
         .from("customer_profiles")
