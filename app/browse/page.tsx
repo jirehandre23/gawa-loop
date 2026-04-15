@@ -27,6 +27,7 @@ type Listing = {
   status: string; expires_at: string; created_at: string; claim_hold_minutes: number;
   address: string; maps_url: string; image_url: string; weight_kg: number;
   business_logo_url: string;
+  max_portions_per_claim?: number | null;
 };
 type BizInfo = { address: string; phone: string | null; email: string };
 
@@ -70,12 +71,10 @@ export default function BrowsePage() {
   useEffect(() => { catRef.current = activeCategory; }, [activeCategory]);
   useEffect(() => { sortRef.current = sortBy; },        [sortBy]);
 
-  // Bulk warning trigger
   useEffect(() => {
     setShowBulkWarning((claimForm.quantity_claimed || 1) >= 5);
   }, [claimForm.quantity_claimed]);
 
-  // Load session on mount first, then subscribe
   useEffect(() => {
     let mounted = true;
 
@@ -247,14 +246,12 @@ export default function BrowsePage() {
       setClaimSuccess(true);
       setLastCode(data.confirmation_code || data.claim?.confirmation_code || "");
       setLastQty(qty);
-      // Only remove from list if fully claimed
       const listing = listings.find(l => l.id === selectedId);
       const remaining = (listing?.quantity_remaining ?? 1) - qty;
       if (remaining <= 0) {
         setListings(prev => prev.filter(l => l.id !== selectedId));
         setFiltered(prev => prev.filter(l => l.id !== selectedId));
       } else {
-        // Update remaining count in state
         setListings(prev => prev.map(l => l.id === selectedId ? { ...l, quantity_remaining: remaining } : l));
         setFiltered(prev => prev.map(l => l.id === selectedId ? { ...l, quantity_remaining: remaining } : l));
       }
@@ -400,6 +397,7 @@ export default function BrowsePage() {
           const isMultiPortion = listing.quantity_total != null && listing.quantity_total > 1;
           const remaining = listing.quantity_remaining ?? listing.quantity_total ?? 1;
           const isLowStock = isMultiPortion && remaining <= 3;
+          const maxPerClaim = listing.max_portions_per_claim ?? null;
 
           return (
             <div key={listing.id} style={{ background: "#fff", borderRadius: "20px", border: `1px solid ${isUrgent ? "#fde68a" : "#e5e7eb"}`, overflow: "hidden", marginBottom: "20px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
@@ -425,10 +423,15 @@ export default function BrowsePage() {
                         ⏰ {timeLeft}
                       </span>
                     )}
+                    {/* ← ADDED: max portions badge — visible to all customers */}
+                    {maxPerClaim != null && maxPerClaim > 0 && (
+                      <span style={{ background: "#eff6ff", color: "#2563eb", fontSize: "11px", fontWeight: 700, padding: "4px 10px", borderRadius: "20px", border: "1px solid #bfdbfe" }}>
+                        👤 Max {maxPerClaim} per person
+                      </span>
+                    )}
                   </div>
                 </div>
 
-                {/* Quantity display */}
                 {isMultiPortion ? (
                   <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
                     <div style={{ background: isLowStock ? "#fef2f2" : "#f0fdf4", border: `1px solid ${isLowStock ? "#fecaca" : "#bbf7d0"}`, borderRadius: "8px", padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: "6px" }}>
@@ -640,9 +643,11 @@ export default function BrowsePage() {
             ) : (() => {
               const listing = listings.find(l => l.id === selectedId);
               const remaining = listing?.quantity_remaining ?? listing?.quantity_total ?? 1;
+              const maxPerClaim = listing?.max_portions_per_claim ?? null;
+              // ← ADDED: effective max is the lower of remaining and max_portions_per_claim
+              const effectiveMax = maxPerClaim != null ? Math.min(remaining, maxPerClaim) : remaining;
               const isMulti = remaining > 1;
               const qty = claimForm.quantity_claimed || 1;
-              const bulkConfirmed = !showBulkWarning;
 
               return (
                 <>
@@ -659,7 +664,9 @@ export default function BrowsePage() {
                         {remaining} portion{remaining === 1 ? "" : "s"} available
                       </p>
                       <p style={{ margin: 0, fontSize: "12px", color: "#3b82f6" }}>
-                        Claim 1 for yourself or up to all {remaining} portions
+                        {maxPerClaim != null
+                          ? `Limited to ${maxPerClaim} portion${maxPerClaim === 1 ? "" : "s"} per person — claim up to ${effectiveMax}`
+                          : `Claim 1 for yourself or up to all ${remaining} portions`}
                       </p>
                     </div>
                   )}
@@ -704,17 +711,18 @@ export default function BrowsePage() {
                           </button>
                           <div style={{ flex: 1, textAlign: "center", background: "#f9fafb", borderRadius: "10px", padding: "10px", border: "1px solid #e5e7eb" }}>
                             <span style={{ fontSize: "32px", fontWeight: 900, color: "#0a2e1a" }}>{qty}</span>
-                            <span style={{ fontSize: "13px", color: "#6b7280", marginLeft: "8px" }}>of {remaining}</span>
+                            <span style={{ fontSize: "13px", color: "#6b7280", marginLeft: "8px" }}>of {effectiveMax}</span>
                           </div>
+                          {/* ← ADDED: + button capped at effectiveMax (respects max_portions_per_claim) */}
                           <button type="button"
-                            onClick={() => setClaimForm(f => ({ ...f, quantity_claimed: Math.min(remaining, (f.quantity_claimed || 1) + 1) }))}
+                            onClick={() => setClaimForm(f => ({ ...f, quantity_claimed: Math.min(effectiveMax, (f.quantity_claimed || 1) + 1) }))}
                             style={{ width: "44px", height: "44px", borderRadius: "10px", border: "1px solid #d1d5db", background: "#f9fafb", fontSize: "22px", cursor: "pointer", fontWeight: 700, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                             +
                           </button>
                         </div>
-                        {/* Quick pick buttons */}
+                        {/* Quick pick buttons — also capped at effectiveMax */}
                         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                          {[1, Math.ceil(remaining / 2), remaining]
+                          {[1, Math.ceil(effectiveMax / 2), effectiveMax]
                             .filter((v, i, arr) => v > 0 && arr.indexOf(v) === i)
                             .map(v => (
                               <button key={v} type="button"
@@ -722,14 +730,14 @@ export default function BrowsePage() {
                                 style={{ padding: "6px 16px", borderRadius: "20px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 700,
                                   background: qty === v ? "#0a2e1a" : "#f3f4f6",
                                   color: qty === v ? "#4ade80" : "#374151" }}>
-                                {v === 1 ? "Just 1" : v === remaining ? `All ${v}` : `${v}`}
+                                {v === 1 ? "Just 1" : v === effectiveMax ? `Max ${v}` : `${v}`}
                               </button>
                             ))}
                         </div>
                       </div>
                     )}
 
-                    {/* Bulk warning — shown when 5+ selected and not yet confirmed */}
+                    {/* Bulk warning — shown when 5+ selected */}
                     {qty >= 5 && showBulkWarning && (
                       <div style={{ background: "#fffbeb", border: "2px solid #f59e0b", borderRadius: "12px", padding: "16px 18px", marginBottom: "16px" }}>
                         <p style={{ margin: "0 0 6px", fontSize: "14px", fontWeight: 800, color: "#92400e" }}>
