@@ -14,12 +14,12 @@ const LOCALES: Locale[] = ["en", "fr", "es", "pt", "ar"];
 
 // ─── Partner Carousel ────────────────────────────────────────────────────────
 const PARTNERS = [
-  { photo: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=600&q=80" },
-  { photo: "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=600&q=80" },
-  { photo: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=600&q=80" },
-  { photo: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=600&q=80" },
-  { photo: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=600&q=80" },
-  { photo: "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=600&q=80" },
+  { name: "Green Garden Bistro",    neighborhood: "Brooklyn, NY", photo: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=600&q=80" },
+  { name: "La Maison Bakery",       neighborhood: "Manhattan, NY", photo: "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=600&q=80" },
+  { name: "Sunrise Kitchen",        neighborhood: "Queens, NY", photo: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=600&q=80" },
+  { name: "The Fresh Corner",       neighborhood: "Bronx, NY", photo: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=600&q=80" },
+  { name: "Harbor View Restaurant", neighborhood: "Staten Island, NY", photo: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=600&q=80" },
+  { name: "Midtown Deli",           neighborhood: "Manhattan, NY", photo: "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=600&q=80" },
 ];
 
 function PartnerCarousel() {
@@ -87,11 +87,15 @@ function PartnerCarousel() {
                 <div style={{ height: "180px", overflow: "hidden" }}>
                   <img
                     src={partner.photo}
-                    alt="Partner restaurant"
+                    alt={partner.name}
                     style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", transition: "transform 0.4s" }}
                     onMouseEnter={e => (e.currentTarget.style.transform = "scale(1.06)")}
                     onMouseLeave={e => (e.currentTarget.style.transform = "scale(1)")}
                   />
+                </div>
+                <div style={{ background: isCenter ? "rgba(74,222,128,0.15)" : "rgba(255,255,255,0.06)", padding: "12px 14px" }}>
+                  <p style={{ margin: "0 0 2px", fontSize: "13px", fontWeight: 700, color: isCenter ? "#4ade80" : "#fff" }}>{partner.name}</p>
+                  <p style={{ margin: 0, fontSize: "11px", color: "#a3c9b0" }}>📍 {partner.neighborhood}</p>
                 </div>
               </div>
             );
@@ -517,10 +521,10 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── PARTNER CAROUSEL ── */}
+        {/* ── PARTNER CAROUSEL ── NEW */}
         <PartnerCarousel />
 
-        {/* ── ABOUT US ── */}
+        {/* ── ABOUT US ── NEW */}
         <AboutUs locale={locale} />
 
         {/* ── IMAGE GRID ── */}
